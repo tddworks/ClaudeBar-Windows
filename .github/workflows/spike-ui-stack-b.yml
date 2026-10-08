@@ -66,8 +66,10 @@ jobs:
           New-Item -ItemType Directory -Force $folder | Out-Null
           1..200 | ForEach-Object { Set-Content (Join-Path $folder "session-$_.jsonl") '{"type":"message"}' }
 
+      # No -Screenshot here: the runner's desktop can show Windows' first-run privacy screen
+      # over the app, so a capture of the window's rectangle isn't evidence of what the app drew.
       - name: Self-test (unpackaged)
-        run: ./selftest.ps1 -Exe out/win-${{ matrix.arch }}-aot/ClaudeBarSpike.exe -Report out/report-unpackaged.json -ScanRoot $env:RUNNER_TEMP/sessions -Screenshot out/shot-unpackaged.png
+        run: ./selftest.ps1 -Exe out/win-${{ matrix.arch }}-aot/ClaudeBarSpike.exe -Report out/report-unpackaged.json -ScanRoot $env:RUNNER_TEMP/sessions
 
       - name: Build (NativeAOT, MSIX layout)
         run: ./build.ps1 -Aot -Msix
@@ -80,7 +82,7 @@ jobs:
           Get-AppxPackage -Name ClaudeBarForWindows.UiStackBSpike | Select-Object PackageFullName, Architecture, IsDevelopmentMode | Format-List
 
       - name: Self-test (MSIX)
-        run: ./selftest.ps1 -Alias -Report out/report-msix.json -ScanRoot $env:RUNNER_TEMP/sessions -Screenshot out/shot-msix.png
+        run: ./selftest.ps1 -Alias -Report out/report-msix.json -ScanRoot $env:RUNNER_TEMP/sessions
 
       - name: Sizes
         if: always()
@@ -92,12 +94,10 @@ jobs:
               (($files | Where-Object Extension -ne '.pdb' | Measure-Object Length -Sum).Sum / 1MB)
           }
 
-      - name: Upload reports and screenshots
+      - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: spike-ui-stack-b-${{ matrix.arch }}
-          path: |
-            spikes/ui-stack-b/out/*.json
-            spikes/ui-stack-b/out/*.png
+          path: spikes/ui-stack-b/out/*.json
           if-no-files-found: warn

@@ -1,6 +1,6 @@
 # Spike: UI stack B — C# WinUI 3 calling ClaudeBar's Swift code
 
-The Windows client's UI isn't chosen yet. This spike tests one candidate end to end: a C# WinUI 3 app (Windows App SDK) that calls ClaudeBar's Swift code through a DLL with a C interface. On Windows 11 x64 it works, unpackaged and as MSIX, with JIT and NativeAOT. ARM64 is not proven (see [ARM64](#arm64)).
+This spike tested the Windows client's UI candidate end to end: a C# WinUI 3 app (Windows App SDK) that calls ClaudeBar's Swift code through a DLL with a C interface. It works on a Windows 11 x64 PC and natively on GitHub's x64 and ARM64 runners, unpackaged and as MSIX, with JIT and NativeAOT. It is the basis of the UI decision in [#2](https://github.com/tddworks/ClaudeBar-Windows/issues/2).
 
 ![The spike running as a packaged (MSIX) app](screenshot.png)
 
@@ -8,9 +8,8 @@ The Windows client's UI isn't chosen yet. This spike tests one candidate end to 
 
 - `native/` — a SwiftPM package that builds `ClaudeBarKitNative.dll`: ClaudeBar's real `Quotas` module ([tddworks/ClaudeBar@721dc625](https://github.com/tddworks/ClaudeBar/tree/721dc625081a040d426857d49328d8685300f26d/Modules/Quotas)) plus C exports written with `@c` (Swift 6.3, [SE-0495](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0495-cdecl.md)). ClaudeBar has no root `Package.swift` yet ([MODULAR_DESIGN §10](https://github.com/tddworks/ClaudeBar/blob/main/docs/architecture/MODULAR_DESIGN.md#10--one-package-two-platforms), phase 1), so `build.ps1` checks the module out at that commit.
 - `app/` — the C# WinUI 3 app (.NET 10, Windows App SDK 2.5.1 components). It calls the DLL with `LibraryImport`.
-- `build.ps1` — builds the DLL, stages it with the Swift runtime DLLs it imports, and publishes the app.
-
-The app's `--selftest <report.json> --hold <seconds>` runs every check below and writes the results.
+- `build.ps1` — builds the DLL for the PC's architecture, stages it with the Swift runtime DLLs it imports, and publishes the app.
+- `selftest.ps1` — runs the app's `--selftest <report.json> --hold <seconds>` and checks every row of the table below; CI runs it on x64 and ARM64.
 
 ### The C interface
 
@@ -20,16 +19,18 @@ The app's `--selftest <report.json> --hold <seconds>` runs every check below and
 
 ## Running it
 
-Needs: Swift 6.3.3 (`winget install Swift.Toolchain -e --version 6.3.3`, user scope), the MSVC x64 build tools (`Microsoft.VisualStudio.Component.VC.Tools.x86.x64`), the .NET 10 SDK, and Developer Mode for the MSIX step.
+Needs: Swift 6.3.3 (`winget install Swift.Toolchain -e --version 6.3.3`, user scope), the MSVC build tools for the PC's architecture, the .NET 10 SDK, and Developer Mode for the MSIX step.
 
 ```powershell
 .\build.ps1 -Aot
-.\out\win-x64-aot\ClaudeBarSpike.exe --selftest report.json --hold 5
+.\selftest.ps1 -Exe .\out\win-x64-aot\ClaudeBarSpike.exe      # win-arm64-aot on an ARM64 PC
 
 .\build.ps1 -Aot -Msix
 Add-AppxPackage -Register .\out\win-x64-aot-msix\AppxManifest.xml
-claudebar-spike.exe --selftest $PWD\report-msix.json --hold 5
+.\selftest.ps1 -Alias -Report out\report-msix.json
 ```
+
+`-ScanRoot <folder>` points the async scan at another folder; by default it walks `~\.omp\agent\sessions`.
 
 ## Results
 
@@ -66,14 +67,16 @@ Of the 118.9 MB, Swift is 56.8 MB: `ClaudeBarKitNative.dll` and the 16 runtime D
 
 ## ARM64
 
-| Step | Result |
-|---|---|
-| C# app, JIT, `win-arm64` | ✅ builds; the exe's PE machine is `0xAA64` |
-| C# app, NativeAOT, `win-arm64` | ❌ "Platform linker not found … install C++ ARM64 build tools" |
-| Swift DLL, `aarch64-unknown-windows-msvc` | ❌ links fail: `msvcrt.lib`, `oldnames.lib`, `msvcprt.lib` not found |
-| Swift ARM64 runtime DLLs | The x64 installer ships them only as merge modules (`Redistributables\6.3.3\rtl.arm64.msm`); not unpacked yet |
+**Native on ARM64, it works.** CI builds and self-tests the spike on GitHub's `windows-11-arm` runner as well as `windows-latest` ([`.github/workflows/spike-ui-stack-b.yml`](../../.github/workflows/spike-ui-stack-b.yml)). The first run, [37755095048](https://github.com/tddworks/ClaudeBar-Windows/actions/runs/37755095048) on 2026-10-08, passed every check above, unpackaged and as MSIX, with NativeAOT on both:
 
-Both failures need the MSVC ARM64 build tools (`Microsoft.VisualStudio.Component.VC.Tools.ARM64`), which this PC doesn't have. Nothing was run on ARM64 hardware.
+| Runner | Swift target | Size (without `.pdb`) | Window shown, unpackaged / MSIX | Working set |
+|---|---|---|---|---|
+| `windows-11-arm` (Windows 11, build 26200) | `aarch64-unknown-windows-msvc` | 123.4 MB; Swift 56.3 MB in 16 DLLs | 987 / 415 ms | 104 MB |
+| `windows-latest` (build 26100) | `x86_64-unknown-windows-msvc` | 118.9 MB; Swift 56.8 MB in 17 DLLs | 162 / 210 ms | 97 MB |
+
+The runner's checks are functional only. A capture of the app's window on `windows-11-arm` showed Windows' first-run privacy screen covering it, so nothing visual was checked on ARM64, and CI takes no screenshots.
+
+**Cross-building from an x64 PC doesn't work yet.** There, the C# app builds for ARM64 with JIT (the exe's PE machine is `0xAA64`), but NativeAOT stops with "Platform linker not found … install C++ ARM64 build tools", and the Swift DLL fails to link (`msvcrt.lib`, `oldnames.lib`, `msvcprt.lib` not found). Both need the MSVC ARM64 build tools (`Microsoft.VisualStudio.Component.VC.Tools.ARM64`). The x64 Swift installer ships the ARM64 runtime only as merge modules (`Redistributables\6.3.3\rtl.arm64.msm`), so `build.ps1` builds for the PC's own architecture.
 
 ## Not covered
 
