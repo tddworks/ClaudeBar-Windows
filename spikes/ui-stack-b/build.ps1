@@ -40,7 +40,16 @@ if ($LASTEXITCODE -ne 0) {
     git -C $vendor checkout --quiet $claudeBarCommit; Assert-Exit 'checkout pinned commit'
 }
 
-# 2. The Swift DLL
+# 2. The Swift DLL. SwiftPM needs MSVC's `link` on PATH, so load the build tools' environment first.
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$vcvars = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+    -find 'VC\Auxiliary\Build\vcvarsall.bat' | Select-Object -First 1
+if (-not $vcvars) { throw 'vcvarsall.bat not found (MSVC build tools)' }
+$vcArch = @{ x64 = 'x64'; arm64 = 'x64_arm64' }[$Arch]
+cmd /c "`"$vcvars`" $vcArch >nul && set" | ForEach-Object {
+    if ($_ -match '^([^=]+)=(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] }
+}
+if (-not (Get-Command link.exe -ErrorAction SilentlyContinue)) { throw "vcvarsall $vcArch did not put link.exe on PATH" }
 $triple = @{ x64 = 'x86_64-unknown-windows-msvc'; arm64 = 'aarch64-unknown-windows-msvc' }[$Arch]
 $native = Join-Path $root 'native'
 $clock = [Diagnostics.Stopwatch]::StartNew()
@@ -54,7 +63,6 @@ $runtime = @{
     arm64 = Join-Path $env:LOCALAPPDATA "Programs\Swift\Platforms\$swiftVersion\Windows.platform\Developer\SDKs\Windows.sdk\usr\bin\aarch64"
 }[$Arch]
 if (-not (Test-Path $runtime)) { throw "Swift runtime DLLs for $Arch not found at $runtime" }
-$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $dumpbin = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
     -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
 if (-not $dumpbin) { throw 'dumpbin.exe not found (MSVC build tools)' }
