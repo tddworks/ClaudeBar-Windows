@@ -14,7 +14,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _scan;
     private DispatcherQueueTimer? _pump;
     private bool _shown;
-    private string? _brushProblem;
+    private string? _brushProblem; // how the first theme brush lookup resolved
 
     public MainWindow(string[] args)
     {
@@ -68,11 +68,26 @@ public sealed partial class MainWindow : Window
             "warning" => "SystemFillColorCautionBrush",
             _ => "SystemFillColorCriticalBrush",
         };
-        // Under NativeAOT a looked-up resource comes back typed as the nearest projected type the
-        // trimmer kept. Naming SolidColorBrush keeps it, so the lookup returns a usable brush.
+        // Under NativeAOT a looked-up resource comes back as a Microsoft.UI.Xaml.DependencyObject
+        // wrapper, so a C# cast fails; CsWinRT's As<T>() asks the object for the interface instead.
         var resource = Application.Current.Resources[brush];
-        if (resource is SolidColorBrush themed) QuotaText.Foreground = themed;
-        else _brushProblem ??= $"Resources[\"{brush}\"] is {resource?.GetType().FullName ?? "null"}, not a SolidColorBrush";
+        if (resource is Brush cast)
+        {
+            QuotaText.Foreground = cast;
+            _brushProblem ??= "C# cast";
+        }
+        else if (resource is not null)
+        {
+            try
+            {
+                QuotaText.Foreground = WinRT.CastExtensions.As<SolidColorBrush>(resource);
+                _brushProblem ??= $"C# cast failed ({resource.GetType().FullName}); As<SolidColorBrush>() worked";
+            }
+            catch (InvalidCastException)
+            {
+                _brushProblem ??= $"C# cast and As<SolidColorBrush>() both failed ({resource.GetType().FullName})";
+            }
+        }
     }
 
     private async void OnScan(object sender, RoutedEventArgs e) => await Scan(perFileDelayMs: 0);
@@ -145,7 +160,7 @@ public sealed partial class MainWindow : Window
         }
         report["quotaDescribe"] = quotas;
         report["rateLimitedText1799s"] = Native.RateLimitedText(1799);
-        report["themeBrushLookup"] = _brushProblem ?? "ok";
+        report["themeBrushLookup"] = _brushProblem ?? "not looked up";
 
         var clock = Stopwatch.StartNew();
         var scan = await Scan(perFileDelayMs: 0);
