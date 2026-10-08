@@ -1,3 +1,4 @@
+import DispatchSPI
 import Foundation
 import Quotas
 #if os(Windows)
@@ -144,11 +145,14 @@ private struct ScanResult: Encodable {
     let newest: String?
     let cancelled: Bool
     let error: String?
+    let entriesWalked: Int
+    let walkMs: Int
     let elapsedMs: Int
     let nativeThread: UInt64
 }
 
-private func sessionLogs(under root: String) throws -> [URL] {
+/// Every `.jsonl` file under `root`, plus how many entries the walk visited.
+private func sessionLogs(under root: String) throws -> (logs: [URL], walked: Int) {
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: root, isDirectory: &isDirectory), isDirectory.boolValue else {
         throw CocoaError(.fileNoSuchFile)
@@ -158,10 +162,12 @@ private func sessionLogs(under root: String) throws -> [URL] {
         throw CocoaError(.fileReadUnknown)
     }
     var logs: [URL] = []
-    for case let url as URL in walker where url.pathExtension == "jsonl" {
-        logs.append(url)
+    var walked = 0
+    for case let url as URL in walker {
+        walked += 1
+        if url.pathExtension == "jsonl" { logs.append(url) }
     }
-    return logs
+    return (logs, walked)
 }
 
 /// Counts the `.jsonl` session logs under `root`. `perFileDelayMs` slows the walk
@@ -182,8 +188,13 @@ private func sessionLogs(under root: String) throws -> [URL] {
         var newest: Date?
         var cancelled = false
         var failure: String?
+        var walked = 0
+        var walkMs = 0
         do {
-            for url in try sessionLogs(under: path) {
+            let found = try sessionLogs(under: path)
+            walked = found.walked
+            walkMs = Int(Date().timeIntervalSince(started) * 1000)
+            for url in found.logs {
                 if perFileDelayMs > 0 {
                     try? await Task.sleep(for: .milliseconds(Int(perFileDelayMs)))
                 }
@@ -208,6 +219,8 @@ private func sessionLogs(under root: String) throws -> [URL] {
             newest: newest?.ISO8601Format(),
             cancelled: cancelled,
             error: failure,
+            entriesWalked: walked,
+            walkMs: walkMs,
             elapsedMs: Int(Date().timeIntervalSince(started) * 1000),
             nativeThread: nativeThreadID()
         )))
@@ -237,4 +250,13 @@ private struct ProbeResult: Encodable {
 /// queue. The host calls it from its UI thread on a timer.
 @c public func cb_pump_main() {
     _ = RunLoop.main.run(mode: .default, before: Date())
+}
+
+/// Drains the main dispatch queue directly through libdispatch's run loop hook,
+/// without waiting for its wake handle. Call it from the thread that first
+/// loaded the DLL (the UI thread), which libdispatch binds the main queue to.
+@c public func cb_drain_main_queue() {
+    #if os(Windows)
+    _dispatch_main_queue_callback_4CF(nil)
+    #endif
 }

@@ -12,6 +12,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "Quotas", path: "vendor/ClaudeBar/Modules/Quotas/Sources"),
-        .target(name: "ClaudeBarKitNative", dependencies: ["Quotas"]),
+        .target(name: "DispatchSPI"),
+        .target(name: "ClaudeBarKitNative", dependencies: ["Quotas", "DispatchSPI"]),
     ]
 )

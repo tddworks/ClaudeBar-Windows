@@ -94,11 +94,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void StartPump()
+    /// Drives Swift's main dispatch queue from the UI thread, because WinUI's
+    /// message loop, not Swift, owns that thread. `drain` calls libdispatch's
+    /// hook directly; otherwise the main RunLoop is run once per tick.
+    private void StartPump(bool drain)
     {
+        _pump?.Stop();
         _pump = DispatcherQueue.CreateTimer();
         _pump.Interval = TimeSpan.FromMilliseconds(16);
-        _pump.Tick += (_, _) => Native.cb_pump_main();
+        if (drain) _pump.Tick += (_, _) => Native.cb_drain_main_queue();
+        else _pump.Tick += (_, _) => Native.cb_pump_main();
         _pump.Start();
     }
 
@@ -147,16 +152,23 @@ public sealed partial class MainWindow : Window
             ["roundTripMs"] = clock.ElapsedMilliseconds,
         };
 
-        var unpumped = Bridge.MainActorProbeAsync();
-        var first = await Within(unpumped, 2000);
-        report["mainActorWithoutPump"] = first.Replied ? JsonNode.Parse(first.Reply!.Json) : "no reply within 2 s";
-        StartPump();
-        var second = await Within(Bridge.MainActorProbeAsync(), 2000);
-        report["mainActorWithPump"] = second.Replied ? JsonNode.Parse(second.Reply!.Json) : "no reply within 2 s";
-        if (!first.Replied)
-        {
-            report["mainActorWithoutPumpRepliedOncePumpStarted"] = (await Within(unpumped, 1000)).Replied;
-        }
+        // MainActor work: no pump, then RunLoop.main once per tick, then libdispatch's drain hook.
+        var probes = new (string Name, Task<Bridge.Reply> Call)[3];
+        var mainActor = new JsonObject();
+        probes[0] = ("noPump", Bridge.MainActorProbeAsync());
+        var replied = await Within(probes[0].Call, 2000);
+        mainActor["noPump"] = replied.Replied ? JsonNode.Parse(replied.Reply!.Json) : "no reply within 2 s";
+        StartPump(drain: false);
+        probes[1] = ("runLoopPump", Bridge.MainActorProbeAsync());
+        replied = await Within(probes[1].Call, 2000);
+        mainActor["runLoopPump"] = replied.Replied ? JsonNode.Parse(replied.Reply!.Json) : "no reply within 2 s";
+        StartPump(drain: true);
+        probes[2] = ("drainPump", Bridge.MainActorProbeAsync());
+        replied = await Within(probes[2].Call, 2000);
+        mainActor["drainPump"] = replied.Replied ? JsonNode.Parse(replied.Reply!.Json) : "no reply within 2 s";
+        await Task.Delay(500);
+        mainActor["repliedByEnd"] = new JsonArray(probes.Select(p => (JsonNode?)$"{p.Name}: {p.Call.IsCompleted}").ToArray());
+        report["mainActor"] = mainActor;
         report["pendingCallbacks"] = Bridge.Pending;
 
         var modules = new JsonArray();

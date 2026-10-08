@@ -19,6 +19,7 @@ internal static unsafe partial class Native
     [LibraryImport(Lib)] internal static partial void cb_mainactor_probe(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cb_pump_main();
 
+    [LibraryImport(Lib)] internal static partial void cb_drain_main_queue();
     [LibraryImport("kernel32.dll")] internal static partial uint GetCurrentThreadId();
     [LibraryImport("kernel32.dll")] private static partial int GetCurrentPackageFullName(ref uint length, char* name);
 
