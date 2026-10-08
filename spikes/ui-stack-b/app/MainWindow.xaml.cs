@@ -14,6 +14,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _scan;
     private DispatcherQueueTimer? _pump;
     private bool _shown;
+    private string? _brushProblem;
 
     public MainWindow(string[] args)
     {
@@ -30,17 +31,26 @@ public sealed partial class MainWindow : Window
     {
         if (_shown) return;
         _shown = true;
-        var shownMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
-        var version = JsonNode.Parse(Native.Version())!;
-        VersionText.Text = $"{version["library"]} · Swift {version["swift"]} · UI thread {Native.GetCurrentThreadId()} · "
-            + $"window shown {shownMs:F0} ms after process start · {(Native.IsPackaged() ? "packaged (MSIX)" : "unpackaged")}";
-        ShowQuota();
-        RateLimitText.Text = "UsageError.rateLimited, 29 min 59 s from now: " + Native.RateLimitedText(1799);
-
         var at = Array.IndexOf(_args, "--selftest");
-        if (at >= 0 && at + 1 < _args.Length)
+        var reportPath = at >= 0 && at + 1 < _args.Length ? _args[at + 1] : null;
+        try
         {
-            await RunSelfTest(_args[at + 1], shownMs);
+            var shownMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
+            var version = JsonNode.Parse(Native.Version())!;
+            VersionText.Text = $"{version["library"]} · Swift {version["swift"]} · UI thread {Native.GetCurrentThreadId()} · "
+                + $"window shown {shownMs:F0} ms after process start · {(Native.IsPackaged() ? "packaged (MSIX)" : "unpackaged")}";
+            ShowQuota();
+            RateLimitText.Text = "UsageError.rateLimited, 29 min 59 s from now: " + Native.RateLimitedText(1799);
+            if (reportPath is not null) await RunSelfTest(reportPath, shownMs);
+        }
+        catch (Exception error)
+        {
+            // An async void handler's exception would otherwise vanish; show it and report it.
+            DiagText.Text = error.ToString();
+            if (reportPath is not null)
+            {
+                await File.WriteAllTextAsync(reportPath, new JsonObject { ["error"] = error.ToString() }.ToJsonString());
+            }
         }
     }
 
@@ -58,7 +68,10 @@ public sealed partial class MainWindow : Window
             "warning" => "SystemFillColorCautionBrush",
             _ => "SystemFillColorCriticalBrush",
         };
-        QuotaText.Foreground = (Brush)Application.Current.Resources[brush];
+        // Under NativeAOT the projected type of a looked-up resource can be trimmed away; record what comes back.
+        var resource = Application.Current.Resources[brush];
+        if (resource is Brush themed) QuotaText.Foreground = themed;
+        else _brushProblem ??= $"Resources[\"{brush}\"] is {resource?.GetType().FullName ?? "null"}, not a Brush";
     }
 
     private async void OnScan(object sender, RoutedEventArgs e) => await Scan(perFileDelayMs: 0);
@@ -131,6 +144,7 @@ public sealed partial class MainWindow : Window
         }
         report["quotaDescribe"] = quotas;
         report["rateLimitedText1799s"] = Native.RateLimitedText(1799);
+        report["themeBrushLookup"] = _brushProblem ?? "ok";
 
         var clock = Stopwatch.StartNew();
         var scan = await Scan(perFileDelayMs: 0);
@@ -178,7 +192,7 @@ public sealed partial class MainWindow : Window
             if (name.StartsWith("swift") || name.StartsWith("foundation") || name.StartsWith("_foundation")
                 || name is "dispatch.dll" or "blocksruntime.dll" or "claudebarkitnative.dll" or "microsoft.ui.xaml.dll")
             {
-                modules.Add($"{module.ModuleName} <- {Path.GetDirectoryName(module.FileName)}");
+                modules.Add(JsonValue.Create($"{module.ModuleName} <- {Path.GetDirectoryName(module.FileName)}"));
             }
         }
         report["appDirectory"] = AppContext.BaseDirectory;

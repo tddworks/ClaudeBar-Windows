@@ -7,11 +7,13 @@ Builds the UI stack B spike on Windows:
 
   .\build.ps1                    # x64, unpackaged
   .\build.ps1 -Aot               # x64, unpackaged, NativeAOT
+  .\build.ps1 -Aot -Msix         # x64, MSIX layout; register with Add-AppxPackage -Register <out>\AppxManifest.xml
   .\build.ps1 -Arch arm64        # needs the MSVC ARM64 build tools
 #>
 param(
     [ValidateSet('x64', 'arm64')] [string] $Arch = 'x64',
     [switch] $Aot,
+    [switch] $Msix,
     [switch] $SkipApp
 )
 
@@ -90,13 +92,14 @@ $staged = Get-ChildItem $stage -Filter *.dll
 $staged | Sort-Object Length -Descending | ForEach-Object { '  {0,-40} {1,8:N0} KB' -f $_.Name, ($_.Length / 1KB) }
 if ($SkipApp) { return }
 
-# 4. The C# WinUI 3 app, self-contained, unpackaged
+# 4. The C# WinUI 3 app, self-contained
 $rid = "win-$Arch"
 $platform = @{ x64 = 'x64'; arm64 = 'ARM64' }[$Arch]
-$out = Join-Path $root ("out\$rid" + $(if ($Aot) { '-aot' } else { '' }))
+$out = Join-Path $root ("out\$rid" + $(if ($Aot) { '-aot' } else { '' }) + $(if ($Msix) { '-msix' } else { '' }))
 Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 $publish = @('publish', (Join-Path $root 'app\ClaudeBarSpike.csproj'), '-c', 'Release', '-r', $rid, "-p:Platform=$platform", '-o', $out)
 if ($Aot) { $publish += '-p:PublishAot=true' }
+if ($Msix) { $publish += '-p:WindowsPackageType=MSIX' }
 $clock.Restart()
 & $dotnet @publish; Assert-Exit 'dotnet publish'
 "dotnet publish: {0:N0} s" -f $clock.Elapsed.TotalSeconds
