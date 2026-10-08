@@ -20,6 +20,9 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <!-- WinAppSDK 2.5.1 resolves 1.7.251221100, whose manifest validation task fails under the
+         .NET 10 SDK (cannot load System.Security.Permissions 8.0.0.0). -->
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.MSIX" Version="1.7.260930100" />
   </ItemGroup>
 
   <ItemGroup>
