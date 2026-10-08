@@ -68,10 +68,11 @@ public sealed partial class MainWindow : Window
             "warning" => "SystemFillColorCautionBrush",
             _ => "SystemFillColorCriticalBrush",
         };
-        // Under NativeAOT the projected type of a looked-up resource can be trimmed away; record what comes back.
+        // Under NativeAOT a looked-up resource comes back typed as the nearest projected type the
+        // trimmer kept. Naming SolidColorBrush keeps it, so the lookup returns a usable brush.
         var resource = Application.Current.Resources[brush];
-        if (resource is Brush themed) QuotaText.Foreground = themed;
-        else _brushProblem ??= $"Resources[\"{brush}\"] is {resource?.GetType().FullName ?? "null"}, not a Brush";
+        if (resource is SolidColorBrush themed) QuotaText.Foreground = themed;
+        else _brushProblem ??= $"Resources[\"{brush}\"] is {resource?.GetType().FullName ?? "null"}, not a SolidColorBrush";
     }
 
     private async void OnScan(object sender, RoutedEventArgs e) => await Scan(perFileDelayMs: 0);
@@ -192,7 +193,7 @@ public sealed partial class MainWindow : Window
             if (name.StartsWith("swift") || name.StartsWith("foundation") || name.StartsWith("_foundation")
                 || name is "dispatch.dll" or "blocksruntime.dll" or "claudebarkitnative.dll" or "microsoft.ui.xaml.dll")
             {
-                modules.Add(JsonValue.Create($"{module.ModuleName} <- {Path.GetDirectoryName(module.FileName)}"));
+                modules.Add((JsonNode?)JsonValue.Create($"{module.ModuleName} <- {Path.GetDirectoryName(module.FileName)}"));
             }
         }
         report["appDirectory"] = AppContext.BaseDirectory;
