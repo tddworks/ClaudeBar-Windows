@@ -11,6 +11,7 @@ namespace ClaudeBarSpike;
 public sealed partial class MainWindow : Window
 {
     private readonly string[] _args;
+    private readonly string _scanRoot;
     private CancellationTokenSource? _scan;
     private DispatcherQueueTimer? _pump;
     private bool _shown;
@@ -19,13 +20,15 @@ public sealed partial class MainWindow : Window
     public MainWindow(string[] args)
     {
         _args = args;
+        // --scan-root <folder> points the scan at a test folder (CI has no omp logs).
+        var at = Array.IndexOf(args, "--scan-root");
+        _scanRoot = at >= 0 && at + 1 < args.Length
+            ? args[at + 1]
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".omp", "agent", "sessions");
         InitializeComponent();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(960, 1100));
         Activated += OnActivated;
     }
-
-    private static string SessionsRoot() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".omp", "agent", "sessions");
 
     private async void OnActivated(object sender, WindowActivatedEventArgs e)
     {
@@ -105,7 +108,7 @@ public sealed partial class MainWindow : Window
         Busy.IsActive = true;
         try
         {
-            var reply = await Bridge.ScanSessionsAsync(SessionsRoot(), perFileDelayMs, _scan.Token);
+            var reply = await Bridge.ScanSessionsAsync(_scanRoot, perFileDelayMs, _scan.Token);
             var scan = JsonNode.Parse(reply.Json)!;
             var megabytes = scan["bytes"]!.GetValue<long>() / 1048576.0;
             ScanText.Text = (scan["cancelled"]!.GetValue<bool>()

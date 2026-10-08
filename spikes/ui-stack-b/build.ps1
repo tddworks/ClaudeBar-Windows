@@ -5,13 +5,14 @@ Builds the UI stack B spike on Windows:
   3. stages it with the Swift runtime DLLs it imports (followed through the import tables),
   4. publishes the C# WinUI 3 app (self-contained) with those DLLs next to the exe.
 
-  .\build.ps1                    # x64, unpackaged
-  .\build.ps1 -Aot               # x64, unpackaged, NativeAOT
-  .\build.ps1 -Aot -Msix         # x64, MSIX layout; register with Add-AppxPackage -Register <out>\AppxManifest.xml
-  .\build.ps1 -Arch arm64        # needs the MSVC ARM64 build tools and the Swift ARM64 runtime DLLs (not staged yet)
+  .\build.ps1                    # this PC's architecture (x64 or ARM64), unpackaged
+  .\build.ps1 -Aot               # unpackaged, NativeAOT
+  .\build.ps1 -Aot -Msix         # MSIX layout; register with Add-AppxPackage -Register <out>\AppxManifest.xml
+  .\build.ps1 -Arch arm64        # cross-build from x64: needs the MSVC ARM64 build tools, and the Swift
+                                 # ARM64 runtime DLLs, which the x64 installer ships only inside rtl.arm64.msm
 #>
 param(
-    [ValidateSet('x64', 'arm64')] [string] $Arch = 'x64',
+    [ValidateSet('x64', 'arm64')] [string] $Arch,
     [switch] $Aot,
     [switch] $Msix,
     [switch] $SkipApp
@@ -20,7 +21,10 @@ param(
 $ErrorActionPreference = 'Continue'
 $root = $PSScriptRoot
 $claudeBarCommit = '721dc625081a040d426857d49328d8685300f26d'
-$swiftVersion = '6.3.3'
+# The machine's own architecture, even from an emulated x64 shell on ARM64.
+$hostArch = @{ AMD64 = 'x64'; ARM64 = 'arm64' }[(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').PROCESSOR_ARCHITECTURE]
+if (-not $hostArch) { throw 'unsupported host architecture' }
+if (-not $Arch) { $Arch = $hostArch }
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $env:DOTNET_NOLOGO = '1'
 $dotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet10\dotnet.exe'
@@ -44,10 +48,12 @@ if ($LASTEXITCODE -ne 0) {
 
 # 2. The Swift DLL. SwiftPM needs MSVC's `link` on PATH, so load the build tools' environment first.
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-$vcvars = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+$vcComponents = 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64'
+$vcvars = & $vswhere -latest -products * -requiresAny -requires $vcComponents `
     -find 'VC\Auxiliary\Build\vcvarsall.bat' | Select-Object -First 1
 if (-not $vcvars) { throw 'vcvarsall.bat not found (MSVC build tools)' }
-$vcArch = @{ x64 = 'x64'; arm64 = 'x64_arm64' }[$Arch]
+# vcvarsall's argument is host_target, or just the architecture when they match.
+$vcArch = if ($hostArch -eq $Arch) { $Arch } else { "${hostArch}_$Arch" }
 cmd /c "`"$vcvars`" $vcArch >nul && set" | ForEach-Object {
     if ($_ -match '^([^=]+)=(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] }
 }
@@ -59,16 +65,14 @@ swift build -c release --package-path $native --triple $triple; Assert-Exit 'swi
 "swift build: {0:N0} s" -f $clock.Elapsed.TotalSeconds
 $bin = (swift build -c release --package-path $native --triple $triple --show-bin-path | Select-Object -Last 1).Trim()
 
-# 3. Stage the DLL and the Swift runtime DLLs it imports, transitively
-if ($Arch -eq 'arm64') {
-    # The x64 installer ships the ARM64 runtime only as merge modules
-    # (Redistributables\<version>\rtl.arm64.msm); this spike does not unpack them yet.
-    throw 'ARM64 staging needs the Swift ARM64 runtime DLLs from rtl.arm64.msm'
-}
-$runtime = Join-Path $env:LOCALAPPDATA "Programs\Swift\Runtimes\$swiftVersion\usr\bin"
-if (-not (Test-Path $runtime)) { throw "Swift runtime DLLs not found at $runtime" }
-$dumpbin = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-    -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+# 3. Stage the DLL and the Swift runtime DLLs it imports, transitively. The installer puts the
+# runtime for this PC's architecture on PATH; another architecture's runtime ships only as .msm.
+if ($Arch -ne $hostArch) { throw "staging $Arch on a $hostArch PC needs the Swift $Arch runtime DLLs from rtl.$Arch.msm" }
+$runtime = $env:Path -split ';' | Where-Object { $_ -and (Test-Path (Join-Path $_ 'swiftCore.dll')) } | Select-Object -First 1
+if (-not $runtime) { throw 'Swift runtime DLLs (swiftCore.dll) not found on PATH' }
+"Swift runtime: $runtime"
+$dumpbin = & $vswhere -latest -products * -requiresAny -requires $vcComponents `
+    -find 'VC\Tools\MSVC\**\dumpbin.exe' | Select-Object -First 1
 if (-not $dumpbin) { throw 'dumpbin.exe not found (MSVC build tools)' }
 
 $stage = Join-Path $root "native-out\win-$Arch"

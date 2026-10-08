@@ -1,0 +1,103 @@
+name: Spike UI stack B
+
+# Builds the spike in spikes/ui-stack-b (a Swift DLL with ClaudeBar's Quotas, and a C# WinUI 3
+# app calling it) natively on x64 and ARM64, then runs the app's self-test unpackaged and as
+# an MSIX package. See spikes/ui-stack-b/README.md and #2.
+
+on:
+  push:
+    branches: [spike/ui-stack-b]
+    paths:
+      - 'spikes/ui-stack-b/**'
+      - '.github/workflows/spike-ui-stack-b.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# It runs third-party setup actions, builds and tests; nothing writes to the repo.
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    name: ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: windows-latest, swift-arch: amd64 }
+          - { arch: arm64, runner: windows-11-arm, swift-arch: arm64 }
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: spikes/ui-stack-b
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The Swift the spike was measured with (and ClaudeBar's macOS CI).
+      - name: Install Swift
+        uses: compnerd/gha-setup-swift@main
+        with:
+          swift-version: swift-6.3.3-release
+          swift-build: 6.3.3-RELEASE
+          build_arch: ${{ matrix.swift-arch }}
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Toolchain versions
+        run: |
+          swift --version
+          dotnet --version
+          (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').PROCESSOR_ARCHITECTURE
+
+      - name: Build (NativeAOT, unpackaged)
+        run: ./build.ps1 -Aot
+
+      # The runner has no omp logs, so the async scan walks a folder of generated .jsonl files.
+      - name: Make a folder to scan
+        run: |
+          $folder = Join-Path $env:RUNNER_TEMP 'sessions'
+          New-Item -ItemType Directory -Force $folder | Out-Null
+          1..200 | ForEach-Object { Set-Content (Join-Path $folder "session-$_.jsonl") '{"type":"message"}' }
+
+      - name: Self-test (unpackaged)
+        run: ./selftest.ps1 -Exe out/win-${{ matrix.arch }}-aot/ClaudeBarSpike.exe -Report out/report-unpackaged.json -ScanRoot $env:RUNNER_TEMP/sessions -Screenshot out/shot-unpackaged.png
+
+      - name: Build (NativeAOT, MSIX layout)
+        run: ./build.ps1 -Aot -Msix
+
+      # Registering an unsigned layout needs Developer Mode.
+      - name: Register the MSIX layout
+        run: |
+          New-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -Value 1 -PropertyType DWORD -Force | Out-Null
+          Add-AppxPackage -Register (Resolve-Path out/win-${{ matrix.arch }}-aot-msix/AppxManifest.xml)
+          Get-AppxPackage -Name ClaudeBarForWindows.UiStackBSpike | Select-Object PackageFullName, Architecture, IsDevelopmentMode | Format-List
+
+      - name: Self-test (MSIX)
+        run: ./selftest.ps1 -Alias -Report out/report-msix.json -ScanRoot $env:RUNNER_TEMP/sessions -Screenshot out/shot-msix.png
+
+      - name: Sizes
+        if: always()
+        run: |
+          Get-ChildItem out -Directory | ForEach-Object {
+            $files = Get-ChildItem $_.FullName -Recurse -File
+            '{0}: {1} files, {2:N1} MB ({3:N1} MB without .pdb)' -f $_.Name, $files.Count,
+              (($files | Measure-Object Length -Sum).Sum / 1MB),
+              (($files | Where-Object Extension -ne '.pdb' | Measure-Object Length -Sum).Sum / 1MB)
+          }
+
+      - name: Upload reports and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spike-ui-stack-b-${{ matrix.arch }}
+          path: |
+            spikes/ui-stack-b/out/*.json
+            spikes/ui-stack-b/out/*.png
+          if-no-files-found: warn
