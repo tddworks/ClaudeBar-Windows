@@ -1,0 +1,6 @@
+native/vendor/
+native/.build/
+native-out/
+out/
+app/bin/
+app/obj/
