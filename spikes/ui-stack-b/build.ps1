@@ -8,7 +8,7 @@ Builds the UI stack B spike on Windows:
   .\build.ps1                    # x64, unpackaged
   .\build.ps1 -Aot               # x64, unpackaged, NativeAOT
   .\build.ps1 -Aot -Msix         # x64, MSIX layout; register with Add-AppxPackage -Register <out>\AppxManifest.xml
-  .\build.ps1 -Arch arm64        # needs the MSVC ARM64 build tools
+  .\build.ps1 -Arch arm64        # needs the MSVC ARM64 build tools and the Swift ARM64 runtime DLLs (not staged yet)
 #>
 param(
     [ValidateSet('x64', 'arm64')] [string] $Arch = 'x64',
@@ -60,11 +60,13 @@ swift build -c release --package-path $native --triple $triple; Assert-Exit 'swi
 $bin = (swift build -c release --package-path $native --triple $triple --show-bin-path | Select-Object -Last 1).Trim()
 
 # 3. Stage the DLL and the Swift runtime DLLs it imports, transitively
-$runtime = @{
-    x64   = Join-Path $env:LOCALAPPDATA "Programs\Swift\Runtimes\$swiftVersion\usr\bin"
-    arm64 = Join-Path $env:LOCALAPPDATA "Programs\Swift\Platforms\$swiftVersion\Windows.platform\Developer\SDKs\Windows.sdk\usr\bin\aarch64"
-}[$Arch]
-if (-not (Test-Path $runtime)) { throw "Swift runtime DLLs for $Arch not found at $runtime" }
+if ($Arch -eq 'arm64') {
+    # The x64 installer ships the ARM64 runtime only as merge modules
+    # (Redistributables\<version>\rtl.arm64.msm); this spike does not unpack them yet.
+    throw 'ARM64 staging needs the Swift ARM64 runtime DLLs from rtl.arm64.msm'
+}
+$runtime = Join-Path $env:LOCALAPPDATA "Programs\Swift\Runtimes\$swiftVersion\usr\bin"
+if (-not (Test-Path $runtime)) { throw "Swift runtime DLLs not found at $runtime" }
 $dumpbin = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
     -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
 if (-not $dumpbin) { throw 'dumpbin.exe not found (MSVC build tools)' }
@@ -103,5 +105,11 @@ if ($Msix) { $publish += '-p:WindowsPackageType=MSIX' }
 $clock.Restart()
 & $dotnet @publish; Assert-Exit 'dotnet publish'
 "dotnet publish: {0:N0} s" -f $clock.Elapsed.TotalSeconds
+if ($Msix) {
+    # The packaging targets write AppxManifest.xml into the build output, not the publish folder.
+    Copy-Item (Join-Path $root "app\bin\$platform\Release\net10.0-windows10.0.22621.0\$rid\AppxManifest.xml") $out
+}
 $files = Get-ChildItem $out -Recurse -File
-"published to $out : {0} files, {1:N1} MB" -f $files.Count, (($files | Measure-Object Length -Sum).Sum / 1MB)
+$shipped = $files | Where-Object Extension -ne '.pdb'
+"published to $out : {0} files, {1:N1} MB ({2:N1} MB without .pdb)" -f $files.Count,
+    (($files | Measure-Object Length -Sum).Sum / 1MB), (($shipped | Measure-Object Length -Sum).Sum / 1MB)

@@ -19,9 +19,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <!-- WinUI and what it pulls in (Foundation, InteractiveExperiences, Base, WebView2), not the
+         Microsoft.WindowsAppSDK metapackage, whose AI/ML/Search parts add 46 MB (onnxruntime, DirectML). -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.3.9" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.9" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.5.1" />
     <!-- WinAppSDK 2.5.1 resolves 1.7.251221100, whose manifest validation task fails under the
-         .NET 10 SDK (cannot load System.Security.Permissions 8.0.0.0). -->
+         .NET 10 SDK (cannot load System.Security.Permissions 8.0.0.0) instead of reporting a manifest error. -->
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.MSIX" Version="1.7.260930100" />
   </ItemGroup>
 
