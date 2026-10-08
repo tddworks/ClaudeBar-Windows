@@ -15,7 +15,7 @@ A Windows client for the [ClaudeBar](https://github.com/tddworks/ClaudeBar) Lead
 The board is only fair if a day counts the same on Windows as on the Mac. So this client doesn't reimplement ClaudeBar: it depends on `ClaudeBarKit`, ClaudeBar's Swift package, which is being made to build on Windows as well as macOS, one phase at a time ([MODULAR_DESIGN §10](https://github.com/tddworks/ClaudeBar/blob/main/docs/architecture/MODULAR_DESIGN.md#10--one-package-two-platforms)).
 
 - **From the package:** reading the logs, summing a day, signing, keeping the key, the provider definitions and `vectors.json`. This client depends on `tddworks/ClaudeBar` by URL at a tag or commit, and calls the same factories as the Mac app.
-- **In this repo:** the UI, the composition root, packaging and the installer. If the UI is C#, the C interface over the package's factories lives here too. The UI isn't chosen yet.
+- **In this repo:** the UI, the composition root, packaging and the installer. The UI is C# WinUI 3, calling the package through a C interface over its factories, which lives here too ([#2](https://github.com/tddworks/ClaudeBar-Windows/issues/2)).
 
 **Where it stands:** §10's phase 0 is done ([#523](https://github.com/tddworks/ClaudeBar/pull/523)): Swift builds and tests a module on Windows, Mockable included. The client can start at phase 2, when the Leaderboard builds there, and joins and uploads from phase 3.
 
