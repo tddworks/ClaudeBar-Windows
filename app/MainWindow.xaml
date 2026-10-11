@@ -171,7 +171,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock x:Name="RankText" VerticalAlignment="Center" FontFamily="Segoe UI Variable Display"
                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" AutomationProperties.Name="Your rank">
-                                        <Run Text="#" FontSize="26" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}" /><Run x:Name="RankNumber" Text="–" FontSize="58" FontWeight="SemiBold" />
+                                        <Run x:Name="RankHash" Text="#" FontSize="26" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}" /><Run x:Name="RankNumber" Text="–" FontSize="58" FontWeight="SemiBold" />
                                     </TextBlock>
                                     <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                         <TextBlock x:Name="RankCaption" Style="{StaticResource Eyebrow}" />
@@ -314,6 +314,39 @@
                                 <TextBlock x:Name="UploadDetail" Style="{StaticResource Tertiary}" />
                             </StackPanel>
                             <Button x:Name="UploadButton" Grid.Column="2" Content="Upload now" Click="OnUploadNow" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="Where it shows" Style="{StaticResource GroupTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE718;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="On the taskbar" />
+                                <TextBlock Text="Hover ClaudeBar's taskbar button for your place; right-click it to upload. To keep it there, right-click it and choose Pin to taskbar."
+                                           Style="{StaticResource Tertiary}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE7C4;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Icon in the system tray" />
+                                <TextBlock Text="Click it for your place. Closing the window keeps ClaudeBar there. Windows puts new icons under ^; drag it onto the taskbar to keep it in view."
+                                           Style="{StaticResource Tertiary}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="TraySwitch" Grid.Column="2" OnContent="On" OffContent="Off" MinWidth="0"
+                                          Toggled="OnTrayToggled" AutomationProperties.Name="Icon in the system tray" />
                         </Grid>
                     </Border>
 

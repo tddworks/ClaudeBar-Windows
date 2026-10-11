@@ -48,6 +48,16 @@ public sealed partial class MainWindow : Window
     private int _boardRead;
     /// Your row in the list, to pin it at the bottom while it's scrolled away.
     private FrameworkElement? _youRow;
+    private readonly Taskbar _taskbar;
+    private readonly Tray _tray;
+    /// Made on first use: a window that never opens would outlive this one.
+    private TrayFlyout? _flyout;
+    /// A launch's arguments that came before the window had read the membership.
+    private string? _pending;
+    /// The last board read and your place on it, for the tray's flyout.
+    private (List<Member> Members, JsonObject? You, bool Hidden)? _lastBoard;
+    /// Quit from the tray: close for real instead of hiding there.
+    private bool _quitting;
 
     public MainWindow()
     {
@@ -64,6 +74,125 @@ public sealed partial class MainWindow : Window
         _pump.Start();
         Activated += OnActivated;
         Root.ActualThemeChanged += (_, _) => { BuildMiniPodium(); BuildPills(); if (BoardPage.Visibility == Visibility.Visible) _ = LoadBoard(keepList: false); };
+
+        var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _taskbar = new Taskbar(handle);
+        _tray = new Tray(handle)
+        {
+            OpenWindow = () => Open(""),
+            OpenFlyout = OpenTrayFlyout,
+            UploadNow = () => Open("--upload"),
+            Quit = QuitFromTray,
+        };
+        _taskbar.OnMessage = _tray.Handle;
+        if (Preferences.TrayIcon) _tray.Show();
+        Taskbar.SetJumpList();
+        AppWindow.Closing += (_, e) =>
+        {
+            // With the tray icon on, closing keeps ClaudeBar there.
+            if (_tray.IsShown && !_quitting)
+            {
+                e.Cancel = true;
+                AppWindow.Hide();
+            }
+        };
+        Closed += (_, _) =>
+        {
+            _tray.Dispose();
+            _flyout?.Close();
+        };
+    }
+
+    /// A launch's arguments, this one's or a second launch's handed over:
+    /// `--upload`, `--settings`, or the board.
+    internal void Open(string arguments)
+    {
+        AppWindow.Show();
+        Activate();
+        if (_state is null)
+        {
+            _pending = arguments;
+            return;
+        }
+        if (_state["joined"]?.GetValue<bool>() != true) return;
+        if (arguments.Contains("--settings")) OnOpenSettings(this, new RoutedEventArgs());
+        else if (arguments.Contains("--board")) OnCloseSettings(this, new RoutedEventArgs());
+        if (arguments.Contains("--upload")) OnUploadNow(this, new RoutedEventArgs());
+    }
+
+    private void QuitFromTray()
+    {
+        _quitting = true;
+        Close();
+        Application.Current.Exit();
+    }
+
+    private void OpenTrayFlyout()
+    {
+        var content = new StackPanel { Spacing = 8 };
+        var title = new Grid();
+        title.Children.Add(new TextBlock { Text = "ClaudeBar", FontWeight = FontWeights.SemiBold });
+        title.Children.Add(new TextBlock { Text = PeriodName(_period), HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Root.Resources["Tertiary"] });
+        content.Children.Add(title);
+        if (_lastBoard is { } board && _state?["joined"]?.GetValue<bool>() == true)
+        {
+            var you = board.You;
+            var card = new StackPanel { Spacing = 2 };
+            var rank = new TextBlock { FontFamily = new FontFamily("Segoe UI Variable Display"), Foreground = Resource("AccentTextFillColorPrimaryBrush") };
+            rank.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = you is null ? "" : "#", FontSize = 22, Foreground = Resource("TextFillColorTertiaryBrush") });
+            rank.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = you is null ? "–" : $"{you["rank"]}", FontSize = 40, FontWeight = FontWeights.SemiBold });
+            card.Children.Add(new TextBlock { Text = "YOUR RANK", Style = (Style)Root.Resources["Eyebrow"] });
+            card.Children.Add(rank);
+            card.Children.Add(new TextBlock { Text = you is null ? "Nothing uploaded for this board yet" : $"{Tokens(you["total"]!.GetValue<long>())} tokens", FontWeight = FontWeights.SemiBold });
+            if (you is not null)
+            {
+                var mix = new Grid { Height = 5, ColumnSpacing = 2, Margin = new Thickness(0, 6, 0, 0) };
+                FillMix(mix, Mix(you["byProvider"]));
+                card.Children.Add(mix);
+                if (Gap(you["rank"]!.GetValue<int>(), you["total"]!.GetValue<long>(), board.Members) is string gap)
+                    card.Children.Add(new TextBlock { Text = gap + (board.Hidden ? " · only you see this place" : ""), Style = (Style)Root.Resources["Secondary"] });
+            }
+            content.Children.Add(new Border { Style = (Style)Root.Resources["Card"], Padding = new Thickness(14, 10, 14, 12), Child = card });
+            var list = new StackPanel();
+            foreach (var member in board.Members.Take(4)) list.Children.Add(CompactRow(member));
+            if (board.Members.FirstOrDefault(member => member.IsYou) is { Rank: > 4 } yours) list.Children.Add(CompactRow(yours));
+            content.Children.Add(list);
+        }
+        else
+        {
+            content.Children.Add(new TextBlock { Text = "Join the leaderboard in ClaudeBar to see your place here.", Style = (Style)Root.Resources["Secondary"] });
+        }
+        _flyout ??= new TrayFlyout { OpenWindow = () => Open(""), OpenSettings = () => Open("--settings") };
+        _flyout.Open(_tray.Bounds(), content);
+        if (_state?["joined"]?.GetValue<bool>() == true) _ = LoadBoard(keepList: true);
+    }
+
+    private Grid CompactRow(Member member)
+    {
+        var row = new Grid { Height = 32, ColumnSpacing = 10, Padding = new Thickness(8, 0, 8, 0), CornerRadius = new CornerRadius(4) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var cells = new FrameworkElement[]
+        {
+            new TextBlock { Text = $"#{member.Rank}", FontSize = 12, Foreground = Resource("TextFillColorTertiaryBrush"), VerticalAlignment = VerticalAlignment.Center },
+            new TextBlock { Text = $"@{member.Name}", FontWeight = member.IsYou ? FontWeights.SemiBold : FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center },
+            new TextBlock { Text = Tokens(member.Total), FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center },
+        };
+        for (var column = 0; column < cells.Length; column++)
+        {
+            Grid.SetColumn(cells[column], column);
+            row.Children.Add(cells[column]);
+        }
+        if (member.IsYou) row.Background = new SolidColorBrush(WithAlpha(AccentColor(), 0x1F));
+        return row;
+    }
+
+    private void OnTrayToggled(object sender, RoutedEventArgs e)
+    {
+        if (_showing) return;
+        Preferences.TrayIcon = TraySwitch.IsOn;
+        if (TraySwitch.IsOn) _tray.Show(); else _tray.Hide();
     }
 
     /// 480 × 760 effective pixels, centred, never taller than the work area:
@@ -104,6 +233,8 @@ public sealed partial class MainWindow : Window
             _settingsOpen = false;
             ShowPage(JoinPage);
             Uploads.Unschedule();
+            _taskbar.Clear();
+            _lastBoard = null;
             Standings.Children.Clear();
             Podium.Children.Clear();
             _ = Guarded(LoadPreview);
@@ -116,6 +247,11 @@ public sealed partial class MainWindow : Window
         ShowUploadStatus(state);
         ShowSettings(state);
         _ = LoadBoard(keepList: Standings.Children.Count > 0);
+        if (_pending is { } pending)
+        {
+            _pending = null;
+            Open(pending);
+        }
     }
 
     private void ShowPage(FrameworkElement page)
@@ -156,6 +292,7 @@ public sealed partial class MainWindow : Window
             Podium.Children.Clear();
             _youRow = null;
             PinnedYou.Visibility = Visibility.Collapsed;
+            RankHash.Text = "";
             RankNumber.Text = "–";
             TokensNumber.Text = "Loading…";
             TokensUnit.Text = "";
@@ -177,6 +314,7 @@ public sealed partial class MainWindow : Window
         {
             if (Standings.Children.Count == 0)
             {
+                RankHash.Text = "";
                 TokensNumber.Text = "–";
                 ShowBoardStatus($"Couldn't load the board. {error.GetValue<string>()}", busy: false);
             }
@@ -199,6 +337,18 @@ public sealed partial class MainWindow : Window
         else BoardStatus.Visibility = Visibility.Collapsed;
         // Laid out first, so the pin can tell where your row is.
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, UpdatePinnedYou);
+        _lastBoard = (members, reply["you"] as JsonObject, hidden);
+        _taskbar.Show(GlanceOf(reply["you"] as JsonObject, members, hidden), IsDark, AccentColor());
+    }
+
+    private Glance GlanceOf(JsonObject? you, List<Member> members, bool hidden)
+    {
+        if (you is null) return new Glance(null, PeriodName(_period), 0, null, Array.Empty<(Color, long)>(), hidden);
+        var rank = you["rank"]!.GetValue<int>();
+        var total = you["total"]!.GetValue<long>();
+        var mix = Mix(you["byProvider"]);
+        var parts = _providers.Where(p => mix.GetValueOrDefault(p.Id) > 0).Select(p => (ColorOf(p.Id), mix[p.Id])).ToList();
+        return new Glance(rank, PeriodName(_period), total, Gap(rank, total, members), parts, hidden);
     }
 
     private void ShowRank(JsonObject? you, List<Member> members, bool hidden)
@@ -210,6 +360,7 @@ public sealed partial class MainWindow : Window
         RankLegend.Children.Clear();
         if (you is null)
         {
+            RankHash.Text = "";
             RankNumber.Text = "–";
             TokensNumber.Text = "Nothing uploaded";
             TokensUnit.Text = " for this board yet";
@@ -219,6 +370,7 @@ public sealed partial class MainWindow : Window
         var rank = you["rank"]!.GetValue<int>();
         var total = you["total"]!.GetValue<long>();
         var mix = Mix(you["byProvider"]);
+        RankHash.Text = "#";
         RankNumber.Text = rank.ToString(CultureInfo.InvariantCulture);
         TokensNumber.Text = Tokens(total);
         TokensUnit.Text = " tokens";
@@ -449,6 +601,7 @@ public sealed partial class MainWindow : Window
             ProfileAvatar.Fill = new SolidColorBrush(AvatarColor(name));
             ProfileDevice.Text = $"This PC · {state["label"]}";
             VisibleSwitch.IsOn = state["visible"]?.GetValue<bool>() == true;
+            TraySwitch.IsOn = _tray.IsShown;
             MemberProviders.Children.Clear();
             var shared = (state["providers"]?.AsArray() ?? new JsonArray()).ToDictionary(p => p!["id"]!.GetValue<string>(), p => p!["shared"]!.GetValue<bool>());
             foreach (var provider in _providers) MemberProviders.Children.Add(ProviderSwitch(provider, shared.GetValueOrDefault(provider.Id)));
@@ -468,7 +621,7 @@ public sealed partial class MainWindow : Window
         var name = new TextBlock { Text = provider.Name, VerticalAlignment = VerticalAlignment.Center };
         var amount = new TextBlock
         {
-            Text = week is null ? "" : week > 0 ? $"{Tokens(week.Value)} this week" : "No tokens on this PC",
+            Text = week is null ? "Counting…" : week > 0 ? $"{Tokens(week.Value)} this week" : "No tokens on this PC",
             Style = (Style)Root.Resources["Tertiary"], VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap,
         };
         var toggle = new ToggleSwitch { IsOn = shared, Tag = provider.Id, OnContent = null, OffContent = null, MinWidth = 0, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, -12, 0) };
@@ -667,7 +820,11 @@ public sealed partial class MainWindow : Window
             if (reply["error"] is null)
             {
                 if (!Uploads.Schedule()) Tell("Joined, but the hourly upload couldn't be set up.", InfoBarSeverity.Warning);
-                else Tell("You're on the leaderboard. This PC uploads every hour while you're signed in.", InfoBarSeverity.Success);
+                else
+                {
+                    Tell("You're on the leaderboard. This PC uploads every hour while you're signed in.", InfoBarSeverity.Success);
+                    App.Notify("You're on the leaderboard", $"@{UsernameBox.Text.Trim()} · this PC uploads every hour while you're signed in.");
+                }
             }
             Show(reply);
         });
@@ -813,7 +970,7 @@ public sealed partial class MainWindow : Window
         return since < TimeSpan.FromDays(2) ? "yesterday" : $"{Count((long)since.TotalDays, "day")} ago";
     }
 
-    private static string Tokens(long count) => count switch
+    internal static string Tokens(long count) => count switch
     {
         >= 1_000_000_000 => $"{(count / 1e9).ToString("0.#", CultureInfo.InvariantCulture)}B",
         >= 1_000_000 => $"{(count / 1e6).ToString("0.#", CultureInfo.InvariantCulture)}M",
