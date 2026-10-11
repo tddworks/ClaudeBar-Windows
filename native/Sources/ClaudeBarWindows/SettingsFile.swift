@@ -8,15 +8,29 @@ import WinSDK
 /// key isn't here; Credential Manager keeps it.
 ///
 /// The app and the hourly uploader are separate processes that both read and
-/// write it, so every read and write holds one named mutex, and a write
-/// replaces the file whole.
+/// write it, so every read and write holds one named mutex. That alone would
+/// still lose a change: each membership holds the record it read, and saves it
+/// whole, so an upload that started before the person stopped sharing a
+/// provider would share it again when it records itself. So an instance is
+/// one membership's view (`view()`): it remembers what that membership read,
+/// and a save writes only the fields it changed since, keeping the rest as
+/// the file has them. The file also counts memberships (`generation`): a
+/// membership that has left, or been replaced by a new join, since its view
+/// read saves nothing, so it can't bring itself back or overwrite the new one.
 public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Sendable {
     public let url: URL
-    private let lockName: String
+    public let lockName: String
+    /// What this view's membership last read or saved, and in which membership.
+    private var base: (generation: Int, record: LeaderboardRecord?)?
 
     public init(url: URL = SettingsFile.defaultURL, lockName: String = #"Local\ClaudeBar.settings"#) {
         self.url = url
         self.lockName = lockName
+    }
+
+    /// A view of the same file for another membership, remembering nothing yet.
+    public func view() -> SettingsFile {
+        SettingsFile(url: url, lockName: lockName)
     }
 
     public static var defaultURL: URL {
@@ -26,15 +40,53 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
     }
 
     public func leaderboardRecord() -> LeaderboardRecord? {
-        locked { read().leaderboard?.record }
+        locked {
+            let contents = read()
+            let record = contents.leaderboard?.record
+            base = (contents.generation ?? 0, record)
+            return record
+        }
     }
 
     public func saveLeaderboardRecord(_ record: LeaderboardRecord?) {
         locked {
             var contents = read()
-            contents.leaderboard = record.map(StoredRecord.init)
-            write(contents)
+            let generation = contents.generation ?? 0
+            let theirs = contents.leaderboard?.record
+            let base = self.base ?? (generation, theirs)
+            guard base.generation == generation else {
+                AppLog.ui.info("Leaderboard settings: a membership that has since left or been replaced saved nothing")
+                return
+            }
+            switch (record, theirs) {
+            case (nil, nil):
+                break
+            case (nil, _?):
+                // This membership ends: leaving, or forgotten by the server.
+                contents.leaderboard = nil
+                contents.generation = generation + 1
+            case (let mine?, nil):
+                // A membership begins: joining.
+                contents.leaderboard = StoredRecord(mine)
+                contents.generation = generation + 1
+            case (let mine?, let theirs?):
+                contents.leaderboard = StoredRecord(Self.merge(mine, since: base.record ?? theirs, onto: theirs))
+            }
+            if record != nil || theirs != nil { write(contents) }
+            self.base = (contents.generation ?? 0, record)
         }
+    }
+
+    /// Each field as this membership has it where it changed it since `base`,
+    /// else as the file has it.
+    static func merge(_ mine: LeaderboardRecord, since base: LeaderboardRecord, onto theirs: LeaderboardRecord) -> LeaderboardRecord {
+        func pick<Value: Equatable>(_ field: KeyPath<LeaderboardRecord, Value>) -> Value {
+            mine[keyPath: field] != base[keyPath: field] ? mine[keyPath: field] : theirs[keyPath: field]
+        }
+        return LeaderboardRecord(username: pick(\.username), sharing: pick(\.sharing), visible: pick(\.visible),
+                                 lastUpload: pick(\.lastUpload), sharesCountry: pick(\.sharesCountry),
+                                 globeHintDismissed: pick(\.globeHintDismissed), link: pick(\.link),
+                                 refused: pick(\.refused), shownDevices: pick(\.shownDevices))
     }
 
     public func isLeaderboardOn() -> Bool {
@@ -54,6 +106,8 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
     private struct Contents: Codable {
         var leaderboard: StoredRecord?
         var leaderboardOn: Bool?
+        /// Counts memberships: each join and each end of one adds one.
+        var generation: Int?
     }
 
     private struct StoredRecord: Codable {

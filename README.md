@@ -44,7 +44,7 @@ cd native; swift test   # the Swift side's tests, from a shell with the MSVC env
 | The hourly upload | A Task Scheduler task, *ClaudeBar Leaderboard upload*, that runs `claudebar-upload.exe` every hour while you're signed in. Joining adds it; leaving removes it |
 | Logs | `%LOCALAPPDATA%\ClaudeBar\Logs\ClaudeBar.log`: outcomes only, never a key or a log's content |
 
-The app and the hourly upload are separate processes over the same file; a named mutex keeps their writes to it one at a time. Leaving deletes your username and every uploaded day on the server, then the key, the file's membership and the task.
+The app and the hourly upload are separate processes over the same file. A named mutex keeps their writes to it one at a time, and each saves only what it changed since it read the file: an upload that started before you stopped sharing a provider records that it uploaded, and doesn't share the provider again. A membership that has left, or been replaced by a new join, since it read saves nothing. Leaving deletes your username and every uploaded day on the server, then the key, the file's membership and the task.
 
 ## The contract
 
