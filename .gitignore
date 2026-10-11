@@ -1,0 +1,6 @@
+.build/
+*.user
+bin/
+obj/
+out/
+native-out/
