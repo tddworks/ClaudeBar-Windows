@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ClaudeBar for Windows · Leaderboard · mockup</title>
+<style>
+  /* Fluent tokens, as WinUI 3 names them, for dark and light. */
+  .dark {
+    --mica: radial-gradient(120% 80% at 0% 0%, #2a2633 0%, #202020 55%), #202020;
+    --layer: rgba(255,255,255,0.035);
+    --card: rgba(255,255,255,0.055);
+    --card-hover: rgba(255,255,255,0.085);
+    --card-strong: rgba(255,255,255,0.08);
+    --stroke: rgba(255,255,255,0.075);
+    --stroke-strong: rgba(255,255,255,0.14);
+    --divider: rgba(255,255,255,0.0837);
+    --text: #ffffff;
+    --text-2: rgba(255,255,255,0.786);
+    --text-3: rgba(255,255,255,0.544);
+    --text-4: rgba(255,255,255,0.362);
+    --accent: #60cdff;
+    --accent-text: #99ebff;
+    --on-accent: #000000;
+    --you: rgba(96,205,255,0.12);
+    --control: rgba(255,255,255,0.0605);
+    --control-stroke: rgba(255,255,255,0.093);
+    --subtle: rgba(255,255,255,0.06);
+    --critical: #ff99a4;
+    --success: #6ccb5f;
+    --claude: #fa8c73; --codex: #59d9c7; --mistral: #ff8c00; --omp: #4dd98c;
+    --gold: #f2c14e; --silver: #c3ccd6; --bronze: #d9925f;
+    --shadow: 0 8px 32px rgba(0,0,0,0.42), 0 2px 6px rgba(0,0,0,0.3);
+    --acrylic: rgba(44,44,48,0.86);
+    color: var(--text);
+  }
+  .light {
+    --mica: radial-gradient(120% 80% at 0% 0%, #f1edf7 0%, #f3f3f3 55%), #f3f3f3;
+    --layer: rgba(255,255,255,0.5);
+    --card: rgba(255,255,255,0.7);
+    --card-hover: rgba(249,249,249,0.95);
+    --card-strong: #ffffff;
+    --stroke: rgba(0,0,0,0.0578);
+    --stroke-strong: rgba(0,0,0,0.12);
+    --divider: rgba(0,0,0,0.0803);
+    --text: #1a1a1a;
+    --text-2: rgba(0,0,0,0.62);
+    --text-3: rgba(0,0,0,0.45);
+    --text-4: rgba(0,0,0,0.3);
+    --accent: #005fb8;
+    --accent-text: #003e92;
+    --on-accent: #ffffff;
+    --you: rgba(0,95,184,0.08);
+    --control: rgba(255,255,255,0.7);
+    --control-stroke: rgba(0,0,0,0.08);
+    --subtle: rgba(0,0,0,0.037);
+    --critical: #c42b1c;
+    --success: #0f7b0f;
+    --claude: #f27a61; --codex: #2eb8ad; --mistral: #e67300; --omp: #299e61;
+    --gold: #d9a21b; --silver: #9aa5b1; --bronze: #c0723d;
+    --shadow: 0 8px 32px rgba(0,0,0,0.14), 0 2px 6px rgba(0,0,0,0.08);
+    --acrylic: rgba(249,249,249,0.88);
+    color: var(--text);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 56px 80px;
+    background: #ece9e4;
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 14px; line-height: 20px; color: #1b1a19;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font: 600 40px/48px "Segoe UI Variable Display", "Segoe UI", system-ui; margin: 0 0 6px; letter-spacing: -0.5px; }
+  .lede { max-width: 860px; color: #514f4c; font-size: 15px; line-height: 23px; margin: 0 0 40px; }
+  .section-label { font: 600 12px/16px "Segoe UI Variable Small", "Segoe UI", system-ui; letter-spacing: 1.2px; text-transform: uppercase; color: #7a7672; margin: 0 0 14px; }
+  .row { display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 56px; }
+  .shot { display: flex; flex-direction: column; gap: 10px; }
+  .shot > .caption { font-size: 13px; color: #5d5a56; max-width: 480px; line-height: 19px; }
+  .shot > .caption b { color: #1b1a19; }
+
+  /* A Windows 11 window at 100%: 480 × 760 effective pixels. */
+  .window {
+    width: 480px; height: 760px; border-radius: 8px; overflow: hidden; position: relative;
+    background: var(--mica); border: 1px solid var(--stroke-strong); box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+  }
+  .titlebar { height: 32px; display: flex; align-items: center; padding-left: 14px; gap: 10px; flex: none; font-size: 12px; color: var(--text-2); }
+  .titlebar .logo { width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; background: linear-gradient(135deg, var(--gold), #e8833a); }
+  .titlebar .logo svg { width: 11px; height: 11px; }
+  .caption-buttons { margin-left: auto; display: flex; height: 100%; }
+  .caption-buttons span { width: 46px; display: grid; place-items: center; color: var(--text-2); }
+  .page { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .scroll { flex: 1; overflow: hidden; padding: 0 20px; position: relative; }
+
+  .header { display: flex; align-items: center; padding: 6px 20px 14px; gap: 8px; }
+  .header .titles { flex: 1; min-width: 0; }
+  .header h2 { font: 600 20px/28px "Segoe UI Variable Display", "Segoe UI", system-ui; margin: 0; }
+  .header .sub { font-size: 12px; color: var(--text-3); line-height: 16px; }
+  .icon-btn { width: 32px; height: 32px; border-radius: 4px; display: grid; place-items: center; color: var(--text-2); }
+  .icon-btn.hover { background: var(--subtle); }
+  .icon-btn svg, .ico { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Period: a SelectorBar. Providers: toggle pills. */
+  .periods { display: flex; gap: 4px; padding: 0 20px; }
+  .periods span { padding: 6px 12px 9px; color: var(--text-2); position: relative; border-radius: 4px; }
+  .periods span.on { color: var(--text); font-weight: 600; }
+  .periods span.on::after { content: ""; position: absolute; left: 50%; bottom: 1px; width: 16px; height: 3px; margin-left: -8px; border-radius: 2px; background: var(--accent); }
+  .pills { display: flex; gap: 6px; padding: 10px 20px 14px; }
+  .pill { height: 28px; padding: 0 11px; border-radius: 14px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; background: var(--control); border: 1px solid var(--control-stroke); color: var(--text-2); }
+  .pill.on { background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+  .card { background: var(--card); border: 1px solid var(--stroke); border-radius: 8px; }
+
+  /* Your rank */
+  .rank { padding: 16px 16px 14px; display: grid; grid-template-columns: auto 1fr; column-gap: 18px; position: relative; overflow: hidden; }
+  .rank::before { content: ""; position: absolute; inset: 0; background: radial-gradient(90% 140% at 0% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%); pointer-events: none; }
+  .rank .numeral { font: 600 60px/60px "Segoe UI Variable Display", "Segoe UI", system-ui; letter-spacing: -2px; color: var(--accent-text); align-self: center; position: relative; }
+  .rank .numeral small { font-size: 26px; letter-spacing: 0; vertical-align: 26px; margin-right: 2px; color: var(--text-3); font-weight: 600; }
+  .rank .body { position: relative; min-width: 0; }
+  .rank .eyebrow { font: 600 11px/16px "Segoe UI Variable Small", "Segoe UI", system-ui; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-3); }
+  .rank .who { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+  .rank .who b { font-size: 15px; }
+  .chip { font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 9px; background: var(--subtle); color: var(--text-2); display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--stroke); }
+  .chip svg { width: 11px; height: 11px; }
+  .rank .tokens { font: 600 22px/28px "Segoe UI Variable Display", "Segoe UI", system-ui; margin-top: 4px; }
+  .rank .tokens span { font: 400 13px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; color: var(--text-2); }
+  .mix { display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 2px; margin-top: 10px; }
+  .mix i { display: block; height: 100%; border-radius: 1px; }
+  .legend { display: flex; gap: 12px; margin-top: 7px; font-size: 11px; color: var(--text-3); flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .gap { margin-top: 8px; font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+  .gap svg { width: 12px; height: 12px; }
+
+  /* Podium */
+  .podium { display: grid; grid-template-columns: 1fr 1.08fr 1fr; gap: 8px; align-items: end; margin: 14px 0 10px; }
+  .step { text-align: center; padding: 12px 6px 10px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); position: relative; }
+  .step.first { padding-top: 18px; padding-bottom: 14px; background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 16%, transparent), var(--card) 70%); border-color: color-mix(in srgb, var(--gold) 38%, var(--stroke)); }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; margin: 0 auto 6px; display: grid; place-items: center; font: 600 15px/1 "Segoe UI Variable Display", "Segoe UI", system-ui; color: #1b1a19; position: relative; }
+  .step.first .avatar { width: 44px; height: 44px; font-size: 18px; }
+  .medal { position: absolute; right: -4px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font: 700 10px/1 "Segoe UI", system-ui; color: #1b1a19; border: 2px solid var(--card-strong); }
+  .step .name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step .amount { font: 600 15px/20px "Segoe UI Variable Display", "Segoe UI", system-ui; margin-top: 1px; }
+  .step .mix { height: 4px; margin: 8px 8px 0; }
+
+  /* The list */
+  .list { display: flex; flex-direction: column; }
+  .member { display: grid; grid-template-columns: 34px 28px 1fr 64px 62px; align-items: center; gap: 10px; height: 44px; padding: 0 10px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+  .member + .member { box-shadow: 0 -1px 0 var(--divider); }
+  .member .r { color: var(--text-3); font-size: 13px; }
+  .member .av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font: 600 12px/1 "Segoe UI Variable Display", "Segoe UI", system-ui; color: #1b1a19; }
+  .member .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .member .mix { margin: 0; height: 4px; }
+  .member .t { text-align: right; font-weight: 600; }
+  .member.you { background: var(--you); box-shadow: inset 3px 0 0 var(--accent); }
+  .member.you + .member { box-shadow: none; }
+  .member.you .n b { font-weight: 600; }
+  .you-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--accent-text); margin-left: 6px; }
+  .member.hover { background: var(--subtle); }
+
+  .statusbar { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 20px 12px; border-top: 1px solid var(--divider); background: var(--layer); font-size: 12px; color: var(--text-2); }
+  .statusbar svg { width: 14px; height: 14px; color: var(--success); }
+  .statusbar .link { margin-left: auto; color: var(--accent-text); font-weight: 600; }
+  .fade { position: absolute; left: 0; right: 0; bottom: 0; height: 36px; background: linear-gradient(transparent, color-mix(in srgb, #202020 70%, transparent)); pointer-events: none; }
+  .light .fade { background: linear-gradient(transparent, color-mix(in srgb, #f3f3f3 85%, transparent)); }
+
+  /* Join */
+  .hero { padding: 2px 4px 12px; display: grid; grid-template-columns: 1fr 120px; gap: 12px; align-items: center; }
+  .hero h2 { font: 600 28px/34px "Segoe UI Variable Display", "Segoe UI", system-ui; margin: 0 0 8px; letter-spacing: -0.3px; }
+  .hero p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 19px; }
+  .mini-podium { display: flex; align-items: flex-end; gap: 5px; height: 92px; justify-content: center; }
+  .mini-podium div { width: 30px; border-radius: 6px 6px 3px 3px; position: relative; }
+  .mini-podium div::after { content: attr(data-r); position: absolute; top: -24px; left: 50%; transform: translateX(-50%); width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 700 11px/20px "Segoe UI", system-ui; color: #1b1a19; background: var(--c); }
+  .field-label { font-size: 13px; margin: 0 0 6px; }
+  .textbox { height: 34px; border-radius: 4px; background: var(--control); border: 1px solid var(--control-stroke); border-bottom: 2px solid var(--accent); display: flex; align-items: center; padding: 0 10px; gap: 2px; }
+  .textbox .at { color: var(--text-3); }
+  .textbox .ok { margin-left: auto; color: var(--success); }
+  .textbox .ok svg { width: 16px; height: 16px; }
+  .hint { font-size: 12px; color: var(--text-3); margin: 6px 0 14px; }
+  .group-title { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
+  .providers { display: flex; flex-direction: column; gap: 2px; }
+  .provider { display: grid; grid-template-columns: 20px 10px 1fr auto; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 6px; background: var(--card); border: 1px solid var(--stroke); }
+  .provider + .provider { margin-top: 2px; }
+  .provider .amt { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .provider.none { opacity: 0.55; }
+  .checkbox { width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--text-3); display: grid; place-items: center; }
+  .checkbox.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .checkbox svg { width: 12px; height: 12px; stroke-width: 2; }
+  .expander { margin-top: 12px; border-radius: 6px; background: var(--card); border: 1px solid var(--stroke); }
+  .expander .head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; font-size: 13px; }
+  .expander .head .chev { margin-left: auto; color: var(--text-3); }
+  .expander pre { margin: 0; padding: 10px 12px 12px; border-top: 1px solid var(--divider); font: 12px/18px "Cascadia Mono", Consolas, ui-monospace, monospace; color: var(--text-2); white-space: pre; }
+  .expander pre b { color: var(--accent-text); font-weight: 400; }
+  .primary { height: 36px; border-radius: 4px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 600; margin-top: 16px; }
+  .fine { font-size: 12px; color: var(--text-3); margin: 10px 2px 0; line-height: 17px; }
+
+  /* Settings: Windows Settings-style cards */
+  .back { display: flex; align-items: center; gap: 8px; padding: 6px 12px 12px; }
+  .back h2 { font: 600 20px/28px "Segoe UI Variable Display", "Segoe UI", system-ui; margin: 0; }
+  .profile { display: flex; gap: 14px; align-items: center; padding: 14px 16px; margin-bottom: 14px; }
+  .profile .av { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; font: 600 20px/1 "Segoe UI Variable Display", "Segoe UI", system-ui; color: #1b1a19; }
+  .profile b { font-size: 16px; display: block; }
+  .profile span { font-size: 12px; color: var(--text-3); }
+  .settings-group { font-size: 14px; font-weight: 600; margin: 16px 2px 8px; }
+  .scard { display: grid; grid-template-columns: 20px 1fr auto; gap: 14px; align-items: center; padding: 12px 14px; min-height: 64px; }
+  .scard + .scard { margin-top: 2px; }
+  .scard .t { font-size: 14px; }
+  .scard .d { font-size: 12px; color: var(--text-3); line-height: 16px; margin-top: 1px; }
+  .scard .ico { width: 18px; height: 18px; color: var(--text-2); }
+  .toggle { width: 40px; height: 20px; border-radius: 10px; border: 1px solid var(--text-3); position: relative; flex: none; }
+  .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-2); }
+  .toggle.on { background: var(--accent); border-color: var(--accent); }
+  .toggle.on::after { left: 23px; background: var(--on-accent); }
+  .togglewrap { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); }
+  .button { height: 32px; padding: 0 12px; border-radius: 4px; background: var(--control); border: 1px solid var(--control-stroke); display: inline-grid; place-items: center; font-size: 13px; white-space: nowrap; }
+  .button.danger { color: var(--critical); }
+  .sub-rows { border-top: 1px solid var(--divider); }
+  .sub-row { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 12px; align-items: center; padding: 10px 14px 10px 48px; font-size: 13px; }
+  .sub-row + .sub-row { border-top: 1px solid var(--divider); }
+  .sub-row .amt { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .version { text-align: center; font-size: 11px; color: var(--text-4); margin: 18px 0 8px; }
+
+  /* Taskbar, hover card, jump list, tray flyout, toast */
+  .desk { width: 520px; height: 440px; border-radius: 8px; position: relative; overflow: hidden; background: linear-gradient(160deg, #3f4c7a, #1d2340 60%, #141726); box-shadow: 0 6px 24px rgba(0,0,0,0.25); }
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: rgba(32,32,32,0.86); backdrop-filter: blur(30px); border-top: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; gap: 4px; }
+  .tb-app { width: 40px; height: 40px; border-radius: 4px; display: grid; place-items: center; position: relative; }
+  .tb-app.hover { background: rgba(255,255,255,0.08); }
+  .tb-app .glyph { width: 24px; height: 24px; border-radius: 6px; }
+  .tb-app.cb .glyph { background: linear-gradient(135deg, #f2c14e, #e8833a); display: grid; place-items: center; }
+  .tb-app.cb .glyph svg { width: 15px; height: 15px; }
+  .tb-app .run { position: absolute; bottom: 2px; width: 16px; height: 3px; border-radius: 2px; background: #60cdff; }
+  .tb-app .badge { position: absolute; right: 2px; top: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #60cdff; color: #000; font: 700 10px/16px "Segoe UI", system-ui; text-align: center; }
+  .tray { position: absolute; right: 10px; bottom: 0; height: 48px; display: flex; align-items: center; gap: 10px; color: #fff; font-size: 12px; }
+  .tray .chev { opacity: 0.8; }
+  .tray .cbtray { width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, #f2c14e, #e8833a); }
+  .hovercard { position: absolute; left: 50%; bottom: 58px; transform: translateX(-30%); width: 236px; border-radius: 8px; background: rgba(43,43,43,0.94); backdrop-filter: blur(30px); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 28px rgba(0,0,0,0.5); color: #fff; padding: 8px; }
+  .hovercard .hc-title { font-size: 12px; display: flex; align-items: center; gap: 8px; padding: 0 2px 8px; color: rgba(255,255,255,0.8); }
+  .hovercard .hc-title i { width: 14px; height: 14px; border-radius: 3px; background: linear-gradient(135deg, #f2c14e, #e8833a); }
+  .hovercard .thumb { border-radius: 4px; background: #202020; padding: 12px 14px; }
+  .hovercard .thumb .big { font: 600 34px/36px "Segoe UI Variable Display", "Segoe UI", system-ui; color: #99ebff; }
+  .hovercard .thumb .big small { font-size: 13px; color: rgba(255,255,255,0.55); font-weight: 400; margin-left: 6px; letter-spacing: 0; }
+  .hovercard .thumb .line { font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 4px; }
+  .jumplist { position: absolute; width: 250px; border-radius: 8px; background: rgba(44,44,48,0.94); backdrop-filter: blur(30px); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 28px rgba(0,0,0,0.5); color: #fff; padding: 6px 4px; font-size: 13px; }
+  .jumplist .h { font-size: 12px; color: rgba(255,255,255,0.6); padding: 6px 12px 4px; }
+  .jumplist .i { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-radius: 4px; }
+  .jumplist .i.hover { background: rgba(255,255,255,0.07); }
+  .jumplist .i svg { width: 15px; height: 15px; }
+  .jumplist hr { border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 4px 8px; }
+  .flyout { position: absolute; right: 12px; bottom: 58px; width: 340px; border-radius: 8px; background: var(--acrylic); backdrop-filter: blur(40px); border: 1px solid var(--stroke-strong); box-shadow: var(--shadow); padding: 14px; }
+  .flyout .ft { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 10px; }
+  .flyout .ft .logo { width: 18px; height: 18px; border-radius: 4px; background: linear-gradient(135deg, #f2c14e, #e8833a); }
+  .flyout .ft .sp { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--text-3); }
+  .flyout .rank { padding: 12px; }
+  .flyout .rank .numeral { font-size: 44px; line-height: 44px; }
+  .flyout .member { height: 36px; grid-template-columns: 28px 1fr 56px; }
+  .flyout .foot { display: flex; gap: 8px; margin-top: 10px; }
+  .flyout .foot .button { flex: 1; }
+  .toast { position: absolute; right: 12px; bottom: 60px; width: 364px; border-radius: 8px; background: rgba(43,43,43,0.95); backdrop-filter: blur(30px); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 28px rgba(0,0,0,0.5); color: #fff; padding: 12px 14px 14px; }
+  .toast .app { display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(255,255,255,0.75); margin-bottom: 10px; }
+  .toast .app i { width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(135deg, #f2c14e, #e8833a); }
+  .toast b { display: block; font-size: 14px; margin-bottom: 2px; }
+  .toast p { margin: 0; font-size: 13px; color: rgba(255,255,255,0.8); line-height: 18px; }
+  .toast .acts { display: flex; gap: 8px; margin-top: 12px; }
+  .toast .acts span { flex: 1; height: 32px; border-radius: 4px; background: rgba(255,255,255,0.08); display: grid; place-items: center; font-size: 13px; }
+  .toast .acts span.p { background: #60cdff; color: #000; font-weight: 600; }
+
+  .notes { display: grid; grid-template-columns: repeat(3, minmax(0, 340px)); gap: 20px; }
+  .note { background: #fbfaf8; border: 1px solid #ddd8d1; border-radius: 8px; padding: 16px 18px; font-size: 13px; line-height: 19px; color: #3d3a37; }
+  .note h3 { margin: 0 0 8px; font-size: 14px; color: #1b1a19; }
+  .note ul { margin: 0; padding-left: 18px; }
+  .note li + li { margin-top: 5px; }
+  code { font: 12px "Cascadia Mono", Consolas, ui-monospace, monospace; background: rgba(0,0,0,0.05); padding: 0 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="trophy" viewBox="0 0 16 16"><path d="M5 2h6v4a3 3 0 0 1-6 0V2Z M5 3H3a2 2 0 0 0 2 3 M11 3h2a2 2 0 0 1-2 3 M8 9v3 M5.5 14h5" stroke="#1b1a19" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6 M13 2.5v3h-3"/></symbol>
+    <symbol id="gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></symbol>
+    <symbol id="back" viewBox="0 0 16 16"><path d="M13 8H3 M7 4 3 8l4 4"/></symbol>
+    <symbol id="cloud" viewBox="0 0 16 16"><path d="M4.5 12.5h7a3 3 0 0 0 .3-6A4 4 0 0 0 4 7.2a2.7 2.7 0 0 0 .5 5.3Z M6.2 9.4l1.3 1.3 2.4-2.6"/></symbol>
+    <symbol id="eyeoff" viewBox="0 0 16 16"><path d="M2 2l12 12 M6.6 6.7A2 2 0 0 0 9.3 9.4 M4.3 4.4C2.9 5.3 2 6.6 1.5 8c1.2 3 3.8 4.5 6.5 4.5 1.1 0 2.2-.3 3.2-.8 M7 3.6c.3 0 .7-.1 1-.1 2.7 0 5.3 1.5 6.5 4.5-.3.8-.8 1.6-1.3 2.2"/></symbol>
+    <symbol id="up" viewBox="0 0 16 16"><path d="M8 13V3 M4 7l4-4 4 4"/></symbol>
+    <symbol id="check" viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4.5"/></symbol>
+    <symbol id="checkcircle" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M5.2 8.2l1.9 1.9 3.8-4"/></symbol>
+    <symbol id="chev" viewBox="0 0 16 16"><path d="M5 6l3 3 3-3"/></symbol>
+    <symbol id="chevr" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></symbol>
+    <symbol id="eye" viewBox="0 0 16 16"><path d="M1.5 8C2.7 5 5.3 3.5 8 3.5S13.3 5 14.5 8c-1.2 3-3.8 4.5-6.5 4.5S2.7 11 1.5 8Z"/><circle cx="8" cy="8" r="2"/></symbol>
+    <symbol id="share" viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="4" r="1.8"/><circle cx="12" cy="12" r="1.8"/><path d="M5.6 7.1l4.8-2.3 M5.6 8.9l4.8 2.3"/></symbol>
+    <symbol id="pin" viewBox="0 0 16 16"><path d="M9.5 2l4.5 4.5-2 1-2.5 2.5-.5 3L2 6l3-.5L7.5 3l2-1Z M5 11l-3 3"/></symbol>
+    <symbol id="tray" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M2 10h3l1 1.5h4L11 10h3"/></symbol>
+    <symbol id="download" viewBox="0 0 16 16"><path d="M8 2.5v8 M4.5 7 8 10.5 11.5 7 M3 13.5h10"/></symbol>
+    <symbol id="leave" viewBox="0 0 16 16"><path d="M6 13.5H3.5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1H6 M10.5 11 13.5 8l-3-3 M13.5 8H6"/></symbol>
+    <symbol id="window" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6h12"/></symbol>
+    <symbol id="min" viewBox="0 0 16 16"><path d="M4 8h8"/></symbol>
+    <symbol id="max" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1"/></symbol>
+    <symbol id="close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  </defs>
+</svg>
+
+<h1>ClaudeBar for Windows · Leaderboard</h1>
+<p class="lede">A Windows 11 app, Fluent and native: Mica window, Segoe UI Variable, Windows' own accent and settings cards. ClaudeBar comes through in what the Mac's Leaderboard already has: one big rank, each provider in its own colour, the podium, and <i>exactly what gets uploaded</i>. The window is the main surface; the taskbar button gives the glance (hover card, right-click menu), and a tray icon is an option for people who want one. Sample data only.</p>
+
+<!-- ============================ DARK ============================ -->
+<div class="section-label">App window · dark · 480 × 760</div>
+<div class="row">
+
+  <!-- 1 · Join -->
+  <div class="shot">
+    <div class="window dark">
+      <div class="titlebar"><span class="logo"><svg><use href="#trophy"/></svg></span>ClaudeBar
+        <div class="caption-buttons"><span><svg class="ico"><use href="#min"/></svg></span><span><svg class="ico"><use href="#max"/></svg></span><span><svg class="ico"><use href="#close"/></svg></span></div></div>
+      <div class="page">
+        <div class="scroll" style="padding-top:8px">
+          <div class="hero">
+            <div>
+              <h2>See where you rank</h2>
+              <p>Share your daily token totals with other ClaudeBar users. Only the counts leave this PC.</p>
+            </div>
+            <div class="mini-podium">
+              <div data-r="2" style="height:46px;background:color-mix(in srgb,var(--silver) 55%,transparent);--c:var(--silver)"></div>
+              <div data-r="1" style="height:66px;background:color-mix(in srgb,var(--gold) 60%,transparent);--c:var(--gold)"></div>
+              <div data-r="3" style="height:34px;background:color-mix(in srgb,var(--bronze) 55%,transparent);--c:var(--bronze)"></div>
+            </div>
+          </div>
+
+          <div class="field-label">Username</div>
+          <div class="textbox"><span class="at">@</span><span>late_night_dev</span><span class="ok"><svg class="ico"><use href="#checkcircle"/></svg></span></div>
+          <div class="hint">3–20 letters, digits, - or _. Shown on the board unless you hide it.</div>
+
+          <div class="group-title">Share tokens from</div>
+          <div class="providers">
+            <div class="provider"><span class="checkbox on"><svg class="ico"><use href="#check"/></svg></span><span class="dot" style="background:var(--claude)"></span><span>Claude</span><span class="amt">9.6B · 30 days</span></div>
+            <div class="provider"><span class="checkbox on"><svg class="ico"><use href="#check"/></svg></span><span class="dot" style="background:var(--codex)"></span><span>Codex</span><span class="amt">2.1B · 30 days</span></div>
+            <div class="provider"><span class="checkbox on"><svg class="ico"><use href="#check"/></svg></span><span class="dot" style="background:var(--omp)"></span><span>Oh My Pi</span><span class="amt">720M · 30 days</span></div>
+            <div class="provider none"><span class="checkbox"></span><span class="dot" style="background:var(--mistral)"></span><span>Mistral</span><span class="amt">No tokens on this PC</span></div>
+          </div>
+
+          <div class="expander">
+            <div class="head"><svg class="ico"><use href="#eye"/></svg>Exactly what gets uploaded<span class="chev"><svg class="ico"><use href="#chev"/></svg></span></div>
+            <pre>PUT /usage   signed as @late_night_dev
+{ "today": "2026-10-11",
+  "days": [
+    { "provider": <b>"claude"</b>, "day": "2026-10-11",
+      "input": 1204, "output": 88310,
+      "cacheWrite": 512004, "cacheRead": 41208899 } ] }</pre>
+          </div>
+
+          <div class="primary">Join leaderboard</div>
+          <p class="fine">Never prompts, projects, paths, costs or emails. Leaving deletes it all.</p>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>1 · Join.</b> The first screen, nothing joined yet. Join turns on once the name passes the server's rule (the check in the field) and one provider is ticked. Each provider shows what this PC would send, counted the way an upload counts it. A provider with no tokens here can't be ticked.</div>
+  </div>
+
+  <!-- 2 · Board -->
+  <div class="shot">
+    <div class="window dark">
+      <div class="titlebar"><span class="logo"><svg><use href="#trophy"/></svg></span>ClaudeBar
+        <div class="caption-buttons"><span><svg class="ico"><use href="#min"/></svg></span><span><svg class="ico"><use href="#max"/></svg></span><span><svg class="ico"><use href="#close"/></svg></span></div></div>
+      <div class="page">
+        <div class="header">
+          <div class="titles"><h2>Leaderboard</h2><div class="sub">All providers · last 7 days</div></div>
+          <span class="icon-btn hover" title="Refresh"><svg><use href="#refresh"/></svg></span>
+          <span class="icon-btn" title="Settings"><svg><use href="#gear"/></svg></span>
+        </div>
+        <div class="periods"><span>Today</span><span class="on">7 days</span><span>30 days</span></div>
+        <div class="pills">
+          <span class="pill on">All</span>
+          <span class="pill"><span class="dot" style="background:var(--claude)"></span>Claude</span>
+          <span class="pill"><span class="dot" style="background:var(--codex)"></span>Codex</span>
+          <span class="pill"><span class="dot" style="background:var(--mistral)"></span>Mistral</span>
+          <span class="pill"><span class="dot" style="background:var(--omp)"></span>Oh My Pi</span>
+        </div>
+        <div class="scroll">
+          <div class="card rank">
+            <div class="numeral"><small>#</small>4</div>
+            <div class="body">
+              <div class="eyebrow">Your rank · 7 days</div>
+              <div class="who"><b>@late_night_dev</b></div>
+              <div class="tokens">12.4B <span>tokens</span></div>
+              <div class="mix"><i style="flex:76;background:var(--claude)"></i><i style="flex:18;background:var(--codex)"></i><i style="flex:6;background:var(--omp)"></i></div>
+              <div class="legend"><span><span class="dot" style="background:var(--claude)"></span>Claude 76%</span><span><span class="dot" style="background:var(--codex)"></span>Codex 18%</span><span><span class="dot" style="background:var(--omp)"></span>Oh My Pi 6%</span></div>
+              <div class="gap"><svg class="ico"><use href="#up"/></svg>6.5B behind #3</div>
+            </div>
+          </div>
+
+          <div class="podium">
+            <div class="step"><div class="avatar" style="background:#c9b7f5">V<span class="medal" style="background:var(--silver)">2</span></div><div class="name">@vim-or-bust</div><div class="amount">20.1B</div><div class="mix"><i style="flex:55;background:var(--claude)"></i><i style="flex:45;background:var(--codex)"></i></div></div>
+            <div class="step first"><div class="avatar" style="background:#ffd99a">T<span class="medal" style="background:var(--gold)">1</span></div><div class="name">@tokenwhale</div><div class="amount">27.2B</div><div class="mix"><i style="flex:70;background:var(--claude)"></i><i style="flex:20;background:var(--codex)"></i><i style="flex:10;background:var(--omp)"></i></div></div>
+            <div class="step"><div class="avatar" style="background:#a8e6cf">N<span class="medal" style="background:var(--bronze)">3</span></div><div class="name">@night-shift</div><div class="amount">18.9B</div><div class="mix"><i style="flex:100;background:var(--claude)"></i></div></div>
+          </div>
+
+          <div class="list">
+            <div class="member you"><span class="r">#4</span><span class="av" style="background:#9fd3ff">L</span><span class="n"><b>@late_night_dev</b><span class="you-tag">You</span></span><span class="mix"><i style="flex:76;background:var(--claude)"></i><i style="flex:18;background:var(--codex)"></i><i style="flex:6;background:var(--omp)"></i></span><span class="t">12.4B</span></div>
+            <div class="member hover"><span class="r">#5</span><span class="av" style="background:#ffc4b8">C</span><span class="n">@cache_hit</span><span class="mix"><i style="flex:60;background:var(--codex)"></i><i style="flex:40;background:var(--mistral)"></i></span><span class="t">12.1B</span></div>
+            <div class="member"><span class="r">#6</span><span class="av" style="background:#ffe08a">R</span><span class="n">@rustacean</span><span class="mix"><i style="flex:100;background:var(--claude)"></i></span><span class="t">9.8B</span></div>
+            <div class="member"><span class="r">#7</span><span class="av" style="background:#b5e3b0">M</span><span class="n">@mistral_mo</span><span class="mix"><i style="flex:80;background:var(--mistral)"></i><i style="flex:20;background:var(--claude)"></i></span><span class="t">8.4B</span></div>
+            <div class="member"><span class="r">#8</span><span class="av" style="background:#d6c8ff">P</span><span class="n">@pairprog</span><span class="mix"><i style="flex:50;background:var(--claude)"></i><i style="flex:50;background:var(--omp)"></i></span><span class="t">7.6B</span></div>
+            <div class="member"><span class="r">#9</span><span class="av" style="background:#ffd1e8">S</span><span class="n">@ship-it</span><span class="mix"><i style="flex:100;background:var(--codex)"></i></span><span class="t">5.8B</span></div>
+          </div>
+          <div class="fade"></div>
+        </div>
+        <div class="statusbar"><svg class="ico"><use href="#cloud"/></svg>Uploaded 12 min ago · every hour<span class="link">Upload now</span></div>
+      </div>
+    </div>
+    <div class="caption"><b>2 · Board.</b> <i>Your rank</i> leads: the place, the tokens, each provider's share, and the gap to the place above. Then the podium and the rest. Your row is set apart, and when it scrolls out of view it stays pinned above the status bar, as on the Mac. Provider pills read the same board for one provider. While loading, the card and the list keep their shape with placeholders.</div>
+  </div>
+
+  <!-- 3 · Settings -->
+  <div class="shot">
+    <div class="window dark">
+      <div class="titlebar"><span class="logo"><svg><use href="#trophy"/></svg></span>ClaudeBar
+        <div class="caption-buttons"><span><svg class="ico"><use href="#min"/></svg></span><span><svg class="ico"><use href="#max"/></svg></span><span><svg class="ico"><use href="#close"/></svg></span></div></div>
+      <div class="page">
+        <div class="back"><span class="icon-btn"><svg><use href="#back"/></svg></span><h2>Settings</h2></div>
+        <div class="scroll">
+          <div class="card profile"><div class="av" style="background:#9fd3ff">L</div><div><b>@late_night_dev</b><span>This PC · Windows PC · joined Oct 4</span></div></div>
+
+          <div class="card scard"><svg class="ico"><use href="#eye"/></svg><div><div class="t">Show me on the board</div><div class="d">Hidden, you still see your own place; no one else sees you.</div></div><div class="togglewrap">On<span class="toggle on"></span></div></div>
+
+          <div class="settings-group">Sharing</div>
+          <div class="card">
+            <div class="scard"><svg class="ico"><use href="#share"/></svg><div><div class="t">Providers</div><div class="d">Turning one off stops new uploads for it; days already sent stay until you leave.</div></div><svg class="ico" style="color:var(--text-3)"><use href="#chev"/></svg></div>
+            <div class="sub-rows">
+              <div class="sub-row"><span class="dot" style="background:var(--claude)"></span><span>Claude</span><span class="amt">9.4B this week</span><span class="toggle on"></span></div>
+              <div class="sub-row"><span class="dot" style="background:var(--codex)"></span><span>Codex</span><span class="amt">2.2B this week</span><span class="toggle on"></span></div>
+              <div class="sub-row"><span class="dot" style="background:var(--omp)"></span><span>Oh My Pi</span><span class="amt">744M this week</span><span class="toggle on"></span></div>
+              <div class="sub-row" style="opacity:.55"><span class="dot" style="background:var(--mistral)"></span><span>Mistral</span><span class="amt">No tokens on this PC</span><span class="toggle"></span></div>
+            </div>
+          </div>
+
+          <div class="settings-group">Uploads</div>
+          <div class="card scard"><svg class="ico"><use href="#cloud"/></svg><div><div class="t">Every hour while you're signed in</div><div class="d">Last upload 12 min ago. A missed hour is caught up next time.</div></div><span class="button">Upload now</span></div>
+
+          <div class="settings-group">Where it shows</div>
+          <div class="card scard"><svg class="ico"><use href="#pin"/></svg><div><div class="t">Pin to taskbar</div><div class="d">Hover the button for your rank; right-click to upload.</div></div><span class="button">Pin</span></div>
+          <div class="card scard"><svg class="ico"><use href="#tray"/></svg><div><div class="t">Icon in the system tray</div><div class="d">Windows puts new icons under ^. Drag it onto the taskbar to keep it in view.</div></div><div class="togglewrap">Off<span class="toggle"></span></div></div>
+
+          <div class="settings-group">Your data</div>
+          <div class="card scard"><svg class="ico"><use href="#download"/></svg><div><div class="t">Export my data</div><div class="d">Everything the server holds about you, as JSON.</div></div><span class="button">Export…</span></div>
+          <div class="card scard"><svg class="ico" style="color:var(--critical)"><use href="#leave"/></svg><div><div class="t">Leave the leaderboard</div><div class="d">Deletes your name and every uploaded day from the server, then this PC's key.</div></div><span class="button danger">Leave…</span></div>
+          <div class="version">ClaudeBar for Windows 0.1.0</div>
+          <div class="fade"></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>3 · Settings</b>, from the gear, in Windows Settings' own cards: a title, one line on what it does, and the control at the right. Everything a member changes is here, one card each; what can't be undone sits last, in red, behind a confirmation.</div>
+  </div>
+</div>
+
+<!-- ============================ LIGHT ============================ -->
+<div class="section-label">The same, light</div>
+<div class="row">
+  <div class="shot">
+    <div class="window light">
+      <div class="titlebar"><span class="logo"><svg><use href="#trophy"/></svg></span>ClaudeBar
+        <div class="caption-buttons"><span><svg class="ico"><use href="#min"/></svg></span><span><svg class="ico"><use href="#max"/></svg></span><span><svg class="ico"><use href="#close"/></svg></span></div></div>
+      <div class="page">
+        <div class="header">
+          <div class="titles"><h2>Leaderboard</h2><div class="sub">All providers · today</div></div>
+          <span class="icon-btn"><svg><use href="#refresh"/></svg></span>
+          <span class="icon-btn"><svg><use href="#gear"/></svg></span>
+        </div>
+        <div class="periods"><span class="on">Today</span><span>7 days</span><span>30 days</span></div>
+        <div class="pills">
+          <span class="pill on">All</span>
+          <span class="pill"><span class="dot" style="background:var(--claude)"></span>Claude</span>
+          <span class="pill"><span class="dot" style="background:var(--codex)"></span>Codex</span>
+          <span class="pill"><span class="dot" style="background:var(--mistral)"></span>Mistral</span>
+          <span class="pill"><span class="dot" style="background:var(--omp)"></span>Oh My Pi</span>
+        </div>
+        <div class="scroll">
+          <div class="card rank">
+            <div class="numeral"><small>#</small>6</div>
+            <div class="body">
+              <div class="eyebrow">Your rank · today</div>
+              <div class="who"><b>@late_night_dev</b><span class="chip"><svg class="ico"><use href="#eyeoff"/></svg>Hidden</span></div>
+              <div class="tokens">978M <span>tokens</span></div>
+              <div class="mix"><i style="flex:70;background:var(--claude)"></i><i style="flex:30;background:var(--omp)"></i></div>
+              <div class="legend"><span><span class="dot" style="background:var(--claude)"></span>Claude 70%</span><span><span class="dot" style="background:var(--omp)"></span>Oh My Pi 30%</span></div>
+              <div class="gap"><svg class="ico"><use href="#up"/></svg>35M behind #5 · only you see this place</div>
+            </div>
+          </div>
+          <div class="podium">
+            <div class="step"><div class="avatar" style="background:#c9b7f5">C<span class="medal" style="background:var(--silver)">2</span></div><div class="name">@cache_hit</div><div class="amount">3.2B</div><div class="mix"><i style="flex:60;background:var(--codex)"></i><i style="flex:40;background:var(--mistral)"></i></div></div>
+            <div class="step first"><div class="avatar" style="background:#ffd99a">T<span class="medal" style="background:var(--gold)">1</span></div><div class="name">@tokenwhale</div><div class="amount">5.4B</div><div class="mix"><i style="flex:70;background:var(--claude)"></i><i style="flex:30;background:var(--codex)"></i></div></div>
+            <div class="step"><div class="avatar" style="background:#a8e6cf">V<span class="medal" style="background:var(--bronze)">3</span></div><div class="name">@vim-or-bust</div><div class="amount">2.3B</div><div class="mix"><i style="flex:100;background:var(--claude)"></i></div></div>
+          </div>
+          <div class="list">
+            <div class="member"><span class="r">#4</span><span class="av" style="background:#ffc4b8">P</span><span class="n">@pairprog</span><span class="mix"><i style="flex:50;background:var(--claude)"></i><i style="flex:50;background:var(--omp)"></i></span><span class="t">1.2B</span></div>
+            <div class="member"><span class="r">#5</span><span class="av" style="background:#ffe08a">R</span><span class="n">@rustacean</span><span class="mix"><i style="flex:100;background:var(--claude)"></i></span><span class="t">1.0B</span></div>
+            <div class="member"><span class="r">#6</span><span class="av" style="background:#b5e3b0">M</span><span class="n">@mistral_mo</span><span class="mix"><i style="flex:80;background:var(--mistral)"></i><i style="flex:20;background:var(--claude)"></i></span><span class="t">903M</span></div>
+            <div class="member"><span class="r">#7</span><span class="av" style="background:#d6c8ff">S</span><span class="n">@ship-it</span><span class="mix"><i style="flex:100;background:var(--codex)"></i></span><span class="t">761M</span></div>
+            <div class="member"><span class="r">#8</span><span class="av" style="background:#ffd1e8">N</span><span class="n">@night-shift</span><span class="mix"><i style="flex:100;background:var(--claude)"></i></span><span class="t">572M</span></div>
+          </div>
+          <div class="fade"></div>
+        </div>
+        <div class="statusbar"><svg class="ico"><use href="#cloud"/></svg>Uploaded just now · every hour<span class="link">Upload now</span></div>
+      </div>
+    </div>
+    <div class="caption"><b>Hidden.</b> A hidden member is still ranked for themselves (design §4) but isn't in the list, so the card says so: the <i>Hidden</i> chip, and <i>only you see this place</i> beside the gap.</div>
+  </div>
+
+  <div class="shot">
+    <div class="window light">
+      <div class="titlebar"><span class="logo"><svg><use href="#trophy"/></svg></span>ClaudeBar
+        <div class="caption-buttons"><span><svg class="ico"><use href="#min"/></svg></span><span><svg class="ico"><use href="#max"/></svg></span><span><svg class="ico"><use href="#close"/></svg></span></div></div>
+      <div class="page">
+        <div class="back"><span class="icon-btn"><svg><use href="#back"/></svg></span><h2>Settings</h2></div>
+        <div class="scroll">
+          <div class="card profile"><div class="av" style="background:#9fd3ff">L</div><div><b>@late_night_dev</b><span>This PC · Windows PC · joined Oct 4</span></div></div>
+          <div class="card scard"><svg class="ico"><use href="#eye"/></svg><div><div class="t">Show me on the board</div><div class="d">Hidden, you still see your own place; no one else sees you.</div></div><div class="togglewrap">Off<span class="toggle"></span></div></div>
+          <div class="settings-group">Sharing</div>
+          <div class="card">
+            <div class="scard"><svg class="ico"><use href="#share"/></svg><div><div class="t">Providers</div><div class="d">Turning one off stops new uploads for it; days already sent stay until you leave.</div></div><svg class="ico" style="color:var(--text-3)"><use href="#chev"/></svg></div>
+            <div class="sub-rows">
+              <div class="sub-row"><span class="dot" style="background:var(--claude)"></span><span>Claude</span><span class="amt">9.4B this week</span><span class="toggle on"></span></div>
+              <div class="sub-row"><span class="dot" style="background:var(--codex)"></span><span>Codex</span><span class="amt">2.2B this week</span><span class="toggle"></span></div>
+              <div class="sub-row"><span class="dot" style="background:var(--omp)"></span><span>Oh My Pi</span><span class="amt">744M this week</span><span class="toggle on"></span></div>
+            </div>
+          </div>
+          <div class="settings-group">Uploads</div>
+          <div class="card scard"><svg class="ico"><use href="#cloud"/></svg><div><div class="t">Every hour while you're signed in</div><div class="d">Last upload just now. A missed hour is caught up next time.</div></div><span class="button">Upload now</span></div>
+          <div class="settings-group">Where it shows</div>
+          <div class="card scard"><svg class="ico"><use href="#pin"/></svg><div><div class="t">Pinned to the taskbar</div><div class="d">Hover the button for your rank; right-click to upload.</div></div><svg class="ico" style="color:var(--success)"><use href="#checkcircle"/></svg></div>
+          <div class="card scard"><svg class="ico"><use href="#tray"/></svg><div><div class="t">Icon in the system tray</div><div class="d">Windows puts new icons under ^. Drag it onto the taskbar to keep it in view.</div></div><div class="togglewrap">On<span class="toggle on"></span></div></div>
+          <div class="fade"></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>Settings, light,</b> once pinned: the card says so instead of offering it again. The tray icon is on here: an option, off by default.</div>
+  </div>
+</div>
+
+<!-- ============================ GLANCE ============================ -->
+<div class="section-label">The glance: taskbar by default, tray as an option</div>
+<div class="row">
+  <div class="shot">
+    <div class="desk">
+      <div class="hovercard">
+        <div class="hc-title"><i></i>ClaudeBar</div>
+        <div class="thumb">
+          <div class="big">#4<small>7 days</small></div>
+          <div class="line">12.4B tokens · 6.5B behind #3</div>
+          <div class="mix" style="margin-top:9px"><i style="flex:76;background:#fa8c73"></i><i style="flex:18;background:#59d9c7"></i><i style="flex:6;background:#4dd98c"></i></div>
+        </div>
+      </div>
+      <div class="taskbar">
+        <span class="tb-app"><span class="glyph" style="background:#0a7cd8"></span></span>
+        <span class="tb-app"><span class="glyph" style="background:#f2b01e"></span></span>
+        <span class="tb-app hover cb"><span class="glyph"><svg><use href="#trophy"/></svg></span><span class="badge">4</span><span class="run"></span></span>
+        <span class="tb-app"><span class="glyph" style="background:#2b2b2b;border:1px solid #555"></span></span>
+      </div>
+      <div class="tray"><span class="chev">^</span><span>ENG</span><span>10:42 PM</span></div>
+    </div>
+    <div class="caption"><b>Hover card.</b> The pinned button's preview is drawn by the app (<code>DwmSetIconicThumbnail</code>): your place, tokens, the gap and the mix. With MSIX the button can also carry a badge, your place up to 99. Both show only while the app runs, so it can sit on the taskbar minimized.</div>
+  </div>
+
+  <div class="shot">
+    <div class="desk">
+      <div class="jumplist" style="left:140px;bottom:58px">
+        <div class="h">Tasks</div>
+        <div class="i hover"><svg class="ico"><use href="#up"/></svg>Upload now</div>
+        <div class="i"><svg class="ico"><use href="#window"/></svg>Open the board</div>
+        <div class="i"><svg class="ico"><use href="#gear"/></svg>Settings</div>
+        <hr>
+        <div class="i"><span style="width:15px;height:15px;border-radius:4px;background:linear-gradient(135deg,#f2c14e,#e8833a)"></span>ClaudeBar</div>
+        <div class="i"><svg class="ico"><use href="#pin"/></svg>Unpin from taskbar</div>
+        <div class="i"><svg class="ico"><use href="#close"/></svg>Close window</div>
+      </div>
+      <div class="taskbar">
+        <span class="tb-app"><span class="glyph" style="background:#0a7cd8"></span></span>
+        <span class="tb-app"><span class="glyph" style="background:#f2b01e"></span></span>
+        <span class="tb-app hover cb"><span class="glyph"><svg><use href="#trophy"/></svg></span><span class="badge">4</span><span class="run"></span></span>
+        <span class="tb-app"><span class="glyph" style="background:#2b2b2b;border:1px solid #555"></span></span>
+      </div>
+      <div class="tray"><span class="chev">^</span><span>ENG</span><span>10:42 PM</span></div>
+    </div>
+    <div class="caption"><b>Right-click.</b> A jump list with <i>Upload now</i>, <i>Open the board</i> and <i>Settings</i>. It works with the app closed.</div>
+  </div>
+
+  <div class="shot">
+    <div class="desk dark" style="color:#fff;height:560px">
+      <div class="flyout">
+        <div class="ft"><span class="logo"></span>ClaudeBar<span class="sp">7 days</span></div>
+        <div class="card rank">
+          <div class="numeral"><small>#</small>4</div>
+          <div class="body">
+            <div class="eyebrow">Your rank</div>
+            <div class="tokens">12.4B <span>tokens</span></div>
+            <div class="mix"><i style="flex:76;background:var(--claude)"></i><i style="flex:18;background:var(--codex)"></i><i style="flex:6;background:var(--omp)"></i></div>
+            <div class="gap"><svg class="ico"><use href="#up"/></svg>6.5B behind #3</div>
+          </div>
+        </div>
+        <div class="list" style="margin-top:8px">
+          <div class="member"><span class="r">#1</span><span class="n">@tokenwhale</span><span class="t">27.2B</span></div>
+          <div class="member"><span class="r">#2</span><span class="n">@vim-or-bust</span><span class="t">20.1B</span></div>
+          <div class="member"><span class="r">#3</span><span class="n">@night-shift</span><span class="t">18.9B</span></div>
+          <div class="member you"><span class="r">#4</span><span class="n"><b>@late_night_dev</b></span><span class="t">12.4B</span></div>
+        </div>
+        <div class="foot"><span class="button">Open ClaudeBar</span><span class="button" style="flex:none;width:36px"><svg class="ico"><use href="#gear"/></svg></span></div>
+      </div>
+      <div class="taskbar">
+        <span class="tb-app"><span class="glyph" style="background:#0a7cd8"></span></span>
+        <span class="tb-app"><span class="glyph" style="background:#f2b01e"></span></span>
+        <span class="tb-app"><span class="glyph" style="background:#2b2b2b;border:1px solid #555"></span></span>
+      </div>
+      <div class="tray"><span class="cbtray"></span><span>ENG</span><span>10:42 PM</span></div>
+    </div>
+    <div class="caption"><b>Tray flyout, an option.</b> Off by default; turned on in Settings, a click on the tray icon opens this Acrylic flyout: your rank and the places above you. Windows hides a new icon under ^, so turning it on says how to drag it out.</div>
+  </div>
+
+  <div class="shot">
+    <div class="desk">
+      <div class="toast">
+        <div class="app"><i></i>ClaudeBar</div>
+        <b>You're on the leaderboard</b>
+        <p>@late_night_dev · #4 for the last 7 days. This PC uploads every hour while you're signed in.</p>
+        <div class="acts"><span class="p">Open the board</span></div>
+      </div>
+      <div class="taskbar">
+        <span class="tb-app"><span class="glyph" style="background:#0a7cd8"></span></span>
+        <span class="tb-app"><span class="glyph" style="background:#f2b01e"></span></span>
+        <span class="tb-app cb"><span class="glyph"><svg><use href="#trophy"/></svg></span><span class="run"></span></span>
+        <span class="tb-app"><span class="glyph" style="background:#2b2b2b;border:1px solid #555"></span></span>
+      </div>
+      <div class="tray"><span class="chev">^</span><span>ENG</span><span>10:42 PM</span></div>
+    </div>
+    <div class="caption"><b>Notifications, few.</b> One when you join, with <i>Open the board</i>. Nothing hourly: an upload that has failed for over a day shows in the window's status bar instead. Focus mode holds notifications in the notification centre.</div>
+  </div>
+</div>
+
+<div class="section-label">Notes</div>
+<div class="notes">
+  <div class="note">
+    <h3>Against the build in #4 today</h3>
+    <ul>
+      <li>A designed window in place of stacked default controls: custom title bar, a header with Refresh and Settings, a status bar for uploads.</li>
+      <li><i>Your rank</i> gets the provider mix and the gap; the board gets the podium, avatars, mix bars and provider pills.</li>
+      <li>Settings move from a tab to the gear, as Windows Settings-style cards; Export and the taskbar and tray options join them.</li>
+      <li>Join shows exactly what gets uploaded, and greys out a provider with no tokens on this PC.</li>
+    </ul>
+  </div>
+  <div class="note">
+    <h3>In WinUI 3</h3>
+    <ul>
+      <li>Window: <code>ExtendsContentIntoTitleBar</code>, Mica, <code>SelectorBar</code> for the period, <code>ToggleButton</code> pills, <code>ItemsRepeater</code> for the board.</li>
+      <li>Settings cards: hand-built to the Windows Settings layout, or CommunityToolkit's <code>SettingsCard</code>.</li>
+      <li>Mix bars: each member's <code>byProvider</code>, which <code>/board</code> already sends; the C interface passes it on.</li>
+      <li>Hover card: <code>DwmSetIconicThumbnail</code>; jump list: <code>JumpList</code>; badge: <code>BadgeUpdateManager</code> (MSIX only); tray: <code>Shell_NotifyIcon</code>; toast: App Notifications.</li>
+      <li>Light, dark and high contrast follow Windows; the accent is Windows' own.</li>
+    </ul>
+  </div>
+  <div class="note">
+    <h3>Not in this version</h3>
+    <ul>
+      <li>Share my rank as an image, the globe and profile links: the Mac has them; later here.</li>
+      <li>Devices (add this PC to a member, the devices list): after the Mac's slices 14 and 15.</li>
+      <li>The badge needs MSIX; without it the hover card and jump list still work.</li>
+      <li>Avatars are initials on a colour from the name; no pictures are uploaded.</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>
