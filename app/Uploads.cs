@@ -12,12 +12,37 @@ internal static class Uploads
 
     private static string Uploader => Path.Combine(AppContext.BaseDirectory, "claudebar-upload.exe");
 
-    internal static bool IsScheduled => Run("/Query", "/TN", TaskName) == 0;
+    /// Whether the task should exist, as last asked; each run acts on this, so
+    /// the last ask wins even when an earlier one finishes after it.
+    private static volatile bool _wanted;
+    private static readonly SemaphoreSlim Gate = new(1, 1);
 
-    internal static bool Schedule() =>
+    /// Each runs `schtasks.exe` on a worker thread, one at a time: it can take
+    /// a while, and the window mustn't wait.
+    internal static Task<bool> EnsureScheduledAsync() => Apply(wanted: true, create: false);
+
+    /// Made again even if it exists, as on joining.
+    internal static Task<bool> ScheduleAsync() => Apply(wanted: true, create: true);
+
+    internal static Task<bool> UnscheduleAsync() => Apply(wanted: false, create: false);
+
+    private static async Task<bool> Apply(bool wanted, bool create)
+    {
+        _wanted = wanted;
+        await Gate.WaitAsync();
+        try
+        {
+            return await Task.Run(() => _wanted
+                ? (!create && IsScheduled) || Schedule()
+                : !IsScheduled || Run("/Delete", "/F", "/TN", TaskName) == 0);
+        }
+        finally { Gate.Release(); }
+    }
+
+    private static bool IsScheduled => Run("/Query", "/TN", TaskName) == 0;
+
+    private static bool Schedule() =>
         Run("/Create", "/F", "/SC", "HOURLY", "/TN", TaskName, "/TR", $"\"{Uploader}\"") == 0;
-
-    internal static bool Unschedule() => !IsScheduled || Run("/Delete", "/F", "/TN", TaskName) == 0;
 
     private static int Run(params string[] arguments)
     {

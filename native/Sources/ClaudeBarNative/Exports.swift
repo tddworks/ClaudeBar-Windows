@@ -47,18 +47,24 @@ private func string(_ pointer: UnsafePointer<CChar>?) -> String {
 }()
 
 /// Runs `work` on the main actor with a fresh membership, and replies with
-/// what it adds, the state after it, and the error a person reads if it threw.
+/// what it adds, the state after it, and the error a person reads if it threw,
+/// or if a change didn't reach the settings file (ClaudeBar's package saves
+/// without throwing, so `SettingsFile` keeps the failure for this to say).
 private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
                  _ work: @escaping @MainActor (LeaderboardMembership) async throws -> [String: Any]) {
     guard let callback else { return }
     let reply = Reply(context: context, callback: callback)
     Task { @MainActor in
+        _ = client.settings.takeFailure()
         let membership = client.membership()
         var answer: [String: Any]
         do {
             answer = try await work(membership)
         } catch {
             answer = ["error": (error as? LocalizedError)?.errorDescription ?? error.localizedDescription]
+        }
+        if answer["error"] == nil, let failure = client.settings.takeFailure() {
+            answer["error"] = "ClaudeBar couldn't save this on this PC (\(failure)). Try again."
         }
         answer["state"] = state(of: client.membership())
         reply.send(answer)

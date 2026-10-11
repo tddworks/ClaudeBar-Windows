@@ -36,8 +36,10 @@ public static partial class Program
         var done = CreateEventW(IntPtr.Zero, true, false, null);
         Task.Run(() =>
         {
-            main.RedirectActivationToAsync(arguments).AsTask().Wait();
-            SetEvent(done);
+            // Set even when the redirect fails (the main instance ended meanwhile), or this one waits forever.
+            try { main.RedirectActivationToAsync(arguments).AsTask().Wait(); }
+            catch (Exception) { }
+            finally { SetEvent(done); }
         });
         _ = CoWaitForMultipleObjects(0, 0xFFFFFFFF, 1, new[] { done }, out _);
         try { SetForegroundWindow(Process.GetProcessById((int)main.ProcessId).MainWindowHandle); }

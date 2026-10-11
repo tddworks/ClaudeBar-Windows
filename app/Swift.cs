@@ -76,7 +76,15 @@ internal static unsafe class Swift
         var handle = GCHandle.FromIntPtr(context);
         var completion = (TaskCompletionSource<JsonObject>)handle.Target!;
         handle.Free();
-        var text = Marshal.PtrToStringUTF8((nint)json) ?? "{}";
-        completion.SetResult(JsonNode.Parse(text) as JsonObject ?? new JsonObject());
+        // Nothing may throw here: an exception can't cross back into Swift, and the task must end.
+        try
+        {
+            var text = Marshal.PtrToStringUTF8((nint)json) ?? "{}";
+            completion.SetResult(JsonNode.Parse(text) as JsonObject ?? new JsonObject { ["error"] = "ClaudeBar's answer was empty." });
+        }
+        catch (Exception error)
+        {
+            completion.TrySetResult(new JsonObject { ["error"] = $"ClaudeBar's answer couldn't be read: {error.Message}" });
+        }
     }
 }

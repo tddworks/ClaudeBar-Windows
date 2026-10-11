@@ -63,19 +63,26 @@ internal sealed class Taskbar
         {
             case Win32.WM_DWMSENDICONICTHUMBNAIL:
             {
-                var width = Win32.HighWord(lParam);
-                var height = Math.Min(Win32.LowWord(lParam), (int)(width * 0.56));
+                // The largest size the taskbar asks for, as unsigned words; drawn no larger.
+                var width = Math.Clamp((int)(((long)lParam >> 16) & 0xFFFF), 1, 1024);
+                var height = Math.Clamp(Math.Min((int)((long)lParam & 0xFFFF), (int)(width * 0.56)), 1, 1024);
                 var bitmap = Draw(width, height);
-                Win32.DwmSetIconicThumbnail(window, bitmap, 0);
-                Win32.DeleteObject(bitmap);
+                if (bitmap != IntPtr.Zero)
+                {
+                    Win32.DwmSetIconicThumbnail(window, bitmap, 0);
+                    Win32.DeleteObject(bitmap);
+                }
                 return IntPtr.Zero;
             }
             case Win32.WM_DWMSENDICONICLIVEPREVIEWBITMAP:
             {
                 Win32.GetClientRect(window, out var client);
-                var bitmap = Draw(Math.Max(1, client.Right), Math.Max(1, client.Bottom));
-                Win32.DwmSetIconicLivePreviewBitmap(window, bitmap, IntPtr.Zero, 0);
-                Win32.DeleteObject(bitmap);
+                var bitmap = Draw(Math.Clamp(client.Right, 1, 8192), Math.Clamp(client.Bottom, 1, 8192));
+                if (bitmap != IntPtr.Zero)
+                {
+                    Win32.DwmSetIconicLivePreviewBitmap(window, bitmap, IntPtr.Zero, 0);
+                    Win32.DeleteObject(bitmap);
+                }
                 return IntPtr.Zero;
             }
         }
@@ -83,11 +90,17 @@ internal sealed class Taskbar
         return Win32.DefSubclassProc(window, message, wParam, lParam);
     }
 
-    /// The hover card: your place large, the board under it, then tokens, the gap and the mix.
+    /// The hover card: your place large, the board under it, then tokens, the
+    /// gap and the mix; `IntPtr.Zero` when the bitmap couldn't be made.
     private IntPtr Draw(int width, int height)
     {
         var info = new Win32.BITMAPINFOHEADER { Size = 40, Width = width, Height = -height, Planes = 1, BitCount = 32 };
         var bitmap = Win32.CreateDIBSection(IntPtr.Zero, ref info, 0, out var bits, IntPtr.Zero, 0);
+        if (bitmap == IntPtr.Zero || bits == IntPtr.Zero)
+        {
+            if (bitmap != IntPtr.Zero) Win32.DeleteObject(bitmap);
+            return IntPtr.Zero;
+        }
         var dc = Win32.CreateCompatibleDC(IntPtr.Zero);
         var old = Win32.SelectObject(dc, bitmap);
         var background = _dark ? Color.FromArgb(255, 0x20, 0x20, 0x20) : Color.FromArgb(255, 0xF3, 0xF3, 0xF3);

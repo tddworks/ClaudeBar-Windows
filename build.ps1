@@ -28,8 +28,11 @@ function Assert-Exit([string] $step) {
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $vcComponents = 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64'
 $vcvars = & $vswhere -latest -products * -requiresAny -requires $vcComponents -find 'VC\Auxiliary\Build\vcvarsall.bat' | Select-Object -First 1
+Assert-Exit 'vswhere'
 if (-not $vcvars) { throw 'vcvarsall.bat not found (MSVC build tools)' }
-cmd /c "`"$vcvars`" $arch >nul && set" | ForEach-Object {
+$environment = cmd /c "`"$vcvars`" $arch >nul && set"
+Assert-Exit 'vcvarsall'
+$environment | ForEach-Object {
     if ($_ -match '^([^=]+)=(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] }
 }
 $native = Join-Path $root 'native'
@@ -37,11 +40,13 @@ $clock = [Diagnostics.Stopwatch]::StartNew()
 swift build -c release --package-path $native; Assert-Exit 'swift build'
 "swift build: {0:N0} s" -f $clock.Elapsed.TotalSeconds
 $bin = (swift build -c release --package-path $native --show-bin-path | Select-Object -Last 1).Trim()
+Assert-Exit 'swift build --show-bin-path'
 
 # 2. Stage the DLL and the uploader, the Swift runtime DLLs they import (transitively), and the resource bundles.
 $runtime = $env:Path -split ';' | Where-Object { $_ -and (Test-Path (Join-Path $_ 'swiftCore.dll')) } | Select-Object -First 1
 if (-not $runtime) { throw 'Swift runtime DLLs (swiftCore.dll) not found on PATH' }
 $dumpbin = & $vswhere -latest -products * -requiresAny -requires $vcComponents -find 'VC\Tools\MSVC\**\dumpbin.exe' | Select-Object -First 1
+Assert-Exit 'vswhere'
 if (-not $dumpbin) { throw 'dumpbin.exe not found (MSVC build tools)' }
 $stage = Join-Path $root "native-out\win-$arch"
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
@@ -53,7 +58,10 @@ foreach ($name in 'ClaudeBarNative.dll', 'claudebar-upload.exe') {
 }
 while ($queue.Count -gt 0) {
     $file = $queue.Dequeue()
-    $imports = & $dumpbin /nologo /dependents $file | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '\.dll$' }
+    # Every staged file is a PE file; one dumpbin can't read would leave its DLLs unstaged.
+    $dependents = & $dumpbin /nologo /dependents $file
+    Assert-Exit "dumpbin $(Split-Path $file -Leaf)"
+    $imports = $dependents | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '\.dll$' }
     foreach ($name in $imports) {
         $target = Join-Path $stage $name
         if (Test-Path $target) { continue }

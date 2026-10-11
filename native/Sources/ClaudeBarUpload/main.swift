@@ -18,5 +18,10 @@ if let error = uploader.lastError {
     AppLog.network.error("Leaderboard upload failed: \(error.localizedDescription)")
     exit(1)
 }
+if let failure = client.settings.takeFailure() {
+    // Uploaded, but not recorded here: the next run sends the same days again, which replace themselves.
+    AppLog.network.error("Leaderboard uploaded, but the settings file wasn't updated: \(failure)")
+    exit(2)
+}
 AppLog.network.info("Leaderboard uploaded by the scheduled task")
 exit(0)

@@ -119,6 +119,29 @@ struct SettingsFileTests {
 
         #expect(file().leaderboardRecord() == next)
     }
+
+    /// ClaudeBar's package saves without throwing, so the file says when a save
+    /// didn't land, and the same membership's next save still writes its change.
+    @Test func `should say a save didn't reach the file, and write the change on the next save`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // A file where the settings folder should be: the folder can't be made.
+        let blocked = folder.appendingPathComponent("ClaudeBar")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data().write(to: blocked)
+        let view = SettingsFile(url: blocked.appendingPathComponent("settings.json"), lockName: lockName)
+        _ = view.leaderboardRecord()
+
+        view.saveLeaderboardRecord(record)
+
+        #expect(view.takeFailure() != nil)
+        #expect(view.takeFailure() == nil)
+
+        try FileManager.default.removeItem(at: blocked)
+        view.saveLeaderboardRecord(record)
+
+        #expect(view.takeFailure() == nil)
+        #expect(SettingsFile(url: blocked.appendingPathComponent("settings.json"), lockName: lockName).leaderboardRecord() == record)
+    }
 }
 
 extension LeaderboardRecord {

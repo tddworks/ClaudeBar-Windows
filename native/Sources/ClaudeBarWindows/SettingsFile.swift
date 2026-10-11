@@ -22,15 +22,29 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
     public let lockName: String
     /// What this view's membership last read or saved, and in which membership.
     private var base: (generation: Int, record: LeaderboardRecord?)?
+    /// Saves that didn't reach the file, shared by a file and all its views:
+    /// ClaudeBar's package saves without throwing, so whoever acts for the
+    /// person asks here afterwards (`takeFailure()`) and says so.
+    private let failures: Failures
 
-    public init(url: URL = SettingsFile.defaultURL, lockName: String = #"Local\ClaudeBar.settings"#) {
+    public convenience init(url: URL = SettingsFile.defaultURL, lockName: String = #"Local\ClaudeBar.settings"#) {
+        self.init(url: url, lockName: lockName, failures: Failures())
+    }
+
+    private init(url: URL, lockName: String, failures: Failures) {
         self.url = url
         self.lockName = lockName
+        self.failures = failures
     }
 
     /// A view of the same file for another membership, remembering nothing yet.
     public func view() -> SettingsFile {
-        SettingsFile(url: url, lockName: lockName)
+        SettingsFile(url: url, lockName: lockName, failures: failures)
+    }
+
+    /// Why the last save since the previous call didn't reach the file, if one didn't.
+    public func takeFailure() -> String? {
+        failures.take()
     }
 
     public static var defaultURL: URL {
@@ -40,16 +54,15 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
     }
 
     public func leaderboardRecord() -> LeaderboardRecord? {
-        locked {
-            let contents = read()
-            let record = contents.leaderboard?.record
-            base = (contents.generation ?? 0, record)
-            return record
-        }
+        // Without the lock, the read still sees a whole file (writes replace it atomically).
+        let read = locked(orElse: { self.read() }) { self.read() }
+        let record = read.leaderboard?.record
+        base = (read.generation ?? 0, record)
+        return record
     }
 
     public func saveLeaderboardRecord(_ record: LeaderboardRecord?) {
-        locked {
+        locked(orElse: { failures.record("another ClaudeBar kept the settings file busy") }) {
             var contents = read()
             let generation = contents.generation ?? 0
             let theirs = contents.leaderboard?.record
@@ -60,7 +73,7 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
             }
             switch (record, theirs) {
             case (nil, nil):
-                break
+                return
             case (nil, _?):
                 // This membership ends: leaving, or forgotten by the server.
                 contents.leaderboard = nil
@@ -72,7 +85,8 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
             case (let mine?, let theirs?):
                 contents.leaderboard = StoredRecord(Self.merge(mine, since: base.record ?? theirs, onto: theirs))
             }
-            if record != nil || theirs != nil { write(contents) }
+            // A save that failed leaves `base` as it was, so the next one still writes this change.
+            guard write(contents) else { return }
             self.base = (contents.generation ?? 0, record)
         }
     }
@@ -90,11 +104,11 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
     }
 
     public func isLeaderboardOn() -> Bool {
-        locked { read().leaderboardOn ?? true }
+        locked(orElse: { self.read() }) { self.read() }.leaderboardOn ?? true
     }
 
     public func setLeaderboardOn(_ on: Bool) {
-        locked {
+        locked(orElse: { failures.record("another ClaudeBar kept the settings file busy") }) {
             var contents = read()
             contents.leaderboardOn = on
             write(contents)
@@ -148,29 +162,60 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
         return (try? decoder.decode(Contents.self, from: data)) ?? Contents()
     }
 
-    private func write(_ contents: Contents) {
+    /// Writes the file whole, atomically; a failure is logged and kept for `takeFailure()`.
+    @discardableResult
+    private func write(_ contents: Contents) -> Bool {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .secondsSince1970
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try encoder.encode(contents).write(to: url, options: .atomic)
+            return true
         } catch {
             AppLog.ui.error("Leaderboard settings could not be saved: \(error.localizedDescription)")
+            failures.record(error.localizedDescription)
+            return false
         }
     }
 
     /// Runs `body` holding the named mutex every process of this person's
-    /// shares. A process that died holding it leaves it abandoned, which still
-    /// hands it over.
-    private func locked<T>(_ body: () -> T) -> T {
+    /// shares; a process that died holding it leaves it abandoned, which still
+    /// hands it over. Without the mutex (it can't be made, or another process
+    /// holds it 10 s) `body` doesn't run, `fallback` does: a read reads anyway,
+    /// a save doesn't save, since merging needs the file not to change under it.
+    private func locked<T>(orElse fallback: () -> T, _ body: () -> T) -> T {
         let mutex = lockName.withCString(encodedAs: UTF16.self) { CreateMutexW(nil, false, $0) }
-        guard let mutex else { return body() }
+        guard let mutex else {
+            AppLog.ui.error("Leaderboard settings: the lock couldn't be made (error \(GetLastError()))")
+            return fallback()
+        }
         defer { CloseHandle(mutex) }
         let wait = WaitForSingleObject(mutex, 10_000)
         // WAIT_OBJECT_0, or WAIT_ABANDONED (0x80): a process that died holding it hands it over.
-        guard wait == WAIT_OBJECT_0 || wait == 0x80 else { return body() }
+        guard wait == WAIT_OBJECT_0 || wait == 0x80 else {
+            AppLog.ui.error("Leaderboard settings: the lock wasn't free in 10 s (wait \(wait))")
+            return fallback()
+        }
         defer { ReleaseMutex(mutex) }
         return body()
+    }
+
+    private final class Failures: @unchecked Sendable {
+        private let lock = NSLock()
+        private var last: String?
+
+        func record(_ reason: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            last = reason
+        }
+
+        func take() -> String? {
+            lock.lock()
+            defer { lock.unlock() }
+            defer { last = nil }
+            return last
+        }
     }
 }

@@ -232,7 +232,7 @@ public sealed partial class MainWindow : Window
         {
             _settingsOpen = false;
             ShowPage(JoinPage);
-            Uploads.Unschedule();
+            _ = Uploads.UnscheduleAsync();
             _taskbar.Clear();
             _lastBoard = null;
             Standings.Children.Clear();
@@ -241,8 +241,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         ShowPage(_settingsOpen ? SettingsPage : BoardPage);
-        if (!Uploads.IsScheduled && !Uploads.Schedule())
-            Tell("The hourly upload couldn't be set up. Use Upload now until it is.", InfoBarSeverity.Warning);
+        _ = EnsureScheduled();
         if (Pills.Children.Count == 0) BuildPills();
         ShowUploadStatus(state);
         ShowSettings(state);
@@ -649,7 +648,7 @@ public sealed partial class MainWindow : Window
     {
         if (_showing || sender is not ToggleSwitch toggle) return;
         toggle.IsEnabled = false;
-        await Guarded(async () => Show(await Swift.SetSharing((string)toggle.Tag, toggle.IsOn)));
+        if (!await Guarded(async () => Show(await Swift.SetSharing((string)toggle.Tag, toggle.IsOn)))) RestoreSwitches();
         toggle.IsEnabled = true;
     }
 
@@ -657,8 +656,22 @@ public sealed partial class MainWindow : Window
     {
         if (_showing) return;
         VisibleSwitch.IsEnabled = false;
-        await Guarded(async () => Show(await Swift.SetVisible(VisibleSwitch.IsOn)));
+        if (!await Guarded(async () => Show(await Swift.SetVisible(VisibleSwitch.IsOn)))) RestoreSwitches();
         VisibleSwitch.IsEnabled = true;
+    }
+
+    /// The switches as the membership last said, after a call that threw and
+    /// so brought no state to show: none keeps the position it was flipped to.
+    private void RestoreSwitches()
+    {
+        if (_state is not null) ShowSettings(_state);
+    }
+
+    /// The hourly task, made when it's missing; off the UI thread, since `schtasks` can be slow.
+    private async Task EnsureScheduled()
+    {
+        if (await Uploads.EnsureScheduledAsync()) return;
+        Tell("The hourly upload couldn't be set up. Use Upload now until it is.", InfoBarSeverity.Warning);
     }
 
     private async void OnExport(object sender, RoutedEventArgs e)
@@ -819,7 +832,7 @@ public sealed partial class MainWindow : Window
             var reply = await Swift.Join(UsernameBox.Text.Trim(), sharing);
             if (reply["error"] is null)
             {
-                if (!Uploads.Schedule()) Tell("Joined, but the hourly upload couldn't be set up.", InfoBarSeverity.Warning);
+                if (!await Uploads.ScheduleAsync()) Tell("Joined, but the hourly upload couldn't be set up.", InfoBarSeverity.Warning);
                 else
                 {
                     Tell("You're on the leaderboard. This PC uploads every hour while you're signed in.", InfoBarSeverity.Success);
@@ -936,11 +949,20 @@ public sealed partial class MainWindow : Window
         if (Notice.Message == message && Notice.Severity == severity) Notice.IsOpen = false;
     }
 
-    /// Runs `work`, showing what went wrong instead of losing it in an async void handler.
-    private async Task Guarded(Func<Task> work)
+    /// Runs `work`, showing what went wrong instead of losing it in an async
+    /// void handler; answers whether it ran without throwing.
+    private async Task<bool> Guarded(Func<Task> work)
     {
-        try { await work(); }
-        catch (Exception error) { Tell(error.Message, InfoBarSeverity.Error); }
+        try
+        {
+            await work();
+            return true;
+        }
+        catch (Exception error)
+        {
+            Tell(error.Message, InfoBarSeverity.Error);
+            return false;
+        }
     }
 
     private static string PeriodName(string period) => period switch
