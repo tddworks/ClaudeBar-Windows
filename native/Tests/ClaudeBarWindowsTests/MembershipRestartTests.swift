@@ -13,10 +13,12 @@ struct MembershipRestartTests {
     private let keys = MemoryKeyStore()
     private let server = AcceptingServer()
 
+    private var settingsURL: URL { folder.appendingPathComponent("settings.json") }
+    private var lockName: String { #"Local\ClaudeBar.test."# + folder.lastPathComponent }
+
     /// A client as a new process builds it: nothing in memory but the file and the key.
     private func process() -> Client {
-        Client(api: server, keys: keys,
-               settings: SettingsFile(url: folder.appendingPathComponent("settings.json"), lockName: #"Local\ClaudeBar.test."# + folder.lastPathComponent),
+        Client(api: server, keys: keys, settings: SettingsFile(url: settingsURL, lockName: lockName),
                logs: ProviderTokenLogs(), machine: FixedMachine())
     }
 
@@ -54,6 +56,35 @@ struct MembershipRestartTests {
 
         #expect(!process().membership().isJoined)
         #expect(keys.load() == nil)
+    }
+
+    /// The hourly uploader read the membership before the person stopped
+    /// sharing a provider in the app; the upload, ending after, records only
+    /// that it uploaded.
+    @Test func `should keep a provider the app stopped sharing while an upload was running, and record the upload`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try await process().membership().join(as: #require(Username("tokenwhale")), sharing: ["omp", "claude"])
+        let uploaderProcess = process()
+        let uploader = uploaderProcess.uploader(for: uploaderProcess.membership())
+
+        process().membership().stopSharing("omp")
+        await uploader.uploadNow()
+
+        let after = process().membership()
+        #expect(after.sharing == ["claude"])
+        #expect(after.lastUpload != nil)
+    }
+
+    @Test func `should not bring back a membership that left while an upload was running`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try await process().membership().join(as: #require(Username("tokenwhale")), sharing: ["omp"])
+        let uploaderProcess = process()
+        let uploader = uploaderProcess.uploader(for: uploaderProcess.membership())
+
+        try await process().membership().leave()
+        await uploader.uploadNow()
+
+        #expect(SettingsFile(url: settingsURL, lockName: lockName).leaderboardRecord() == nil)
     }
 }
 
