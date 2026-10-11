@@ -72,7 +72,9 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
         "username": membership.username?.value ?? NSNull(),
         "visible": membership.isVisible,
         "sharing": membership.sharing.sorted(),
-        "providers": client.logs.providers.map { ["id": $0.id, "name": $0.name, "shared": membership.sharing.contains($0.id)] },
+        "providers": client.logs.providers.map {
+            ["id": $0.id, "name": $0.name, "light": $0.light, "dark": $0.dark, "shared": membership.sharing.contains($0.id)]
+        },
         "lastUpload": membership.lastUpload.map { iso.string(from: $0) } ?? NSNull(),
         "refused": membership.refused.count,
         "label": membership.suggestedLabel.value,
@@ -101,17 +103,27 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
     run(context, callback) { _ in [:] }
 }
 
-/// What joining would share: each provider's tokens over the last 30 days on
-/// this PC, counted as an upload counts them (`DailyTokens.summed`), cache
-/// included. `{providers: [{id, name, tokens, days}], state}`.
+/// What joining would share, and what each provider sends now: its tokens on
+/// this PC over the last 30 days and the last 7, counted as an upload counts
+/// them (`DailyTokens.summed`), cache included; and today's rows exactly as
+/// an upload sends them, for *Exactly what gets uploaded*.
+/// `{providers: [{id, name, tokens, days, week}], today: String, rows: [DailyTokens], state}`.
 @c public func cbw_preview(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     run(context, callback) { _ in
-        let logins = await client.logs.days(in: DateRange.last(30))
+        let month = await client.logs.days(in: DateRange.last(30))
+        let week = await client.logs.days(in: DateRange.last(7))
         let providers = client.logs.providers.map { provider -> [String: Any] in
-            let days = DailyTokens.summed(logins, providers: [provider.id])
-            return ["id": provider.id, "name": provider.name, "tokens": days.reduce(0) { $0 + $1.total }, "days": days.count]
+            let days = DailyTokens.summed(month, providers: [provider.id])
+            let weekTokens = DailyTokens.summed(week, providers: [provider.id]).reduce(0) { $0 + $1.total }
+            return ["id": provider.id, "name": provider.name, "tokens": days.reduce(0) { $0 + $1.total },
+                    "days": days.count, "week": weekTokens]
         }
-        return ["providers": providers]
+        let today = DailyTokens.day(of: Date())
+        let rows = DailyTokens.summed(week, providers: client.logs.providersWithLogs).filter { $0.day == today }.map { row -> [String: Any] in
+            ["provider": row.provider, "day": row.day, "input": row.input, "output": row.output,
+             "cacheWrite": row.cacheWrite, "cacheRead": row.cacheRead, "unsplit": row.unsplit]
+        }
+        return ["providers": providers, "today": today, "rows": rows]
     }
 }
 
@@ -161,8 +173,8 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
 }
 
 /// One board: `period` is `today`, `7d` or `30d`; an empty `provider` is
-/// everyone. `{members: [{rank, username, total, you}], you: {rank, total} | null, state}`
-/// or `{error, state}`.
+/// everyone. `{members: [{rank, username, total, byProvider, you}],
+/// you: {rank, total, byProvider} | null, state}` or `{error, state}`.
 @c public func cbw_board(_ period: UnsafePointer<CChar>?, _ provider: UnsafePointer<CChar>?,
                          _ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     let period = BoardPeriod(rawValue: string(period)) ?? .sevenDays
@@ -173,9 +185,20 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
         if let failure = board.failure { throw failure }
         let you = board.you
         let members = (board.members ?? []).map { member -> [String: Any] in
-            ["rank": member.rank, "username": member.username, "total": member.total, "you": member.username == you?.username]
+            ["rank": member.rank, "username": member.username, "total": member.total,
+             "byProvider": member.byProvider, "you": member.username == you?.username]
         }
-        return ["members": members, "you": you.map { ["rank": $0.rank, "total": $0.total] as [String: Any] } ?? NSNull()]
+        let yours = you.map { ["rank": $0.rank, "total": $0.total, "byProvider": $0.byProvider] as [String: Any] }
+        return ["members": members, "you": yours ?? NSNull()]
+    }
+}
+
+/// Everything the server holds about the member, as it sent it (the JSON of
+/// `GET /me/export`). `{export: String, state}` or `{error, state}`.
+@c public func cbw_export(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    run(context, callback) { membership in
+        let data = try await membership.export()
+        return ["export": String(decoding: data, as: UTF8.self)]
     }
 }
 

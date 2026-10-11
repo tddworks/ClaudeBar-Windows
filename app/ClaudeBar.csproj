@@ -7,6 +7,7 @@
     <AssemblyName>ClaudeBar</AssemblyName>
     <Version>0.1.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\ClaudeBar.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
@@ -31,5 +32,6 @@
   <ItemGroup>
     <!-- ClaudeBarNative.dll, claudebar-upload.exe, the Swift runtime and ClaudeBar's resource bundles, staged by build.ps1. -->
     <Content Include="..\native-out\$(RuntimeIdentifier)\**\*" LinkBase="." CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

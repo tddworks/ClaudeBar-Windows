@@ -24,6 +24,7 @@ internal static unsafe partial class Native
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
     internal static partial void cbw_board(string period, string provider, nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cbw_leave(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib)] internal static partial void cbw_export(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
 }
 
 /// ClaudeBar's leaderboard, as Tasks. Each call replies once with JSON that
@@ -61,6 +62,7 @@ internal static unsafe class Swift
         return task;
     }
     internal static Task<JsonObject> Leave() { var (task, context) = Begin(); Native.cbw_leave(context, &OnReply); return task; }
+    internal static Task<JsonObject> Export() { var (task, context) = Begin(); Native.cbw_export(context, &OnReply); return task; }
 
     private static (Task<JsonObject>, nint) Begin()
     {

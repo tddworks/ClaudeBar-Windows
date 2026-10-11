@@ -8,9 +8,17 @@ import Quotas
 /// ClaudeBar's `Providers` exactly as the Mac reads them.
 @MainActor
 public final class ProviderTokenLogs: TokenLogs {
+    /// A provider as the app shows it: its name, and its colour in a light
+    /// and a dark theme (`#RRGGBB`), from its definition's look, as on the Mac.
+    public struct Provider: Sendable, Equatable {
+        public let id: String
+        public let name: String
+        public let light: String
+        public let dark: String
+    }
+
     private struct Login {
-        let providerId: String
-        let name: String
+        let provider: Provider
         let history: UsageHistory
     }
 
@@ -22,20 +30,31 @@ public final class ProviderTokenLogs: TokenLogs {
             .sorted { $0.id < $1.id }
             .compactMap { definition in
                 ProviderFactory.make(definition, settings: settings).usageHistory.map {
-                    Login(providerId: definition.id, name: definition.profile.name, history: $0)
+                    let color = definition.profile.look.color
+                    return Login(provider: Provider(id: definition.id, name: definition.profile.name,
+                                                    light: Self.hex(color?.light), dark: Self.hex(color?.dark)),
+                                 history: $0)
                 }
             }
     }
 
-    public var providersWithLogs: Set<String> { Set(logins.map(\.providerId)) }
+    public var providersWithLogs: Set<String> { Set(logins.map(\.provider.id)) }
 
     /// The providers, in a stable order, with the names people know them by.
-    public var providers: [(id: String, name: String)] { logins.map { ($0.providerId, $0.name) } }
+    public var providers: [Provider] { logins.map(\.provider) }
+
+    /// A definition's colour as `#RRGGBB`; grey for one without a colour.
+    private static func hex(_ rgb: ProviderLook.RGB?) -> String {
+        guard let rgb else { return "#8A8A8A" }
+        func byte(_ value: Double) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
+        return "#" + [rgb.red, rgb.green, rgb.blue].map { String(byte($0), radix: 16).uppercased() }
+            .map { $0.count == 1 ? "0" + $0 : $0 }.joined()
+    }
 
     public func days(in range: DateRange) async -> [LoginDays] {
         var result: [LoginDays] = []
         for login in logins {
-            result.append(LoginDays(providerId: login.providerId, days: await login.history.days(in: range).stats))
+            result.append(LoginDays(providerId: login.provider.id, days: await login.history.days(in: range).stats))
         }
         return result
     }

@@ -8,149 +8,351 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid>
+    <Grid x:Name="Root">
+        <Grid.Resources>
+            <Style x:Key="IconButton" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="Padding" Value="0" />
+            </Style>
+            <Style x:Key="Eyebrow" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="CharacterSpacing" Value="80" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+            </Style>
+            <Style x:Key="Secondary" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="Tertiary" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="Card" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
+            </Style>
+            <Style x:Key="GroupTitle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+                <Setter Property="Margin" Value="2,18,0,8" />
+            </Style>
+        </Grid.Resources>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="32" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel Padding="24,20,24,8" Spacing="2">
-            <TextBlock Text="ClaudeBar Leaderboard" Style="{StaticResource TitleTextBlockStyle}" />
-            <TextBlock x:Name="Caption" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <!-- The title bar, drawn by the app -->
+        <StackPanel x:Name="TitleBarArea" Orientation="Horizontal" Spacing="10" Padding="14,0,0,0" VerticalAlignment="Stretch">
+            <Image Source="ms-appx:///Assets/ClaudeBar-48.png" Width="16" Height="16" VerticalAlignment="Center" />
+            <TextBlock Text="ClaudeBar" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
         </StackPanel>
 
-        <InfoBar x:Name="Notice" Grid.Row="1" Margin="24,0,24,8" IsOpen="False" IsClosable="True" />
+        <InfoBar x:Name="Notice" Grid.Row="1" Margin="20,4,20,8" IsOpen="False" IsClosable="True" />
 
-        <!-- Not a member yet -->
-        <ScrollViewer x:Name="JoinPanel" Grid.Row="2" Visibility="Collapsed">
-            <StackPanel Padding="24,4,24,24" Spacing="16">
-                <TextBlock Text="Share your daily token totals and see where you rank. Only token counts leave this PC: no prompts, projects, paths, costs or emails."
-                           TextWrapping="Wrap" />
-                <TextBox x:Name="UsernameBox" Header="Username" Description="3 to 20 letters, digits, - or _" MaxLength="20"
-                         TextChanged="OnJoinInputChanged" KeyDown="OnUsernameKeyDown" />
-                <StackPanel Spacing="4">
-                    <TextBlock Text="Share" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <TextBlock Text="Pick at least one. Tokens found in this PC's logs over the last 30 days." Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <StackPanel x:Name="JoinProviders" Spacing="2" />
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <Button x:Name="JoinButton" Content="Join" Style="{StaticResource AccentButtonStyle}" IsEnabled="False" Click="OnJoin" />
-                    <ProgressRing x:Name="JoinBusy" IsActive="False" Width="20" Height="20" />
-                </StackPanel>
-                <TextBlock Text="After joining, this PC uploads every hour while you're signed in."
-                           Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+        <!-- 1 · Join -->
+        <ScrollViewer x:Name="JoinPage" Grid.Row="2" Visibility="Collapsed">
+            <StackPanel Padding="24,6,24,24" Spacing="0">
+                <Grid ColumnSpacing="12" Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="112" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Spacing="8">
+                        <TextBlock Text="See where you rank" Style="{StaticResource TitleTextBlockStyle}" />
+                        <TextBlock Text="Share your daily token totals with other ClaudeBar users. Only the counts leave this PC." Style="{StaticResource Secondary}" FontSize="13" />
+                    </StackPanel>
+                    <StackPanel x:Name="MiniPodium" Grid.Column="1" Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center" VerticalAlignment="Bottom" />
+                </Grid>
+
+                <TextBlock Text="Username" Margin="0,0,0,6" />
+                <Grid>
+                    <TextBox x:Name="UsernameBox" PlaceholderText="pick-a-name" MaxLength="20" Padding="12,6,36,6"
+                             TextChanged="OnJoinInputChanged" KeyDown="OnUsernameKeyDown" AutomationProperties.Name="Username" />
+                    <FontIcon x:Name="UsernameOk" Glyph="&#xE930;" FontSize="16" Margin="0,0,12,0" HorizontalAlignment="Right"
+                              Foreground="{ThemeResource SystemFillColorSuccessBrush}" Visibility="Collapsed" IsHitTestVisible="False" />
+                </Grid>
+                <TextBlock Text="3 to 20 letters, digits, - or _. Shown on the board unless you hide it." Style="{StaticResource Tertiary}" Margin="0,6,0,18" />
+
+                <TextBlock Text="Share tokens from" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,0,0,8" />
+                <StackPanel x:Name="JoinProviders" Spacing="4" />
+
+                <Expander x:Name="PayloadExpander" Margin="0,12,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <Expander.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE890;" FontSize="14" />
+                            <TextBlock Text="Exactly what gets uploaded" />
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel Spacing="8">
+                        <TextBlock x:Name="PayloadText" FontFamily="Cascadia Mono, Consolas" FontSize="12" IsTextSelectionEnabled="True"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                        <TextBlock Text="That's today. The first upload sends each of the last 30 days the same way, then once an hour." Style="{StaticResource Tertiary}" />
+                    </StackPanel>
+                </Expander>
+
+                <Grid Margin="0,16,0,0">
+                    <Button x:Name="JoinButton" Content="Join leaderboard" Style="{StaticResource AccentButtonStyle}" IsEnabled="False"
+                            HorizontalAlignment="Stretch" MinHeight="36" Click="OnJoin" />
+                    <ProgressRing x:Name="JoinBusy" IsActive="False" Width="18" Height="18" HorizontalAlignment="Right" Margin="0,0,12,0" />
+                </Grid>
+                <TextBlock Text="Never prompts, projects, paths, costs or emails. This PC uploads every hour while you're signed in; leaving deletes it all."
+                           Style="{StaticResource Tertiary}" Margin="2,10,2,0" />
             </StackPanel>
         </ScrollViewer>
 
-        <!-- A member: the board, and the membership on its own page -->
-        <NavigationView x:Name="MemberNav" Grid.Row="2" Visibility="Collapsed" PaneDisplayMode="Top"
-                        IsBackButtonVisible="Collapsed" IsSettingsVisible="False" IsTitleBarAutoPaddingEnabled="False"
-                        SelectionChanged="OnMemberNavChanged">
-            <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="BoardItem" Content="Board" Tag="board" />
-                <NavigationViewItem Content="Membership" Tag="membership" />
-            </NavigationView.MenuItems>
+        <!-- 2 · Board -->
+        <Grid x:Name="BoardPage" Grid.Row="2" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <Grid>
-                <Grid x:Name="BoardView" Padding="24,12,24,16" RowSpacing="12">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+            <Grid Padding="24,2,14,8" ColumnSpacing="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Leaderboard" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="BoardSubtitle" Style="{StaticResource Tertiary}" />
+                </StackPanel>
+                <Button x:Name="RefreshButton" Grid.Column="1" Style="{StaticResource IconButton}" Click="OnRefresh"
+                        ToolTipService.ToolTip="Refresh" AutomationProperties.Name="Refresh">
+                    <FontIcon Glyph="&#xE72C;" FontSize="16" />
+                </Button>
+                <Button Grid.Column="2" Style="{StaticResource IconButton}" Click="OnOpenSettings"
+                        ToolTipService.ToolTip="Settings" AutomationProperties.Name="Settings">
+                    <FontIcon Glyph="&#xE713;" FontSize="16" />
+                </Button>
+            </Grid>
 
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <SelectorBar x:Name="Periods" SelectionChanged="OnPeriodChanged">
-                            <SelectorBarItem Text="Today" Tag="today" />
-                            <SelectorBarItem Text="7 days" Tag="7d" IsSelected="True" />
-                            <SelectorBarItem Text="30 days" Tag="30d" />
-                        </SelectorBar>
-                        <Button x:Name="RefreshButton" Grid.Column="1" Click="OnRefresh" VerticalAlignment="Center"
-                                ToolTipService.ToolTip="Refresh" AutomationProperties.Name="Refresh">
-                            <SymbolIcon Symbol="Refresh" />
-                        </Button>
-                    </Grid>
+            <SelectorBar x:Name="Periods" Grid.Row="1" Margin="12,0,12,0" SelectionChanged="OnPeriodChanged">
+                <SelectorBarItem Text="Today" Tag="today" />
+                <SelectorBarItem Text="7 days" Tag="7d" IsSelected="True" />
+                <SelectorBarItem Text="30 days" Tag="30d" />
+            </SelectorBar>
 
-                    <!-- Your rank, as the Mac's popover shows it -->
-                    <Border Grid.Row="1" Padding="16,12" CornerRadius="8" BorderThickness="1"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-                        <Grid ColumnSpacing="16">
+            <ScrollViewer Grid.Row="2" HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="Pills" Orientation="Horizontal" Spacing="6" Padding="24,8,24,12" />
+            </ScrollViewer>
+
+            <Grid Grid.Row="3">
+                <ScrollViewer x:Name="BoardScroll" ViewChanged="OnBoardScrolled">
+                    <StackPanel Padding="24,0,24,16" Spacing="12">
+                        <TextBlock x:Name="BoardNote" Visibility="Collapsed" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+
+                        <!-- Your rank, as the Mac's popover leads with it -->
+                        <Border Style="{StaticResource Card}">
+                            <Grid>
+                                <Rectangle RadiusX="8" RadiusY="8" Opacity="0.22" IsHitTestVisible="False">
+                                    <Rectangle.Fill>
+                                        <RadialGradientBrush Center="0,0" RadiusX="0.9" RadiusY="1.4" GradientOrigin="0,0">
+                                            <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0" />
+                                            <GradientStop Color="Transparent" Offset="0.6" />
+                                        </RadialGradientBrush>
+                                    </Rectangle.Fill>
+                                </Rectangle>
+                                <Grid Padding="16,14,16,14" ColumnSpacing="18">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="RankText" VerticalAlignment="Center" FontFamily="Segoe UI Variable Display"
+                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" AutomationProperties.Name="Your rank">
+                                        <Run Text="#" FontSize="26" FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorTertiaryBrush}" /><Run x:Name="RankNumber" Text="–" FontSize="58" FontWeight="SemiBold" />
+                                    </TextBlock>
+                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock x:Name="RankCaption" Style="{StaticResource Eyebrow}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock x:Name="RankName" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <Border x:Name="HiddenChip" Visibility="Collapsed" CornerRadius="9" Padding="7,1,8,1" BorderThickness="1"
+                                                    VerticalAlignment="Center" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <FontIcon Glyph="&#xED1A;" FontSize="11" />
+                                                    <TextBlock Text="Hidden" FontSize="11" />
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Margin="0,2,0,0">
+                                            <Run x:Name="TokensNumber" FontSize="22" FontWeight="SemiBold" FontFamily="Segoe UI Variable Display" /><Run x:Name="TokensUnit" Text=" tokens" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </TextBlock>
+                                        <Grid x:Name="RankMix" Height="6" Margin="0,8,0,0" ColumnSpacing="2" />
+                                        <StackPanel x:Name="RankLegend" Orientation="Horizontal" Spacing="12" Margin="0,6,0,0" />
+                                        <StackPanel x:Name="GapLine" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                                            <FontIcon Glyph="&#xE74A;" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock x:Name="GapText" Style="{StaticResource Secondary}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <Grid x:Name="Podium" ColumnSpacing="8" VerticalAlignment="Bottom">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="1.08*" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="RankText" Text="–" Style="{StaticResource TitleLargeTextBlockStyle}"
-                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                <TextBlock x:Name="RankCaption" Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBlock x:Name="TokensText" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                                <TextBlock x:Name="GapText" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
                         </Grid>
-                    </Border>
 
-                    <TextBlock x:Name="BoardNote" Grid.Row="2" Visibility="Collapsed" TextWrapping="Wrap"
-                               Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                        <StackPanel x:Name="Standings" />
 
-                    <Grid Grid.Row="3">
-                        <ScrollViewer>
-                            <StackPanel x:Name="Standings" Spacing="2" />
-                        </ScrollViewer>
-                        <StackPanel x:Name="BoardStatus" Spacing="10" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                        <StackPanel x:Name="BoardStatus" Spacing="10" Margin="0,28,0,0" HorizontalAlignment="Center" Visibility="Collapsed">
                             <ProgressRing x:Name="BoardBusy" IsActive="False" Width="28" Height="28" />
                             <TextBlock x:Name="BoardStatusText" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="320"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
-                    </Grid>
-                </Grid>
-
-                <ScrollViewer x:Name="MembershipView" Visibility="Collapsed">
-                    <StackPanel Padding="24,12,24,24" Spacing="20">
-                        <StackPanel Spacing="2">
-                            <TextBlock x:Name="MemberName" Style="{StaticResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock x:Name="UploadText" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-
-                        <ToggleSwitch x:Name="VisibleSwitch" Header="Show me on the board" OnContent="Shown" OffContent="Hidden"
-                                      Toggled="OnVisibleToggled" />
-
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="Share" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock Text="Turning a provider off stops new uploads for it; days already uploaded stay until you leave."
-                                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <StackPanel x:Name="MemberProviders" Spacing="0" />
-                        </StackPanel>
-
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Upload" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                <Button x:Name="UploadButton" Content="Upload now" Click="OnUploadNow" />
-                                <ProgressRing x:Name="UploadBusy" IsActive="False" Width="20" Height="20" />
-                            </StackPanel>
-                        </StackPanel>
-
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Leave the leaderboard" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock Text="Deletes your username and every uploaded day from the server, then this PC's key."
-                                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <Button x:Name="LeaveButton" Content="Leave and delete my data…" Click="OnLeave" />
-                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
+                <Border x:Name="PinnedYou" VerticalAlignment="Bottom" Margin="24,0,24,8" CornerRadius="6" Visibility="Collapsed"
+                        Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}" BorderThickness="1"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" />
             </Grid>
-        </NavigationView>
+
+            <Grid Grid.Row="4" Padding="24,8,14,8" ColumnSpacing="8" BorderThickness="0,1,0,0"
+                  BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <FontIcon x:Name="UploadIcon" Glyph="&#xE930;" FontSize="14" VerticalAlignment="Center" />
+                <TextBlock x:Name="UploadStatus" Grid.Column="1" Style="{StaticResource Secondary}" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                <ProgressRing x:Name="UploadBusy" Grid.Column="2" IsActive="False" Width="16" Height="16" />
+                <HyperlinkButton x:Name="UploadLink" Grid.Column="3" Content="Upload now" Click="OnUploadNow" Padding="8,4" />
+            </Grid>
+        </Grid>
+
+        <!-- 3 · Settings -->
+        <Grid x:Name="SettingsPage" Grid.Row="2" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" Spacing="6" Padding="14,2,24,10">
+                <Button Style="{StaticResource IconButton}" Click="OnCloseSettings" ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
+                    <FontIcon Glyph="&#xE72B;" FontSize="16" />
+                </Button>
+                <TextBlock Text="Settings" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center" />
+            </StackPanel>
+            <ScrollViewer Grid.Row="1">
+                <StackPanel Padding="24,0,24,24" Spacing="2">
+                    <Border Style="{StaticResource Card}" Padding="16,14">
+                        <StackPanel Orientation="Horizontal" Spacing="14">
+                            <Grid Width="48" Height="48">
+                                <Ellipse x:Name="ProfileAvatar" />
+                                <TextBlock x:Name="ProfileInitial" FontSize="20" FontWeight="SemiBold" Foreground="#1B1A19"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock x:Name="ProfileName" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock x:Name="ProfileDevice" Style="{StaticResource Tertiary}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE890;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Show me on the board" />
+                                <TextBlock Text="Hidden, you still see your own place; no one else sees you." Style="{StaticResource Tertiary}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="VisibleSwitch" Grid.Column="2" OnContent="On" OffContent="Off" MinWidth="0"
+                                          Toggled="OnVisibleToggled" AutomationProperties.Name="Show me on the board" />
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="Sharing" Style="{StaticResource GroupTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE72D;" FontSize="18" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="Providers" />
+                                    <TextBlock Text="Turning one off stops new uploads for it; days already sent stay until you leave." Style="{StaticResource Tertiary}" />
+                                </StackPanel>
+                            </Grid>
+                            <StackPanel x:Name="MemberProviders" />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="Uploads" Style="{StaticResource GroupTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE753;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Every hour while you're signed in" />
+                                <TextBlock x:Name="UploadDetail" Style="{StaticResource Tertiary}" />
+                            </StackPanel>
+                            <Button x:Name="UploadButton" Grid.Column="2" Content="Upload now" Click="OnUploadNow" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="Your data" Style="{StaticResource GroupTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE896;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Export my data" />
+                                <TextBlock Text="Everything the server holds about you, as JSON." Style="{StaticResource Tertiary}" />
+                            </StackPanel>
+                            <Button x:Name="ExportButton" Grid.Column="2" Content="Export…" Click="OnExport" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE89B;" FontSize="18" VerticalAlignment="Center" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Leave the leaderboard" />
+                                <TextBlock Text="Deletes your name and every uploaded day from the server, then this PC's key." Style="{StaticResource Tertiary}" />
+                            </StackPanel>
+                            <Button x:Name="LeaveButton" Grid.Column="2" Content="Leave…" Click="OnLeave" VerticalAlignment="Center"
+                                    Foreground="{ThemeResource SystemFillColorCriticalBrush}" AutomationProperties.Name="Leave and delete my data" />
+                        </Grid>
+                    </Border>
+
+                    <TextBlock x:Name="VersionText" Style="{StaticResource Tertiary}" HorizontalAlignment="Center" Margin="0,18,0,0" />
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
     </Grid>
 </Window>

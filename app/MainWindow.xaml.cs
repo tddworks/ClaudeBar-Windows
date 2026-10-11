@@ -1,16 +1,22 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Graphics;
+using Windows.Storage.Pickers;
+using Windows.UI;
 
 namespace ClaudeBar;
 
@@ -20,25 +26,44 @@ public sealed partial class MainWindow : Window
     /// is offered only for a name it would take.
     private static readonly Regex UsernameRule = new("^[A-Za-z0-9_-]{3,20}$");
 
+    /// A provider as the app shows it, with its colour in each theme.
+    private sealed record Provider(string Id, string Name, string Light, string Dark);
+
+    /// One member of a board, as `/board` and the C interface send it.
+    private sealed record Member(int Rank, string Name, long Total, Dictionary<string, long> ByProvider, bool IsYou);
+
     private readonly DispatcherQueueTimer _pump;
+    private List<Provider> _providers = new();
+    private JsonObject? _state;
+    private JsonObject? _preview;
     private string _period = "7d";
+    private string _provider = "";
     private bool _shown;
     private bool _joining;
+    private bool _uploading;
+    private bool _settingsOpen;
     /// True while the window sets its own switches, so their events don't call back.
     private bool _showing;
-    /// Counts board reads, so an answer for a period no longer picked is dropped.
+    /// Counts board reads, so an answer for a board no longer picked is dropped.
     private int _boardRead;
+    /// Your row in the list, to pin it at the bottom while it's scrolled away.
+    private FrameworkElement? _youRow;
 
     public MainWindow()
     {
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleBarArea);
+        AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "ClaudeBar.ico"));
         Place();
+        BuildMiniPodium();
         // Swift's main actor runs on this UI thread only when it drains Swift's main queue.
         _pump = DispatcherQueue.CreateTimer();
         _pump.Interval = TimeSpan.FromMilliseconds(16);
         _pump.Tick += (_, _) => Native.cbw_drain_main_queue();
         _pump.Start();
         Activated += OnActivated;
+        Root.ActualThemeChanged += (_, _) => { BuildMiniPodium(); BuildPills(); if (BoardPage.Visibility == Visibility.Visible) _ = LoadBoard(keepList: false); };
     }
 
     /// 480 × 760 effective pixels, centred, never taller than the work area:
@@ -62,113 +87,88 @@ public sealed partial class MainWindow : Window
         await Guarded(async () => Show(await Swift.State()));
     }
 
-    // MARK: - Showing
+    // MARK: - Pages
 
     private void Show(JsonObject reply)
     {
         if (reply["error"] is JsonNode error) Tell(error.GetValue<string>(), InfoBarSeverity.Error);
         if (reply["state"] is not JsonObject state) return;
+        _state = state;
+        _providers = (state["providers"]?.AsArray() ?? new JsonArray()).Select(provider => new Provider(
+            provider!["id"]!.GetValue<string>(), provider["name"]!.GetValue<string>(),
+            provider["light"]?.GetValue<string>() ?? "#8A8A8A", provider["dark"]?.GetValue<string>() ?? "#8A8A8A")).ToList();
+        VersionText.Text = $"ClaudeBar for Windows {state["version"]}";
         var joined = state["joined"]?.GetValue<bool>() == true;
-        Caption.Text = $"{state["label"]} · ClaudeBar for Windows {state["version"]}";
-        JoinPanel.Visibility = joined ? Visibility.Collapsed : Visibility.Visible;
-        MemberNav.Visibility = joined ? Visibility.Visible : Visibility.Collapsed;
-        if (joined)
+        if (!joined)
         {
-            ShowMember(state);
-            if (!Uploads.IsScheduled && !Uploads.Schedule())
-                Tell("The hourly upload couldn't be set up. Use Upload now until it is.", InfoBarSeverity.Warning);
-            MemberNav.SelectedItem ??= BoardItem;
-            _ = LoadBoard(keepList: Standings.Children.Count > 0);
-        }
-        else
-        {
+            _settingsOpen = false;
+            ShowPage(JoinPage);
             Uploads.Unschedule();
             Standings.Children.Clear();
-            MemberNav.SelectedItem = null;
+            Podium.Children.Clear();
             _ = Guarded(LoadPreview);
+            return;
         }
+        ShowPage(_settingsOpen ? SettingsPage : BoardPage);
+        if (!Uploads.IsScheduled && !Uploads.Schedule())
+            Tell("The hourly upload couldn't be set up. Use Upload now until it is.", InfoBarSeverity.Warning);
+        if (Pills.Children.Count == 0) BuildPills();
+        ShowUploadStatus(state);
+        ShowSettings(state);
+        _ = LoadBoard(keepList: Standings.Children.Count > 0);
     }
 
-    private void ShowMember(JsonObject state)
+    private void ShowPage(FrameworkElement page)
     {
-        _showing = true;
-        try
-        {
-            MemberName.Text = $"@{state["username"]}";
-            var uploaded = state["lastUpload"] is JsonNode at
-                ? $"Uploaded {Ago(DateTimeOffset.Parse(at.GetValue<string>(), CultureInfo.InvariantCulture))}"
-                : "Not uploaded yet";
-            var refused = state["refused"]?.GetValue<int>() ?? 0;
-            UploadText.Text = $"{uploaded} · hourly"
-                + (refused > 0 ? $" · {Count(refused, "day")} refused, sent again with each upload" : "");
-            VisibleSwitch.IsOn = state["visible"]?.GetValue<bool>() == true;
-            MemberProviders.Children.Clear();
-            foreach (var provider in Providers(state)) MemberProviders.Children.Add(ProviderRow(provider));
-        }
-        finally { _showing = false; }
+        foreach (var each in new FrameworkElement[] { JoinPage, BoardPage, SettingsPage })
+            each.Visibility = each == page ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// A provider and its switch on one line, the switch named for screen readers.
-    private Grid ProviderRow((string Id, string Name, bool Shared) provider)
+    private void OnOpenSettings(object sender, RoutedEventArgs e)
     {
-        var row = new Grid { MinHeight = 40 };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var name = new TextBlock { Text = provider.Name, VerticalAlignment = VerticalAlignment.Center };
-        var toggle = new ToggleSwitch
-        {
-            IsOn = provider.Shared, Tag = provider.Id, OnContent = null, OffContent = null, MinWidth = 0,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        AutomationProperties.SetName(toggle, $"Share {provider.Name}");
-        toggle.Toggled += OnSharingToggled;
-        Grid.SetColumn(toggle, 1);
-        row.Children.Add(name);
-        row.Children.Add(toggle);
-        return row;
+        _settingsOpen = true;
+        ShowPage(SettingsPage);
+        _ = Guarded(LoadWeek);
     }
 
-    private async Task LoadPreview()
+    private void OnCloseSettings(object sender, RoutedEventArgs e)
     {
-        var reply = await Swift.Preview();
-        JoinProviders.Children.Clear();
-        foreach (var provider in reply["providers"]?.AsArray() ?? new JsonArray())
-        {
-            var tokens = provider!["tokens"]!.GetValue<long>();
-            var days = provider["days"]!.GetValue<int>();
-            var box = new CheckBox
-            {
-                Content = $"{provider["name"]} · " + (tokens > 0 ? $"{Tokens(tokens)} tokens on {Count(days, "day")}" : "no tokens yet"),
-                IsChecked = tokens > 0,
-                Tag = provider["id"]!.GetValue<string>(),
-            };
-            box.Checked += (_, _) => UpdateJoinButton();
-            box.Unchecked += (_, _) => UpdateJoinButton();
-            JoinProviders.Children.Add(box);
-        }
-        UpdateJoinButton();
+        _settingsOpen = false;
+        ShowPage(BoardPage);
     }
 
-    /// Reads the board for the picked period. A new period starts from an empty
-    /// list that says it is loading; a refresh keeps the list until the answer.
+    // MARK: - Board
+
+    /// Reads the board for the picked period and provider. A new board starts
+    /// from an empty list that says it is loading; a refresh keeps the list
+    /// until the answer, and a failed one keeps it and says it couldn't update.
     private async Task LoadBoard(bool keepList)
     {
         var read = ++_boardRead;
         var period = _period;
+        var provider = _provider;
+        BoardSubtitle.Text = $"{(provider == "" ? "All providers" : NameOf(provider))} · {PeriodPhrase(period)}";
         RankCaption.Text = $"YOUR RANK · {PeriodName(period).ToUpperInvariant()}";
         RefreshButton.IsEnabled = false;
         if (!keepList)
         {
             Standings.Children.Clear();
-            RankText.Text = "–";
-            TokensText.Text = "Loading…";
-            GapText.Text = "";
+            Podium.Children.Clear();
+            _youRow = null;
+            PinnedYou.Visibility = Visibility.Collapsed;
+            RankNumber.Text = "–";
+            TokensNumber.Text = "Loading…";
+            TokensUnit.Text = "";
+            RankMix.Children.Clear();
+            RankMix.ColumnDefinitions.Clear();
+            RankLegend.Children.Clear();
+            GapLine.Visibility = Visibility.Collapsed;
             BoardNote.Visibility = Visibility.Collapsed;
             ShowBoardStatus("Loading the board…", busy: true);
         }
 
         JsonObject reply;
-        try { reply = await Swift.Board(period, ""); }
+        try { reply = await Swift.Board(period, provider); }
         catch (Exception failure) { reply = new JsonObject { ["error"] = failure.Message }; }
         if (read != _boardRead) return;
         RefreshButton.IsEnabled = true;
@@ -177,7 +177,7 @@ public sealed partial class MainWindow : Window
         {
             if (Standings.Children.Count == 0)
             {
-                TokensText.Text = "–";
+                TokensNumber.Text = "–";
                 ShowBoardStatus($"Couldn't load the board. {error.GetValue<string>()}", busy: false);
             }
             else
@@ -189,48 +189,180 @@ public sealed partial class MainWindow : Window
         }
 
         BoardNote.Visibility = Visibility.Collapsed;
-        var members = (reply["members"]?.AsArray() ?? new JsonArray())
-            .Select(member => (Rank: member!["rank"]!.GetValue<int>(), Name: member["username"]!.GetValue<string>(),
-                               Total: member["total"]!.GetValue<long>(), IsYou: member["you"]?.GetValue<bool>() == true))
-            .ToList();
-        Standings.Children.Clear();
-        foreach (var member in members) Standings.Children.Add(Row(member.Rank, member.Name, member.Total, member.IsYou));
+        var members = (reply["members"]?.AsArray() ?? new JsonArray()).Select(member => new Member(
+            member!["rank"]!.GetValue<int>(), member["username"]!.GetValue<string>(), member["total"]!.GetValue<long>(),
+            Mix(member["byProvider"]), member["you"]?.GetValue<bool>() == true)).ToList();
+        var hidden = reply["state"]?["visible"]?.GetValue<bool>() == false;
+        ShowRank(reply["you"] as JsonObject, members, hidden);
+        ShowStandings(members);
         if (members.Count == 0) ShowBoardStatus("No one is on this board yet.", busy: false);
         else BoardStatus.Visibility = Visibility.Collapsed;
+        // Laid out first, so the pin can tell where your row is.
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, UpdatePinnedYou);
+    }
 
-        var hidden = reply["state"]?["visible"]?.GetValue<bool>() == false;
-        if (reply["you"] is JsonObject you)
+    private void ShowRank(JsonObject? you, List<Member> members, bool hidden)
+    {
+        RankName.Text = $"@{_state?["username"]}";
+        HiddenChip.Visibility = hidden ? Visibility.Visible : Visibility.Collapsed;
+        RankMix.Children.Clear();
+        RankMix.ColumnDefinitions.Clear();
+        RankLegend.Children.Clear();
+        if (you is null)
         {
-            var rank = you["rank"]!.GetValue<int>();
-            var total = you["total"]!.GetValue<long>();
-            RankText.Text = $"#{rank}";
-            TokensText.Text = $"{Tokens(total)} tokens";
-            var lines = new List<string>();
-            if (Gap(rank, total, members) is string gap) lines.Add(gap);
-            // A hidden member is still ranked for themselves (design §4), just
-            // absent from the list everyone reads.
-            if (hidden) lines.Add("Hidden: only you see this place.");
-            GapText.Text = string.Join("\n", lines);
+            RankNumber.Text = "–";
+            TokensNumber.Text = "Nothing uploaded";
+            TokensUnit.Text = " for this board yet";
+            GapLine.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var rank = you["rank"]!.GetValue<int>();
+        var total = you["total"]!.GetValue<long>();
+        var mix = Mix(you["byProvider"]);
+        RankNumber.Text = rank.ToString(CultureInfo.InvariantCulture);
+        TokensNumber.Text = Tokens(total);
+        TokensUnit.Text = " tokens";
+        FillMix(RankMix, mix);
+        foreach (var (id, share) in Shares(mix).Take(3))
+        {
+            var item = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+            item.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = Brush(ColorOf(id)), VerticalAlignment = VerticalAlignment.Center });
+            item.Children.Add(new TextBlock { Text = $"{NameOf(id)} {share}%", FontSize = 11, Foreground = Resource("TextFillColorTertiaryBrush") });
+            RankLegend.Children.Add(item);
+        }
+        var lines = new List<string>();
+        if (Gap(rank, total, members) is string gap) lines.Add(gap);
+        // A hidden member is still ranked for themselves (design §4), just absent from the list.
+        if (hidden) lines.Add("only you see this place");
+        GapText.Text = string.Join(" · ", lines);
+        GapLine.Visibility = lines.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// The top three on a podium, second and third either side of first, then the rest.
+    private void ShowStandings(List<Member> members)
+    {
+        Standings.Children.Clear();
+        Podium.Children.Clear();
+        _youRow = null;
+        _youMember = null;
+        PinnedYou.Child = null;
+        var podium = members.Count >= 3 ? members.Take(3).ToList() : new List<Member>();
+        foreach (var (member, column) in podium.Zip(new[] { 1, 0, 2 }))
+        {
+            var step = Step(member, first: column == 1);
+            Grid.SetColumn(step, column);
+            Podium.Children.Add(step);
+        }
+        Podium.Visibility = podium.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var member in members.Skip(podium.Count))
+        {
+            var row = Row(member);
+            if (member.IsYou) (_youRow, _youMember) = (row, member);
+            Standings.Children.Add(row);
+        }
+    }
+
+    private FrameworkElement Step(Member member, bool first)
+    {
+        var medal = member.Rank switch { 1 => Medal("#F2C14E", "#D9A21B"), 2 => Medal("#C3CCD6", "#9AA5B1"), _ => Medal("#D9925F", "#C0723D") };
+        var border = new Border
+        {
+            CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1),
+            Padding = first ? new Thickness(6, 18, 6, 14) : new Thickness(6, 12, 6, 10),
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Background = first
+                ? new LinearGradientBrush
+                {
+                    StartPoint = new Windows.Foundation.Point(0, 0), EndPoint = new Windows.Foundation.Point(0, 1),
+                    GradientStops = { new GradientStop { Color = WithAlpha(medal, 0x30), Offset = 0 }, new GradientStop { Color = Colors.Transparent, Offset = 0.75 } },
+                }
+                : Resource("CardBackgroundFillColorDefaultBrush"),
+            BorderBrush = first ? new SolidColorBrush(WithAlpha(medal, 0x70)) : Resource("CardStrokeColorDefaultBrush"),
+        };
+        if (member.IsYou) border.BorderBrush = Resource("AccentFillColorDefaultBrush");
+        var stack = new StackPanel { Spacing = 2 };
+        var size = first ? 44 : 36;
+        var avatar = Avatar(member.Name, size);
+        var badge = new Border
+        {
+            Width = 18, Height = 18, CornerRadius = new CornerRadius(9), Background = new SolidColorBrush(medal),
+            BorderThickness = new Thickness(2), BorderBrush = Resource("SolidBackgroundFillColorBaseBrush"),
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, -4, -3),
+            Child = new TextBlock { Text = $"{member.Rank}", FontSize = 10, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromArgb(255, 0x1B, 0x1A, 0x19)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+        };
+        var avatarGrid = new Grid { Width = size, Height = size, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 6) };
+        avatarGrid.Children.Add(avatar);
+        avatarGrid.Children.Add(badge);
+        stack.Children.Add(avatarGrid);
+        stack.Children.Add(new TextBlock { Text = $"@{member.Name}", FontSize = 12, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center });
+        stack.Children.Add(new TextBlock { Text = Tokens(member.Total), FontSize = 15, FontWeight = FontWeights.SemiBold, FontFamily = new FontFamily("Segoe UI Variable Display"), HorizontalAlignment = HorizontalAlignment.Center });
+        var mix = new Grid { Height = 4, ColumnSpacing = 2, Margin = new Thickness(8, 8, 8, 0) };
+        FillMix(mix, member.ByProvider);
+        stack.Children.Add(mix);
+        border.Child = stack;
+        AutomationProperties.SetName(border, $"Rank {member.Rank}, {member.Name}, {Tokens(member.Total)} tokens" + (member.IsYou ? ", you" : ""));
+        return border;
+    }
+
+    /// One member of the list: rank, avatar, name, mix and tokens; your row set apart.
+    private Grid Row(Member member)
+    {
+        var row = new Grid { Height = 44, ColumnSpacing = 10, Padding = new Thickness(10, 0, 10, 0), CornerRadius = new CornerRadius(6) };
+        foreach (var width in new[] { new GridLength(34), new GridLength(28), new GridLength(1, GridUnitType.Star), new GridLength(64), new GridLength(62) })
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = width });
+        var rank = new TextBlock { Text = $"#{member.Rank}", FontSize = 13, Foreground = Resource("TextFillColorTertiaryBrush"), VerticalAlignment = VerticalAlignment.Center };
+        var avatar = Avatar(member.Name, 28);
+        var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        name.Children.Add(new TextBlock { Text = $"@{member.Name}", FontWeight = member.IsYou ? FontWeights.SemiBold : FontWeights.Normal, TextTrimming = TextTrimming.CharacterEllipsis });
+        if (member.IsYou) name.Children.Add(new TextBlock { Text = "YOU", FontSize = 10, FontWeight = FontWeights.Bold, CharacterSpacing = 50, Foreground = Resource("AccentTextFillColorPrimaryBrush"), VerticalAlignment = VerticalAlignment.Center });
+        var mix = new Grid { Height = 4, ColumnSpacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        FillMix(mix, member.ByProvider);
+        var tokens = new TextBlock { Text = Tokens(member.Total), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        var cells = new FrameworkElement[] { rank, avatar, name, mix, tokens };
+        for (var column = 0; column < cells.Length; column++)
+        {
+            Grid.SetColumn(cells[column], column);
+            row.Children.Add(cells[column]);
+        }
+        if (member.IsYou)
+        {
+            row.Background = new SolidColorBrush(WithAlpha(AccentColor(), 0x1F));
+            var bar = new Rectangle { Width = 3, HorizontalAlignment = HorizontalAlignment.Left, Fill = Resource("AccentFillColorDefaultBrush"), Margin = new Thickness(-10, 8, 0, 8), RadiusX = 1.5, RadiusY = 1.5 };
+            Grid.SetColumnSpan(bar, 5);
+            row.Children.Add(bar);
         }
         else
         {
-            RankText.Text = "–";
-            TokensText.Text = "Nothing uploaded for this board yet.";
-            GapText.Text = "";
+            row.PointerEntered += (_, _) => row.Background = Resource("SubtleFillColorSecondaryBrush");
+            row.PointerExited += (_, _) => row.Background = null;
         }
+        AutomationProperties.SetName(row, $"Rank {member.Rank}, {member.Name}, {Tokens(member.Total)} tokens" + (member.IsYou ? ", you" : ""));
+        return row;
     }
 
-    /// How far to the place above, or how far ahead of the one below, as the Mac says it.
-    private static string? Gap(int rank, long total, List<(int Rank, string Name, long Total, bool IsYou)> members)
+    private void OnBoardScrolled(object? sender, ScrollViewerViewChangedEventArgs e) => UpdatePinnedYou();
+
+    /// Your row, pinned at the bottom of the board while the list has scrolled it away, as on the Mac.
+    private void UpdatePinnedYou()
     {
-        if (rank > 1)
+        if (_youRow is null || _youMember is null || _youRow.ActualHeight == 0)
         {
-            var above = members.FirstOrDefault(member => member.Rank == rank - 1 && !member.IsYou);
-            return above.Name is null || above.Total < total ? null : $"{Tokens(above.Total - total)} behind #{above.Rank}";
+            PinnedYou.Visibility = Visibility.Collapsed;
+            return;
         }
-        var next = members.FirstOrDefault(member => member.Rank == 2 && !member.IsYou);
-        return next.Name is null || next.Total > total ? "Top of the board" : $"{Tokens(total - next.Total)} ahead of #2";
+        var top = _youRow.TransformToVisual(BoardScroll).TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+        var inView = top >= 0 && top + _youRow.ActualHeight <= BoardScroll.ViewportHeight;
+        if (inView)
+        {
+            PinnedYou.Visibility = Visibility.Collapsed;
+            return;
+        }
+        PinnedYou.Child ??= Row(_youMember);
+        PinnedYou.Visibility = Visibility.Visible;
     }
+
+    /// You in the list below the podium, and your row there.
+    private Member? _youMember;
 
     private void ShowBoardStatus(string text, bool busy)
     {
@@ -240,71 +372,124 @@ public sealed partial class MainWindow : Window
         BoardStatus.Visibility = Visibility.Visible;
     }
 
-    /// One member of a board: rank, name and tokens, the person's own row set apart.
-    private static Grid Row(int rank, string name, long total, bool isYou)
+    private void BuildPills()
     {
-        var weight = isYou ? FontWeights.SemiBold : FontWeights.Normal;
-        var row = new Grid { ColumnSpacing = 12, Padding = new Thickness(8, 6, 8, 6), CornerRadius = new CornerRadius(4) };
-        if (isYou && Application.Current.Resources.TryGetValue("SubtleFillColorSecondaryBrush", out var fill)) row.Background = fill as Brush;
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var cells = new[]
+        Pills.Children.Clear();
+        Pills.Children.Add(Pill("", "All", null));
+        foreach (var provider in _providers) Pills.Children.Add(Pill(provider.Id, provider.Name, ColorOf(provider.Id)));
+    }
+
+    private ToggleButton Pill(string id, string name, Color? color)
+    {
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        if (color is Color dot) content.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = Brush(dot), VerticalAlignment = VerticalAlignment.Center });
+        content.Children.Add(new TextBlock { Text = name, FontSize = 13 });
+        var pill = new ToggleButton { Content = content, IsChecked = id == _provider, CornerRadius = new CornerRadius(14), Padding = new Thickness(11, 4, 11, 5), Tag = id };
+        AutomationProperties.SetName(pill, name);
+        pill.Click += async (_, _) =>
         {
-            new TextBlock { Text = $"#{rank}", FontWeight = weight, Opacity = 0.7 },
-            new TextBlock { Text = name, FontWeight = weight, TextTrimming = TextTrimming.CharacterEllipsis },
-            new TextBlock { Text = Tokens(total), FontWeight = weight, HorizontalAlignment = HorizontalAlignment.Right },
+            _provider = id;
+            foreach (var each in Pills.Children.OfType<ToggleButton>()) each.IsChecked = (string)each.Tag == id;
+            await LoadBoard(keepList: false);
         };
+        return pill;
+    }
+
+    private async void OnPeriodChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs e)
+    {
+        if (sender.SelectedItem?.Tag is not string period) return;
+        _period = period;
+        if (BoardPage.Visibility == Visibility.Visible) await LoadBoard(keepList: false);
+    }
+
+    private async void OnRefresh(object sender, RoutedEventArgs e) => await Guarded(async () => Show(await Swift.State()));
+
+    // MARK: - Uploads
+
+    private void ShowUploadStatus(JsonObject state)
+    {
+        var refused = state["refused"]?.GetValue<int>() ?? 0;
+        DateTimeOffset? last = state["lastUpload"] is JsonNode at ? DateTimeOffset.Parse(at.GetValue<string>(), CultureInfo.InvariantCulture) : null;
+        var stale = last is { } uploadedAt && DateTimeOffset.Now - uploadedAt > TimeSpan.FromDays(1);
+        var text = last is { } uploaded ? $"Uploaded {Ago(uploaded)} · every hour" : "Not uploaded yet · every hour";
+        if (refused > 0) text += $" · {Count(refused, "day")} refused, sent again each hour";
+        UploadStatus.Text = text;
+        UploadIcon.Glyph = stale || last is null ? "\uE7BA" : "\uE930";
+        UploadIcon.Foreground = Resource(stale ? "SystemFillColorCautionBrush" : last is null ? "TextFillColorTertiaryBrush" : "SystemFillColorSuccessBrush");
+        UploadDetail.Text = (last is { } done ? $"Last upload {Ago(done)}." : "Nothing uploaded yet.") + " A missed hour is caught up next time.";
+    }
+
+    private async void OnUploadNow(object sender, RoutedEventArgs e)
+    {
+        if (_uploading) return;
+        _uploading = true;
+        UploadLink.IsEnabled = UploadButton.IsEnabled = false;
+        UploadBusy.IsActive = true;
+        await Guarded(async () =>
+        {
+            var reply = await Swift.UploadNow();
+            if (reply["error"] is null) Tell("Uploaded.", InfoBarSeverity.Success);
+            Show(reply);
+        });
+        UploadBusy.IsActive = false;
+        UploadLink.IsEnabled = UploadButton.IsEnabled = true;
+        _uploading = false;
+    }
+
+    // MARK: - Settings
+
+    private void ShowSettings(JsonObject state)
+    {
+        _showing = true;
+        try
+        {
+            var name = state["username"]?.GetValue<string>() ?? "";
+            ProfileName.Text = $"@{name}";
+            ProfileInitial.Text = name.Length > 0 ? name[..1].ToUpperInvariant() : "";
+            ProfileAvatar.Fill = new SolidColorBrush(AvatarColor(name));
+            ProfileDevice.Text = $"This PC · {state["label"]}";
+            VisibleSwitch.IsOn = state["visible"]?.GetValue<bool>() == true;
+            MemberProviders.Children.Clear();
+            var shared = (state["providers"]?.AsArray() ?? new JsonArray()).ToDictionary(p => p!["id"]!.GetValue<string>(), p => p!["shared"]!.GetValue<bool>());
+            foreach (var provider in _providers) MemberProviders.Children.Add(ProviderSwitch(provider, shared.GetValueOrDefault(provider.Id)));
+        }
+        finally { _showing = false; }
+    }
+
+    /// A provider's line in Settings: its colour, name, what it sent this week, and its switch.
+    private Grid ProviderSwitch(Provider provider, bool shared)
+    {
+        var week = WeekTokens(provider.Id);
+        var none = week == 0 && !shared;
+        var row = new Grid { Padding = new Thickness(48, 8, 16, 8), ColumnSpacing = 12, BorderThickness = new Thickness(0, 1, 0, 0), BorderBrush = Resource("DividerStrokeColorDefaultBrush"), Opacity = none ? 0.6 : 1 };
+        foreach (var width in new[] { GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto })
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = width });
+        var dot = new Ellipse { Width = 10, Height = 10, Fill = Brush(ColorOf(provider.Id)), VerticalAlignment = VerticalAlignment.Center };
+        var name = new TextBlock { Text = provider.Name, VerticalAlignment = VerticalAlignment.Center };
+        var amount = new TextBlock
+        {
+            Text = week is null ? "" : week > 0 ? $"{Tokens(week.Value)} this week" : "No tokens on this PC",
+            Style = (Style)Root.Resources["Tertiary"], VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap,
+        };
+        var toggle = new ToggleSwitch { IsOn = shared, Tag = provider.Id, OnContent = null, OffContent = null, MinWidth = 0, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, -12, 0) };
+        AutomationProperties.SetName(toggle, $"Share {provider.Name}");
+        toggle.Toggled += OnSharingToggled;
+        var cells = new FrameworkElement[] { dot, name, amount, toggle };
         for (var column = 0; column < cells.Length; column++)
         {
             Grid.SetColumn(cells[column], column);
             row.Children.Add(cells[column]);
         }
-        AutomationProperties.SetName(row, $"Rank {rank}, {name}, {Tokens(total)} tokens" + (isYou ? ", you" : ""));
         return row;
     }
 
-    // MARK: - Acting
+    private long? WeekTokens(string id) =>
+        (_preview?["providers"]?.AsArray() ?? new JsonArray()).FirstOrDefault(p => p!["id"]!.GetValue<string>() == id)?["week"]?.GetValue<long>();
 
-    private void OnJoinInputChanged(object sender, TextChangedEventArgs e) => UpdateJoinButton();
-
-    private void UpdateJoinButton() =>
-        JoinButton.IsEnabled = !_joining && UsernameRule.IsMatch(UsernameBox.Text.Trim())
-                               && JoinProviders.Children.OfType<CheckBox>().Any(box => box.IsChecked == true);
-
-    private void OnUsernameKeyDown(object sender, KeyRoutedEventArgs e)
+    private async Task LoadWeek()
     {
-        if (e.Key != Windows.System.VirtualKey.Enter || !JoinButton.IsEnabled) return;
-        e.Handled = true;
-        OnJoin(sender, e);
-    }
-
-    private async void OnJoin(object sender, RoutedEventArgs e)
-    {
-        var sharing = JoinProviders.Children.OfType<CheckBox>().Where(box => box.IsChecked == true).Select(box => (string)box.Tag).ToList();
-        _joining = true;
-        UpdateJoinButton();
-        JoinBusy.IsActive = true;
-        await Guarded(async () =>
-        {
-            var reply = await Swift.Join(UsernameBox.Text.Trim(), sharing);
-            if (reply["error"] is null)
-            {
-                Notice.IsOpen = false;
-                if (!Uploads.Schedule()) Tell("Joined, but the hourly upload couldn't be set up.", InfoBarSeverity.Warning);
-            }
-            Show(reply);
-        });
-        _joining = false;
-        JoinBusy.IsActive = false;
-        UpdateJoinButton();
-    }
-
-    private void OnMemberNavChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs e)
-    {
-        var membership = (e.SelectedItem as NavigationViewItem)?.Tag as string == "membership";
-        BoardView.Visibility = membership ? Visibility.Collapsed : Visibility.Visible;
-        MembershipView.Visibility = membership ? Visibility.Visible : Visibility.Collapsed;
+        _preview = await Swift.Preview();
+        if (_state is not null) ShowSettings(_state);
     }
 
     private async void OnSharingToggled(object sender, RoutedEventArgs e)
@@ -323,18 +508,25 @@ public sealed partial class MainWindow : Window
         VisibleSwitch.IsEnabled = true;
     }
 
-    private async void OnUploadNow(object sender, RoutedEventArgs e)
+    private async void OnExport(object sender, RoutedEventArgs e)
     {
-        UploadButton.IsEnabled = false;
-        UploadBusy.IsActive = true;
+        ExportButton.IsEnabled = false;
         await Guarded(async () =>
         {
-            var reply = await Swift.UploadNow();
-            if (reply["error"] is null) Tell("Uploaded.", InfoBarSeverity.Success);
-            Show(reply);
+            var reply = await Swift.Export();
+            if (reply["error"] is JsonNode error)
+            {
+                Tell(error.GetValue<string>(), InfoBarSeverity.Error);
+                return;
+            }
+            var picker = new FileSavePicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary, SuggestedFileName = $"claudebar-leaderboard-{_state?["username"]}" };
+            picker.FileTypeChoices.Add("JSON", new List<string> { ".json" });
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            if (await picker.PickSaveFileAsync() is not { } file) return;
+            await System.IO.File.WriteAllTextAsync(file.Path, reply["export"]!.GetValue<string>(), new UTF8Encoding(false));
+            Tell($"Saved {file.Name}.", InfoBarSeverity.Success);
         });
-        UploadBusy.IsActive = false;
-        UploadButton.IsEnabled = true;
+        ExportButton.IsEnabled = true;
     }
 
     private async void OnLeave(object sender, RoutedEventArgs e)
@@ -359,20 +551,220 @@ public sealed partial class MainWindow : Window
         LeaveButton.IsEnabled = true;
     }
 
-    private async void OnPeriodChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs e)
+    // MARK: - Join
+
+    private void BuildMiniPodium()
     {
-        if (sender.SelectedItem?.Tag is not string period) return;
-        _period = period;
-        if (MemberNav.Visibility == Visibility.Visible) await LoadBoard(keepList: false);
+        MiniPodium.Children.Clear();
+        foreach (var (rank, height, light, dark) in new[] { (2, 46, "#9AA5B1", "#C3CCD6"), (1, 66, "#D9A21B", "#F2C14E"), (3, 34, "#C0723D", "#D9925F") })
+        {
+            var color = Hex(IsDark ? dark : light);
+            var column = new Grid { Width = 30, VerticalAlignment = VerticalAlignment.Bottom };
+            column.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            column.RowDefinitions.Add(new RowDefinition { Height = new GridLength(height) });
+            var badge = new Border
+            {
+                Width = 20, Height = 20, CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(color), Margin = new Thickness(0, 0, 0, 4),
+                Child = new TextBlock { Text = $"{rank}", FontSize = 11, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromArgb(255, 0x1B, 0x1A, 0x19)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+            };
+            var block = new Border { CornerRadius = new CornerRadius(6, 6, 3, 3), Background = new SolidColorBrush(WithAlpha(color, 0x99)) };
+            Grid.SetRow(block, 1);
+            column.Children.Add(badge);
+            column.Children.Add(block);
+            MiniPodium.Children.Add(column);
+        }
     }
 
-    private async void OnRefresh(object sender, RoutedEventArgs e) => await Guarded(async () => Show(await Swift.State()));
+    private async Task LoadPreview()
+    {
+        _preview = await Swift.Preview();
+        JoinProviders.Children.Clear();
+        foreach (var provider in _preview["providers"]?.AsArray() ?? new JsonArray())
+        {
+            var id = provider!["id"]!.GetValue<string>();
+            var tokens = provider["tokens"]!.GetValue<long>();
+            var days = provider["days"]!.GetValue<int>();
+            var line = new Grid { ColumnSpacing = 10 };
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            line.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = Brush(ColorOf(id)), VerticalAlignment = VerticalAlignment.Center });
+            var name = new TextBlock { Text = provider["name"]!.GetValue<string>() };
+            Grid.SetColumn(name, 1);
+            line.Children.Add(name);
+            var amount = new TextBlock { Text = tokens > 0 ? $"{Tokens(tokens)} · {Count(days, "day")}" : "No tokens on this PC", FontSize = 12, Foreground = Resource("TextFillColorSecondaryBrush"), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(amount, 2);
+            line.Children.Add(amount);
+            var box = new CheckBox
+            {
+                Content = line, IsChecked = tokens > 0, IsEnabled = tokens > 0, Tag = id,
+                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, MinWidth = 0,
+            };
+            AutomationProperties.SetName(box, $"Share {provider["name"]}");
+            box.Checked += (_, _) => UpdateJoin();
+            box.Unchecked += (_, _) => UpdateJoin();
+            JoinProviders.Children.Add(new Border { Style = (Style)Root.Resources["Card"], CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 4, 12, 4), Child = box });
+        }
+        UpdateJoin();
+    }
+
+    private IEnumerable<string> TickedProviders() =>
+        JoinProviders.Children.OfType<Border>().Select(border => border.Child).OfType<CheckBox>().Where(box => box.IsChecked == true).Select(box => (string)box.Tag);
+
+    private void OnJoinInputChanged(object sender, TextChangedEventArgs e) => UpdateJoin();
+
+    /// Join is offered for a name the server would take and at least one
+    /// provider; the payload shows exactly today's rows for what's ticked.
+    private void UpdateJoin()
+    {
+        var name = UsernameBox.Text.Trim();
+        var valid = UsernameRule.IsMatch(name);
+        UsernameOk.Visibility = valid ? Visibility.Visible : Visibility.Collapsed;
+        var ticked = TickedProviders().ToHashSet();
+        JoinButton.IsEnabled = !_joining && valid && ticked.Count > 0;
+        PayloadText.Text = Payload(valid ? name : "you", ticked);
+    }
+
+    private string Payload(string name, HashSet<string> ticked)
+    {
+        var today = _preview?["today"]?.GetValue<string>() ?? DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var rows = (_preview?["rows"]?.AsArray() ?? new JsonArray()).Where(row => ticked.Contains(row!["provider"]!.GetValue<string>())).ToList();
+        var text = new StringBuilder($"PUT /usage   signed as @{name}\n{{ \"today\": \"{today}\",\n  \"days\": [");
+        if (rows.Count == 0) text.Append(" ]");
+        foreach (var (row, index) in rows.Select((row, index) => (row!, index)))
+        {
+            text.Append(index == 0 ? "\n" : ",\n");
+            text.Append($"    {{ \"provider\": \"{row["provider"]}\",\n");
+            text.Append($"      \"day\": \"{row["day"]}\",\n");
+            text.Append($"      \"input\": {row["input"]},\n");
+            text.Append($"      \"output\": {row["output"]},\n");
+            text.Append($"      \"cacheWrite\": {row["cacheWrite"]},\n");
+            text.Append($"      \"cacheRead\": {row["cacheRead"]}");
+            if (row["unsplit"]?.GetValue<long>() is > 0) text.Append($",\n      \"unsplit\": {row["unsplit"]}");
+            text.Append(" }");
+        }
+        if (rows.Count > 0) text.Append(" ]");
+        text.Append(" }");
+        return text.ToString();
+    }
+
+    private void OnUsernameKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Enter || !JoinButton.IsEnabled) return;
+        e.Handled = true;
+        OnJoin(sender, e);
+    }
+
+    private async void OnJoin(object sender, RoutedEventArgs e)
+    {
+        var sharing = TickedProviders().ToList();
+        _joining = true;
+        UpdateJoin();
+        JoinBusy.IsActive = true;
+        await Guarded(async () =>
+        {
+            var reply = await Swift.Join(UsernameBox.Text.Trim(), sharing);
+            if (reply["error"] is null)
+            {
+                if (!Uploads.Schedule()) Tell("Joined, but the hourly upload couldn't be set up.", InfoBarSeverity.Warning);
+                else Tell("You're on the leaderboard. This PC uploads every hour while you're signed in.", InfoBarSeverity.Success);
+            }
+            Show(reply);
+        });
+        _joining = false;
+        JoinBusy.IsActive = false;
+        UpdateJoin();
+    }
 
     // MARK: - Helpers
 
-    private static IEnumerable<(string Id, string Name, bool Shared)> Providers(JsonObject state) =>
-        (state["providers"]?.AsArray() ?? new JsonArray()).Select(provider =>
-            (provider!["id"]!.GetValue<string>(), provider["name"]!.GetValue<string>(), provider["shared"]!.GetValue<bool>()));
+    private bool IsDark => Root.ActualTheme == ElementTheme.Dark;
+
+    private string NameOf(string id) => _providers.FirstOrDefault(p => p.Id == id)?.Name ?? id;
+
+    private Color ColorOf(string id) => _providers.FirstOrDefault(p => p.Id == id) is { } provider ? Hex(IsDark ? provider.Dark : provider.Light) : Color.FromArgb(255, 0x8A, 0x8A, 0x8A);
+
+    private Color Medal(string dark, string light) => Hex(IsDark ? dark : light);
+
+    private static Dictionary<string, long> Mix(JsonNode? node) =>
+        (node as JsonObject)?.ToDictionary(pair => pair.Key, pair => pair.Value?.GetValue<long>() ?? 0) ?? new Dictionary<string, long>();
+
+    /// Each provider's share of a mix in whole percent, largest first.
+    private static IEnumerable<(string Id, int Share)> Shares(Dictionary<string, long> mix)
+    {
+        var total = mix.Values.Sum();
+        return total <= 0 ? Enumerable.Empty<(string, int)>()
+            : mix.Where(pair => pair.Value > 0).OrderByDescending(pair => pair.Value).Select(pair => (pair.Key, (int)Math.Max(1, Math.Round(100.0 * pair.Value / total))));
+    }
+
+    /// A bar split by provider, in each provider's colour, in the providers' order.
+    private void FillMix(Grid bar, Dictionary<string, long> mix)
+    {
+        bar.Children.Clear();
+        bar.ColumnDefinitions.Clear();
+        var parts = _providers.Where(p => mix.GetValueOrDefault(p.Id) > 0).Select(p => (p.Id, mix[p.Id])).ToList();
+        if (parts.Count == 0) parts.Add(("", 1));
+        for (var index = 0; index < parts.Count; index++)
+        {
+            bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(parts[index].Item2, GridUnitType.Star) });
+            var fill = parts[index].Item1 == "" ? Resource("ControlStrongFillColorDisabledBrush") : Brush(ColorOf(parts[index].Item1));
+            var segment = new Rectangle { Fill = fill, RadiusX = 1.5, RadiusY = 1.5 };
+            Grid.SetColumn(segment, index);
+            bar.Children.Add(segment);
+        }
+    }
+
+    private static readonly string[] AvatarColors = { "#C9B7F5", "#FFD99A", "#A8E6CF", "#9FD3FF", "#FFC4B8", "#FFE08A", "#B5E3B0", "#D6C8FF", "#FFD1E8" };
+
+    /// A colour from the name, the same on every read; no picture is uploaded.
+    private static Color AvatarColor(string name)
+    {
+        var hash = 0;
+        foreach (var character in name) hash = (hash * 31 + char.ToLowerInvariant(character)) & 0x7FFFFFFF;
+        return Hex(AvatarColors[hash % AvatarColors.Length]);
+    }
+
+    private static Grid Avatar(string name, double size)
+    {
+        var avatar = new Grid { Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center };
+        avatar.Children.Add(new Ellipse { Fill = new SolidColorBrush(AvatarColor(name)) });
+        avatar.Children.Add(new TextBlock
+        {
+            Text = name.Length > 0 ? name[..1].ToUpperInvariant() : "?", FontSize = size * 0.42, FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromArgb(255, 0x1B, 0x1A, 0x19)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        });
+        return avatar;
+    }
+
+    /// How far to the place above, or how far ahead of the one below, as the Mac says it.
+    private static string? Gap(int rank, long total, List<Member> members)
+    {
+        if (rank > 1)
+        {
+            var above = members.FirstOrDefault(member => member.Rank == rank - 1 && !member.IsYou);
+            return above is null || above.Total < total ? null : $"{Tokens(above.Total - total)} behind #{above.Rank}";
+        }
+        var next = members.FirstOrDefault(member => member.Rank == 2 && !member.IsYou);
+        return next is null || next.Total > total ? "Top of the board" : $"{Tokens(total - next.Total)} ahead of #2";
+    }
+
+    private Brush Resource(string key) =>
+        Root.Resources.TryGetValue(key, out var local) && local is Brush own ? own
+        : Application.Current.Resources.TryGetValue(key, out var shared) && shared is Brush brush ? brush
+        : new SolidColorBrush(Colors.Gray);
+
+    private Color AccentColor() =>
+        Application.Current.Resources.TryGetValue("SystemAccentColor", out var accent) && accent is Color color ? color : Color.FromArgb(255, 0x00, 0x5F, 0xB8);
+
+    private static SolidColorBrush Brush(Color color) => new(color);
+
+    private static Color WithAlpha(Color color, byte alpha) => Color.FromArgb(alpha, color.R, color.G, color.B);
+
+    private static Color Hex(string hex)
+    {
+        var value = Convert.ToUInt32(hex.TrimStart('#'), 16);
+        return Color.FromArgb(255, (byte)(value >> 16), (byte)(value >> 8), (byte)value);
+    }
 
     /// Shows `message` above the page. A success closes itself after a few
     /// seconds, unless something else was said since; warnings and errors stay
@@ -401,6 +793,13 @@ public sealed partial class MainWindow : Window
         _ => "7 days",
     };
 
+    private static string PeriodPhrase(string period) => period switch
+    {
+        "today" => "today",
+        "30d" => "last 30 days",
+        _ => "last 7 days",
+    };
+
     private static string Count(long count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
 
     /// When something happened, in the app's own words rather than the system's
@@ -409,7 +808,7 @@ public sealed partial class MainWindow : Window
     {
         var since = DateTimeOffset.Now - at;
         if (since < TimeSpan.FromMinutes(1)) return "just now";
-        if (since < TimeSpan.FromHours(1)) return $"{Count((long)since.TotalMinutes, "minute")} ago";
+        if (since < TimeSpan.FromHours(1)) return $"{(long)since.TotalMinutes} min ago";
         if (since < TimeSpan.FromDays(1)) return $"{Count((long)since.TotalHours, "hour")} ago";
         return since < TimeSpan.FromDays(2) ? "yesterday" : $"{Count((long)since.TotalDays, "day")} ago";
     }
