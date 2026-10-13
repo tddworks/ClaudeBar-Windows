@@ -35,6 +35,10 @@ cd native; swift test   # the Swift side's tests, from a shell with the MSVC env
 
 `build.ps1` builds the Swift side with SwiftPM, stages it with the Swift runtime DLLs and ClaudeBar's provider definitions, then publishes the WinUI 3 app self-contained around them. Run `out\win-x64\ClaudeBar.exe`.
 
+PRs to `main` run this build and the Swift client tests on a fresh Windows
+x64 runner with Swift 6.3.3 and .NET 10. See [the CI check](CONTRIBUTING.md#checks-before-a-pr)
+for its scope and the equivalent local commands.
+
 ## What it keeps, and where
 
 | What | Where |
