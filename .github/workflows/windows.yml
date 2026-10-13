@@ -1,0 +1,57 @@
+name: Windows client
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client:
+    name: Build and test Windows client
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      # Match the toolchain used by ClaudeBar's Windows package CI.
+      - name: Install Swift
+        uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
+        with:
+          swift-version: swift-6.3.3-release
+          swift-build: 6.3.3-RELEASE
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Toolchain versions
+        run: |
+          swift --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # build.ps1 loads MSVC into this process's environment. Keep the tests
+      # in the same step, so SwiftPM uses that environment too.
+      - name: Build app and test Swift client
+        run: |
+          & .\build.ps1
+          if (-not $?) { exit 1 }
+          swift test --package-path native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
