@@ -311,7 +311,7 @@
 </svg>
 
 <h1>ClaudeBar for Windows · HUD</h1>
-<p class="lede">A small window you leave on screen while you code. It answers one question, <i>can I keep going, and until when</i>, for each AI tool signed in on this PC: how much of each limit is left and when it resets. It keeps out of the way: it never takes focus, hides behind full-screen apps and presentations, and shows colour only when something needs you. The main window keeps the detail and the Leaderboard; the taskbar button and notifications work with the HUD off. Sample data, made up.</p>
+<p class="lede">A small window you leave on screen while you code. It answers one question, <i>can I keep going, and until when</i>, for each AI tool signed in on this PC: how much of each limit is left and when it resets. It keeps out of the way: it never takes focus to show anything and gives it straight back when you click it, hides for full-screen apps and presentations, and shows colour only when something needs you. The main window keeps the detail and the Leaderboard, and everything the HUD offers, for the keyboard and Narrator; notifications, and the taskbar button while the window is open, work with the HUD off. Sample data, made up.</p>
 
 <!-- ============ 1 · On the desktop ============ -->
 <p class="section-label">1 · On the desktop</p>
@@ -364,7 +364,7 @@
         <div class="tray"><svg class="ico"><use href="#up"/></svg><svg class="ico"><use href="#wifi"/></svg><svg class="ico"><use href="#vol"/></svg><svg class="ico"><use href="#batt"/></svg><div class="clock num">14:05<br>2026-10-13</div></div>
       </div>
     </div>
-    <div class="caption wide"><b>The card, beside your editor.</b> Bottom-right above the taskbar by default; drag it anywhere and it snaps to the nearest corner. Each tool gets one line and one bar per limit: the <i>window</i> (5h, 7d, 1d), how much is <i>left</i>, and the time until it resets. The tick on a bar is where you'd be if you used the limit evenly; a bar ending left of its tick is burning fast, and the tool says <i>Running hot</i>. Colour appears only for a limit under 50% (amber) or 20% (red). The taskbar button carries the same colour as a dot, so the state shows even with the HUD off. Hovering the card shows its three buttons; nothing else changes size.</div>
+    <div class="caption wide"><b>The card, beside your editor.</b> Bottom-right above the taskbar by default; drag it anywhere and it snaps to the nearest corner. Each tool gets one line and one bar per limit: the <i>window</i> (5h, 7d, 1d), how much is <i>left</i>, and the time until it resets. The tick on a bar is where you'd be if you used the limit evenly; a bar ending left of its tick is burning fast, and the tool says <i>Running hot</i>. Colour appears only for a limit under 50% (amber) or 20% (red). While ClaudeBar's window is open or minimized, its taskbar button carries the same colour as a dot. Hovering the card shows its three buttons; nothing else changes size.</div>
   </div>
 </div>
 
@@ -424,7 +424,7 @@
       </div>
       <div class="foot"><span class="num">Today <b>3.4M</b> tokens · <b>#18</b> this week</span><span class="age">1m ago</span></div>
     </div></div>
-    <div class="caption"><b>All fine, pointer over it.</b> No colour but the accent. The buttons: keep on top (on), collapse to the strip, open ClaudeBar. Right-click has Refresh, Hide the HUD and Settings.</div>
+    <div class="caption"><b>All fine, pointer over it.</b> No colour but the accent. The buttons: keep on top (on), collapse to the strip, open ClaudeBar. Right-click has Refresh, Hide the HUD and Settings. Each one is in the window too, where the keyboard and Narrator reach it.</div>
   </div>
 
   <div class="shot">
@@ -581,7 +581,7 @@
         <span class="tb hl"><img class="appi" src="ClaudeBar-48.png" alt=""><i class="badge" style="background:#fce100"></i><i class="run"></i></span>
       </div>
     </div>
-    <div class="caption"><b>Hover the button.</b> The app draws its own preview: the three limits closest to running out, then today and your place. The dot on the button is the worst status: none when all is fine, amber, or red.</div>
+    <div class="caption"><b>Hover the button.</b> The app draws its own preview: the three limits closest to running out, then today and your place. The dot on the button is the worst status: none when all is fine, amber, or red. It's an overlay icon, so it shows while the window is open or minimized; with the window closed, only a packaged build can mark the pinned button, with a badge glyph.</div>
   </div>
 
   <div class="shot">
@@ -677,7 +677,7 @@
         </div>
       </div>
     </div>
-    <div class="caption wide"><b>Six settings, no more.</b> Off by default is the wrong default for an app you keep open, so the HUD starts on, in the card style, bottom-right, after the first time limits are read. Hiding it is one click and the taskbar button still shows the state.</div>
+    <div class="caption wide"><b>Six settings, no more.</b> The HUD starts on, in the card style, bottom-right, after the first time limits are read; <i>Show the HUD</i> turns it off, and so does <i>Hide the HUD</i> on its right-click menu. Starting with Windows is offered once, after that first reading, and stays off until you say yes (Settings → General).</div>
   </div>
 </div>
 
@@ -688,7 +688,8 @@
   <div><b>Colour means trouble.</b> Healthy bars use the Windows accent, like any progress bar. Amber under 50%, red under 20% and at 0%, WinUI's own caution and critical colours. Tool colours are only the 8 px dots that tell tools apart.</div>
   <div><b>Words for what colour can't say.</b> <i>Running hot</i> (ahead of an even pace), <i>Out until 14:30</i>, <i>Signed out</i>, <i>Couldn't read</i>, the same words the Mac app uses. They work in high contrast and for people who don't see the colour.</div>
   <div><b>Windows' own type ramp.</b> Segoe UI Variable: 14 semibold for tools and numbers, 12 for the rest. Numbers are tabular so columns don't shimmer when a minute passes.</div>
-  <div><b>It never takes focus.</b> A tool window (no Alt+Tab, no taskbar button of its own) that doesn't activate on click, Acrylic kept on while inactive. Hidden while a full-screen app or presentation runs (<code>SHQueryUserNotificationState</code>).</div>
+  <div><b>It doesn't take your focus.</b> A tool window (no Alt+Tab, no taskbar button of its own) that never activates to show anything. A click on one of its buttons does the thing, then hands the foreground straight back to the window you were in. Its Acrylic comes from a controller kept active, measured to blur while another app is in front (research.md). Hidden while a full-screen window covers its screen, or during a presentation.</div>
+  <div><b>Every action has a keyboard path.</b> Narrator and the keyboard don't navigate into a window that never activates, so the window has every reading and every action the HUD has: Refresh and Try again on Limits, the HUD's buttons in Settings → HUD, and a shortcut. The HUD's text is full sentences for UI Automation, for anyone who points at it.</div>
   <div><b>Nothing moves unless a value does.</b> No entrance animation; a bar eases to its new length when a reading changes. The countdown ticks once a minute.</div>
   <div><b>Honest about age.</b> The footer always says when the numbers were read; offline keeps the last reading, faded, with its time.</div>
   <div><b>Quiet.</b> One notification per crossing (20%, 0%, back), none for anything else. The HUD itself never pops up or flashes.</div>
