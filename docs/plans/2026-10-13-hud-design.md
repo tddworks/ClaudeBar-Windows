@@ -19,6 +19,7 @@ One question per glance: *can I keep going, and until when.*
   - Amber is WinUI's caution colour; red is its critical colour.
   - The thresholds are the Mac app's `QuotaStatus` and `StatusPolicy`: warning under 50% (or, with the pace setting, only while running hot), critical under 20%, depleted at 0.
   - A limit at 0 says when it's *back*, as a clock time.
+- **Every piece of text is readable in both themes:** at least WinUI's secondary text colour, 4.5:1 or more against the HUD. Tertiary text isn't used, because it measures 3.3:1 on light Mica. Offline numbers turn secondary instead of fading. Measured in the mockup with `design-concept/hud/contrast.js`: 236 text runs on the HUD, the strip and the window, light and dark, none under 4.5:1, the lowest *Running hot* in amber at 4.63:1. Before this rule, 27 failed: the window names, reset times and footer at 3.28:1 in light, and offline numbers at 4.36:1 in dark.
 - **The words carry the meaning without the colour:** *Running hot*, *Out until 14:30*, *Signed out*, *Couldn't read*. These are the Mac app's words where it has them (`UsagePace.displayName`).
 - **The strip** is the same HUD, one line high. It shows each tool's shortest limit, and a tool's other limit joins beside it only while that limit needs you. Click it for the card.
 - **States:** reading for the first time (rows at their final size), fine, running hot, low, out, offline (the last numbers faded, with their time), signed out (what to type), couldn't read (who failed, *Try again*), and nothing found (one sentence and *Choose tools*). Light, dark and high contrast all follow Windows.
@@ -83,5 +84,6 @@ On a Windows 11 PC, with the HUD built into the app:
 7. Light, dark and high contrast follow Windows while it runs.
 8. At 100%, 150% and 200% scaling, and after moving between screens with different scaling, the HUD keeps its corner and stays inside the work area.
 9. Signed out, offline and nothing-found render as in the mockup, from sample snapshots.
+10. In light and in dark theme, on the real Mica, every text run on the HUD and the strip measures 4.5:1 or more against the HUD around it, from a capture. High contrast mode doesn't count as the remedy.
 
 The spike measured 1, 3's taskbar half, 4 on the primary screen and 5's first half (research.md). Check 2 with another process is the one the spike couldn't finish: the PC was in use.

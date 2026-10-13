@@ -98,13 +98,14 @@
   .prov + .prov { padding-top: 2px; }
   .pname { display: flex; align-items: center; gap: 8px; height: 22px; }
   .pname b { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; }
-  .pname .flag { margin-left: auto; font-size: 12px; line-height: 16px; color: var(--text-3); }
+  /* Every word on the HUD that carries information is secondary or stronger: tertiary text is under 4.5:1 on light Mica. */
+  .pname .flag { margin-left: auto; font-size: 12px; line-height: 16px; color: var(--text-2); }
   .hud.hover .prov:first-of-type .flag { visibility: hidden; }
   .flag.warn { color: var(--caution); }
   .flag.crit { color: var(--critical); }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c); }
   .win { display: grid; grid-template-columns: 22px 1fr 44px 62px; column-gap: 8px; align-items: center; height: 22px; padding-left: 16px; }
-  .win .wl { font-size: 12px; line-height: 16px; color: var(--text-3); }
+  .win .wl { font-size: 12px; line-height: 16px; color: var(--text-2); }
   .bar { height: 4px; border-radius: 2px; background: var(--track); position: relative; }
   .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--accent); }
   .bar .tick { position: absolute; top: -3px; width: 2px; height: 10px; border-radius: 1px; background: var(--tick); margin-left: -1px; }
@@ -113,17 +114,19 @@
   .win .pct { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; text-align: right; font-variant-numeric: tabular-nums; }
   .w-warn .pct { color: var(--caution); }
   .w-crit .pct { color: var(--critical); }
-  .win .rst { font-size: 12px; line-height: 16px; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .win .rst { font-size: 12px; line-height: 16px; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .w-crit .rst.back { color: var(--text-2); }
   .note { padding-left: 16px; font-size: 12px; line-height: 16px; color: var(--text-2); margin-top: 2px; }
   .note code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color: var(--text); background: var(--subtle); padding: 1px 4px; border-radius: 3px; }
   .note a, .foot a { color: var(--accent); text-decoration: none; }
 
-  .foot { display: flex; align-items: center; gap: 6px; height: 36px; margin: 0 -14px; padding: 0 14px; border-top: 1px solid var(--divider); font-size: 12px; line-height: 16px; color: var(--text-3); }
+  .foot { display: flex; align-items: center; gap: 6px; height: 36px; margin: 0 -14px; padding: 0 14px; border-top: 1px solid var(--divider); font-size: 12px; line-height: 16px; color: var(--text-2); }
   .foot .num b { font-weight: 600; color: var(--text-2); }
   .foot .age { margin-left: auto; }
   .foot .off { color: var(--caution); display: inline-flex; align-items: center; gap: 5px; }
-  .stale .win .pct, .stale .win .bar, .stale .pname .flag { opacity: 0.45; }
+  /* Offline: the numbers turn secondary, the bars fade; the footer says how old they are. */
+  .stale .win .pct { color: var(--text-2); font-weight: 400; }
+  .stale .win .bar { opacity: 0.45; }
 
   .skel { height: 10px; border-radius: 5px; background: var(--subtle); }
 
@@ -145,10 +148,10 @@
   .strip .it + .it.more { border-left: 0; padding-left: 4px; }
   .strip .n { font-size: 12px; color: var(--text-2); }
   .strip .p { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; font-variant-numeric: tabular-nums; }
-  .strip .r { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .strip .r { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
   .strip .warn .p { color: var(--caution); }
   .strip .crit .p { color: var(--critical); }
-  .strip .w { font-size: 12px; color: var(--text-3); }
+  .strip .w { font-size: 12px; color: var(--text-2); }
 
   /* ---------- Desktop scene ---------- */
   .desk { width: 1280px; height: 720px; position: relative; overflow: hidden; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.18);
@@ -235,28 +238,28 @@
   .nav .spacer { flex: 1; }
   .content { background: var(--subtle); border-top-left-radius: 8px; border-top: 1px solid var(--stroke); border-left: 1px solid var(--stroke); padding: 20px 28px; overflow: hidden; }
   .content h2 { font: 600 28px/36px "Segoe UI Variable Display", "Segoe UI", system-ui; margin: 0; }
-  .content .sub { font-size: 12px; color: var(--text-3); display: flex; align-items: center; gap: 6px; margin: 2px 0 18px; }
+  .content .sub { font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 6px; margin: 2px 0 18px; }
   .content .sub a { color: var(--accent); text-decoration: none; }
   .pcard { background: var(--card); border: 1px solid var(--stroke); border-radius: 8px; padding: 14px 16px 6px; margin-bottom: 12px; }
   .pcard .ph { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .pcard .ph b { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; }
-  .pcard .ph .acct { font-size: 12px; color: var(--text-3); }
+  .pcard .ph .acct { font-size: 12px; color: var(--text-2); }
   .pcard .ph .lnk { margin-left: auto; font-size: 12px; color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
   .q { display: grid; grid-template-columns: 116px 1fr 48px 132px; column-gap: 14px; align-items: center; min-height: 40px; border-top: 1px solid var(--divider); }
   .q:first-of-type { border-top: 0; }
   .q .qn { font-size: 14px; }
-  .q .qn small { display: block; font-size: 12px; line-height: 14px; color: var(--text-3); }
+  .q .qn small { display: block; font-size: 12px; line-height: 14px; color: var(--text-2); }
   .q .bar { height: 6px; border-radius: 3px; }
   .q .bar .tick { top: -3px; height: 12px; }
   .q .pct { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; text-align: right; font-variant-numeric: tabular-nums; }
-  .q .meta { font-size: 12px; line-height: 16px; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+  .q .meta { font-size: 12px; line-height: 16px; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
   .q .meta .hot { color: var(--caution); }
   .q.w-warn .pct { color: var(--caution); }
 
   /* ---------- Settings ---------- */
   .set-row { display: grid; grid-template-columns: 24px 1fr auto; column-gap: 14px; align-items: center; min-height: 64px; padding: 10px 16px; background: var(--card); border: 1px solid var(--stroke); border-radius: 6px; margin-bottom: 4px; }
   .set-row .t { font-size: 14px; }
-  .set-row .d { font-size: 12px; line-height: 16px; color: var(--text-3); }
+  .set-row .d { font-size: 12px; line-height: 16px; color: var(--text-2); }
   .toggle { width: 40px; height: 20px; border-radius: 10px; background: var(--accent); position: relative; flex: none; }
   .toggle::after { content: ""; position: absolute; right: 4px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--on-accent); }
   .toggle.off { background: transparent; border: 1px solid var(--text-3); }
@@ -574,7 +577,7 @@
             <div class="win w-warn"><span class="wl">Claude 7d</span><span class="bar"><i style="width:41%"></i><b class="tick" style="left:46%"></b></span><span class="pct">41%</span></div>
             <div class="win"><span class="wl">Claude 5h</span><span class="bar"><i style="width:62%"></i><b class="tick" style="left:44%"></b></span><span class="pct">62%</span></div>
             <div class="win"><span class="wl">Codex 7d</span><span class="bar"><i style="width:78%"></i><b class="tick" style="left:72%"></b></span><span class="pct">78%</span></div>
-            <div style="font-size:12px; color:var(--text-3); margin-top:6px;" class="num">Today 3.4M tokens · #18 this week</div>
+            <div style="font-size:12px; color:var(--text-2); margin-top:6px;" class="num">Today 3.4M tokens · #18 this week</div>
           </div>
         </div>
       </div>
@@ -688,7 +691,7 @@
   <div><b>One question per glance.</b> Can I keep going, and until when. Each limit is a window name, a bar, the share left and the time to reset, in that order, in the same columns for every tool.</div>
   <div><b>Colour means trouble.</b> Healthy bars use the Windows accent, like any progress bar. Amber under 50%, red under 20% and at 0%, WinUI's own caution and critical colours. Tool colours are only the 8 px dots that tell tools apart.</div>
   <div><b>Words for what colour can't say.</b> <i>Running hot</i> (ahead of an even pace), <i>Out until 14:30</i>, <i>Signed out</i>, <i>Couldn't read</i>, the same words the Mac app uses. They work in high contrast and for people who don't see the colour.</div>
-  <div><b>Windows' own type ramp.</b> Segoe UI Variable: 14 semibold for tools and numbers, 12 for the rest. Numbers are tabular so columns don't shimmer when a minute passes.</div>
+  <div><b>Windows' own type ramp, readable in both themes.</b> Segoe UI Variable: 14 semibold for tools and numbers, 12 for the rest. Numbers are tabular so columns don't shimmer when a minute passes. Every piece of text is at least WinUI's secondary text colour, 4.5:1 or more against the HUD in light and dark; tertiary isn't used, as it measures 3.3:1 on light Mica.</div>
   <div><b>It doesn't take your focus.</b> A tool window (no Alt+Tab, no taskbar button of its own) that never activates to show anything. A click on one of its buttons does the thing, then hands the foreground straight back to the window you were in. Its material (Acrylic kept active, Mica, or the system's solid colour) is still open; research.md has the measurements and Microsoft's guidance. Hidden while a full-screen window covers its screen, or during a presentation.</div>
   <div><b>Every action has a keyboard path.</b> Narrator and the keyboard don't navigate into a window that never activates, so the window has every reading and every action the HUD has: Refresh and Try again on Limits, the HUD's buttons in Settings → HUD, and a shortcut. The HUD's text is full sentences for UI Automation, for anyone who points at it.</div>
   <div><b>Nothing moves unless a value does.</b> No entrance animation; a bar eases to its new length when a reading changes. The countdown ticks once a minute.</div>

@@ -83,6 +83,17 @@ So keeping Acrylic active works (measured above), but it puts a transient materi
 
 **Chosen: Mica kept active.** It follows the guidance for long-lived windows, costs no continuous blur, and doesn't flicker when a click activates the HUD. Being opaque, it keeps the text's contrast the same whatever is behind it. That matters more for a HUD read at a glance than seeing the editor through it. The price is the active look on a window that is never the active one, and a different look from the Acrylic shown in the first mockup.
 
+### Text contrast
+
+WinUI's tertiary text colour is black at 45% in light (`#72000000`). On light Mica (the mockup's `#eef1f4`) it measures 3.28:1, under the 4.5:1 text needs; on white it would be 3.36:1. Secondary (`#9E000000`, 62%) measures 5.95:1. In dark, tertiary is 5.71:1 and secondary 10.41:1 against Mica's `rgb(27,34,36)`. So every word on the HUD that carries information is secondary or stronger. [`contrast.js`](contrast.js) measures the mockup as the browser renders it, each text run's colour with its ancestors' opacity over the nearest opaque background:
+
+| Mockup | Text runs | Under 4.5:1 | Lowest |
+|---|---|---|---|
+| Before (tertiary labels, faded offline numbers) | 236 | 27 | 3.28:1, window names, reset times and footer in light; offline numbers 4.36:1 in dark |
+| After | 236 | 0 | 4.63:1, *Running hot* in amber, light |
+
+The real HUD's Mica tint follows the wallpaper, so the implementation measures again from a capture, in both themes (plan, Task 7).
+
 ## Similar apps (2026-10-13)
 
 | App | What it is |
