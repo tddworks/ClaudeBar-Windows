@@ -101,7 +101,7 @@ foreach ($mode in $Modes) {
   "== mode $mode"
   $probe = Start-Probe $mode
   if (-not $probe) { continue }
-  "  ready: exStyle=0x{0:X} dpi={1} acrylicSupported={2} children={3}" -f $probe.Ready.hudExStyle, $probe.Ready.dpi, $probe.Ready.acrylicSupported, $probe.Ready.children
+  "  ready: exStyle=0x{0:X} dpi={1} acrylicSupported={2} mouseInPointer={3} children={4}" -f $probe.Ready.hudExStyle, $probe.Ready.dpi, $probe.Ready.acrylicSupported, $probe.Ready.mouseInPointer, $probe.Ready.children
   Start-Sleep -Seconds 1
   "  behind to front: " + [P]::Front($probe.Behind)
   Start-Sleep -Milliseconds 2500
@@ -109,7 +109,7 @@ foreach ($mode in $Modes) {
   if ($Tests -contains 'measure') { Measure-Hud $probe.Behind $probe.Hud $probe.Scale "$mode-inactive" }
 
   $form = 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = ''Other app''; $f.StartPosition = ''Manual''; $f.Location = New-Object Drawing.Point 1300, 700; $f.Size = New-Object Drawing.Size 420, 260; [Windows.Forms.Application]::Run($f)'
-  if ($mode -like 'active*') {
+  if ($mode -like 'active*' -or $mode -eq 'trace') {
     if ($Tests -contains 'other-app') {
     # Another process in front, as an editor would be.
     # (Windows 11's Notepad hands off to a packaged process, so a plain WinForms window in its own process.)
@@ -182,6 +182,12 @@ foreach ($mode in $Modes) {
     Start-Sleep -Milliseconds 500
     "  UIA SetFocus on Retry: {0}, foreground after={1}" -f $sf, (Fg)
     [void][P]::Front($probe.Behind); Start-Sleep -Milliseconds 500
+    }
+
+    if ($mode -in 'trace', 'active-pointer') {
+      [void](Command 'trace')
+      "  activation messages, in order:"
+      Get-Content (Join-Path $dir 'trace.txt') -ErrorAction SilentlyContinue | ForEach-Object { "    $_" }
     }
 
     # On top of a window brought to the front under it.

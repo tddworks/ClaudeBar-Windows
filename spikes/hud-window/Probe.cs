@@ -39,6 +39,8 @@ internal sealed class Probe
     private readonly string _mode;
     private readonly DispatcherQueueTimer _timer;
     private SubclassProc? _mouseActivate;
+    private SubclassProc? _trace;
+    private readonly List<string> _traced = new();
 
     internal Probe(string mode)
     {
@@ -112,7 +114,9 @@ internal sealed class Probe
         _hud.SystemBackdrop = _mode switch
         {
             "follow" => new ControlledAcrylic(keepActive: false),
-            "default" or "activatable" => new DesktopAcrylicBackdrop(),
+            "default" or "activatable" or "trace" => new DesktopAcrylicBackdrop(),
+            "mica" => new MicaBackdrop(),
+            "mica-active" => new ControlledMica(),
             _ => new ControlledAcrylic(keepActive: _mode.StartsWith("active")),
         };
 
@@ -136,6 +140,23 @@ internal sealed class Probe
             _mouseActivate = (window, message, wParam, lParam, id, data) =>
                 message == WM_MOUSEACTIVATE ? (IntPtr)MA_NOACTIVATE : DefSubclassProc(window, message, wParam, lParam);
             SetWindowSubclass(hwnd, _mouseActivate, (UIntPtr)1, UIntPtr.Zero);
+        }
+        if (_mode is "trace" or "active-pointer")
+        {
+            var answer = _mode == "active-pointer";
+            _trace = (window, message, wParam, lParam, id, data) =>
+            {
+                if (message is WM_MOUSEACTIVATE or WM_POINTERACTIVATE or WM_ACTIVATE or WM_NCACTIVATE or WM_SETFOCUS or WM_POINTERDOWN or WM_LBUTTONDOWN)
+                {
+                    var name = new System.Text.StringBuilder(128);
+                    GetClassNameW(window, name, 128);
+                    lock (_traced) _traced.Add($"{DateTime.Now:HH:mm:ss.fff} {name} 0x{message:X4} wParam=0x{(long)wParam:X}");
+                    if (answer && message == WM_POINTERACTIVATE) return (IntPtr)PA_NOACTIVATE;
+                    if (answer && message == WM_MOUSEACTIVATE) return (IntPtr)MA_NOACTIVATE;
+                }
+                return DefSubclassProc(window, message, wParam, lParam);
+            };
+            SetWindowSubclass(hwnd, _trace, (UIntPtr)2, UIntPtr.Zero);
         }
         if (_mode == "active-giveback")
         {
@@ -172,6 +193,7 @@ internal sealed class Probe
             GetClassNameW(child, name, 128);
             _children.Add(name.ToString());
             if (_mode == "active-childnoact" && _mouseActivate is not null) SetWindowSubclass(child, _mouseActivate, (UIntPtr)1, UIntPtr.Zero);
+            if (_trace is not null) _children.Add("subclassed=" + SetWindowSubclass(child, _trace, (UIntPtr)2, UIntPtr.Zero));
             return true;
         }, IntPtr.Zero);
         var ready = new Dictionary<string, object>
@@ -183,6 +205,7 @@ internal sealed class Probe
             ["dpi"] = GetDpiForWindow(hud),
             ["acrylicSupported"] = DesktopAcrylicController.IsSupported(),
             ["children"] = string.Join(",", _children),
+            ["mouseInPointer"] = IsMouseInPointerEnabled(),
         };
         File.WriteAllText(Path.Combine(Dir, "ready.json"), JsonSerializer.Serialize(ready));
     }
@@ -229,6 +252,9 @@ internal sealed class Probe
                 _behind.AppWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
                 _behind.AppWindow.MoveAndResize(new RectInt32(200, 200, (int)(800 * Scale(_behind)), (int)(500 * Scale(_behind))));
                 break;
+            case "trace":
+                lock (_traced) File.WriteAllLines(Path.Combine(Dir, "trace.txt"), _traced);
+                break;
             case "exit":
                 File.WriteAllText(Path.Combine(Dir, "ack-exit.txt"), "");
                 Application.Current.Exit();
@@ -242,6 +268,12 @@ internal sealed class Probe
     private const uint WM_MOUSEACTIVATE = 0x0021;
     private const int MA_NOACTIVATE = 3;
     private const uint WM_ACTIVATE = 0x0006;
+    private const uint WM_SETFOCUS = 0x0007;
+    private const uint WM_NCACTIVATE = 0x0086;
+    private const uint WM_LBUTTONDOWN = 0x0201;
+    private const uint WM_POINTERDOWN = 0x0246;
+    private const uint WM_POINTERACTIVATE = 0x024B;
+    private const int PA_NOACTIVATE = 3;
     private const long WS_EX_NOACTIVATE = 0x08000000L;
     private const long WS_EX_TOOLWINDOW = 0x00000080L;
     private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
@@ -258,6 +290,7 @@ internal sealed class Probe
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumProc proc, IntPtr data);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassNameW(IntPtr window, System.Text.StringBuilder name, int size);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsMouseInPointerEnabled();
 }
 
 /// Desktop Acrylic through its controller, as Microsoft's backdrop-controller
@@ -279,6 +312,29 @@ internal sealed class ControlledAcrylic : SystemBackdrop
         _controller = new DesktopAcrylicController();
         _controller.AddSystemBackdropTarget(target);
         _controller.SetSystemBackdropConfiguration(configuration);
+    }
+
+    protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop target)
+    {
+        base.OnTargetDisconnected(target);
+        _controller?.RemoveSystemBackdropTarget(target);
+        _controller?.Dispose();
+        _controller = null;
+    }
+}
+
+/// Mica through its controller with a configuration that stays active, so a
+/// window that never activates still gets Mica's active look.
+internal sealed class ControlledMica : SystemBackdrop
+{
+    private MicaController? _controller;
+
+    protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot)
+    {
+        base.OnTargetConnected(target, xamlRoot);
+        _controller = new MicaController();
+        _controller.AddSystemBackdropTarget(target);
+        _controller.SetSystemBackdropConfiguration(new SystemBackdropConfiguration { IsInputActive = true, Theme = SystemBackdropTheme.Dark });
     }
 
     protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop target)
