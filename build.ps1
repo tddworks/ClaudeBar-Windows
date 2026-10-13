@@ -27,8 +27,11 @@ function Assert-Exit([string] $step) {
 # 1. The Swift side. SwiftPM needs MSVC's `link` on PATH, so load the build tools' environment first.
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $vcComponents = 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64'
-$vcvars = & $vswhere -latest -products * -requiresAny -requires $vcComponents -find 'VC\Auxiliary\Build\vcvarsall.bat' | Select-Object -First 1
+# Collect the native command's output before selecting a path: stopping its
+# pipeline early can leave LASTEXITCODE unset in a fresh PowerShell session.
+$vcvarsPaths = @(& $vswhere -latest -products * -requiresAny -requires $vcComponents -find 'VC\Auxiliary\Build\vcvarsall.bat')
 Assert-Exit 'vswhere'
+$vcvars = $vcvarsPaths | Select-Object -First 1
 if (-not $vcvars) { throw 'vcvarsall.bat not found (MSVC build tools)' }
 $environment = cmd /c "`"$vcvars`" $arch >nul && set"
 Assert-Exit 'vcvarsall'
@@ -45,8 +48,9 @@ Assert-Exit 'swift build --show-bin-path'
 # 2. Stage the DLL and the uploader, the Swift runtime DLLs they import (transitively), and the resource bundles.
 $runtime = $env:Path -split ';' | Where-Object { $_ -and (Test-Path (Join-Path $_ 'swiftCore.dll')) } | Select-Object -First 1
 if (-not $runtime) { throw 'Swift runtime DLLs (swiftCore.dll) not found on PATH' }
-$dumpbin = & $vswhere -latest -products * -requiresAny -requires $vcComponents -find 'VC\Tools\MSVC\**\dumpbin.exe' | Select-Object -First 1
+$dumpbinPaths = @(& $vswhere -latest -products * -requiresAny -requires $vcComponents -find 'VC\Tools\MSVC\**\dumpbin.exe')
 Assert-Exit 'vswhere'
+$dumpbin = $dumpbinPaths | Select-Object -First 1
 if (-not $dumpbin) { throw 'dumpbin.exe not found (MSVC build tools)' }
 $stage = Join-Path $root "native-out\win-$arch"
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
