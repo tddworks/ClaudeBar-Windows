@@ -564,7 +564,7 @@ public sealed partial class MainWindow : Window
         DateTimeOffset? last = state["lastUpload"] is JsonNode at ? DateTimeOffset.Parse(at.GetValue<string>(), CultureInfo.InvariantCulture) : null;
         var stale = last is { } uploadedAt && DateTimeOffset.Now - uploadedAt > TimeSpan.FromDays(1);
         var copied = state["copiedKey"]?.GetValue<bool>() == true;
-        var text = copied ? "Not uploading · this PC has a copy of another PC's key"
+        var text = copied ? "Not uploading · the key is a copy"
             : last is { } uploaded ? $"Uploaded {Ago(uploaded)} · every hour" : "Not uploaded yet · every hour";
         if (refused > 0 && !copied) text += $" · {Count(refused, "day")} refused, sent again each hour";
         UploadStatus.Text = text;
