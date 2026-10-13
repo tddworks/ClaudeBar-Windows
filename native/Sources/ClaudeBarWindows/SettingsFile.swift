@@ -100,7 +100,8 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
         return LeaderboardRecord(username: pick(\.username), sharing: pick(\.sharing), visible: pick(\.visible),
                                  lastUpload: pick(\.lastUpload), sharesCountry: pick(\.sharesCountry),
                                  globeHintDismissed: pick(\.globeHintDismissed), link: pick(\.link),
-                                 refused: pick(\.refused), shownDevices: pick(\.shownDevices))
+                                 refused: pick(\.refused), shownDevices: pick(\.shownDevices),
+                                 machine: pick(\.machine), addedAsDevice: pick(\.addedAsDevice))
     }
 
     public func isLeaderboardOn() -> Bool {
@@ -134,6 +135,9 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
         var link: ProfileLink?
         var refused: [RefusedDay]
         var shownDevices: [String]
+        /// Optional, as a file written before they were kept has neither.
+        var machine: String?
+        var addedAsDevice: Bool?
 
         init(_ record: LeaderboardRecord) {
             username = record.username
@@ -145,12 +149,14 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
             link = record.link
             refused = record.refused
             shownDevices = record.shownDevices
+            machine = record.machine
+            addedAsDevice = record.addedAsDevice
         }
 
         var record: LeaderboardRecord {
             LeaderboardRecord(username: username, sharing: sharing, visible: visible, lastUpload: lastUpload,
                               sharesCountry: sharesCountry, globeHintDismissed: globeHintDismissed, link: link,
-                              refused: refused, shownDevices: shownDevices)
+                              refused: refused, shownDevices: shownDevices, machine: machine, addedAsDevice: addedAsDevice ?? false)
         }
     }
 

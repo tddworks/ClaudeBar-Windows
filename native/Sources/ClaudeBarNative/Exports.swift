@@ -83,6 +83,8 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
         },
         "lastUpload": membership.lastUpload.map { iso.string(from: $0) } ?? NSNull(),
         "refused": membership.refused.count,
+        // The key came from another PC (design §2a): nothing uploads until answered.
+        "copiedKey": membership.holdsCopiedKey,
         "label": membership.suggestedLabel.value,
         "version": Client.version,
     ]
@@ -164,6 +166,15 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
 @c public func cbw_set_visible(_ visible: Bool, _ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     run(context, callback) { membership in
         try await membership.setVisible(visible)
+        return [:]
+    }
+}
+
+/// *Keep the key here*, when the key came from another PC (`copiedKey`):
+/// this PC keeps it and uploads again. `{state}` or `{error, state}`.
+@c public func cbw_keep_key_here(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    run(context, callback) { membership in
+        try membership.keepKeyHere()
         return [:]
     }
 }

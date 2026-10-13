@@ -53,7 +53,17 @@
             <TextBlock Text="ClaudeBar" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
         </StackPanel>
 
-        <InfoBar x:Name="Notice" Grid.Row="1" Margin="20,4,20,8" IsOpen="False" IsClosable="True" />
+        <StackPanel Grid.Row="1">
+            <!-- The key came from another PC (ClaudeBar's design §2a): open until answered. -->
+            <InfoBar x:Name="CopiedKeyBar" Margin="20,4,20,8" IsOpen="False" IsClosable="False" Severity="Warning"
+                     Title="This PC has a copy of another PC's leaderboard key"
+                     Message="A cloned disk or a restore brought it here. Two PCs on one key overwrite each other's days, so this PC isn't uploading. If the other PC is gone, or this is it after a repair, keep the key here.">
+                <InfoBar.ActionButton>
+                    <Button x:Name="KeepKeyButton" Content="Keep the key here" Click="OnKeepKeyHere" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <InfoBar x:Name="Notice" Margin="20,4,20,8" IsOpen="False" IsClosable="True" />
+        </StackPanel>
 
         <!-- 1 · Join -->
         <ScrollViewer x:Name="JoinPage" Grid.Row="2" Visibility="Collapsed">
