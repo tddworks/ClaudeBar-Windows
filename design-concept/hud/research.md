@@ -36,6 +36,7 @@ Windows 11 25H2, build 26200.9457, x64. Two screens: 3840 × 2160 at 150% (prima
 | **A mouse click on the HUD's button** | **Runs the handler, and makes the HUD the foreground window**, every time (5 of 5 runs with the probe's own window in front). `WS_EX_NOACTIVATE` keeps Windows from activating it on click; WinUI's input handling activates it anyway |
 | …with `AllowFocusOnInteraction = false` on the button and the root | Still activates |
 | …with `WM_MOUSEACTIVATE` answered `MA_NOACTIVATE` on the HUD and on all four of its child windows (`InputNonClientPointerSource`, `ReunionWindowingCaptionControls`, `Microsoft.UI.Content.DesktopChildSiteBridge`, `InputSiteWindowClass`) | Still activates. This rules out only mouse activation: pointer input has its own activation message, `WM_POINTERACTIVATE`, answered with `PA_NOACTIVATE` ([WM_POINTERACTIVATE](https://learn.microsoft.com/en-us/windows/win32/inputmsg/wm-pointeractivate)), which this run didn't handle |
+| …answering `WM_POINTERACTIVATE` with `PA_NOACTIVATE` (and `WM_MOUSEACTIVATE` with `MA_NOACTIVATE`) on the HUD and all four children | **Still activates.** A trace of the same windows shows why. Mouse input arrives as pointer input (`IsMouseInPointerEnabled` is true), yet on a click none of `WM_POINTERACTIVATE`, `WM_MOUSEACTIVATE`, `WM_POINTERDOWN` or `WM_LBUTTONDOWN` reaches the HUD or any child (all subclassed). The HUD gets `WM_NCACTIVATE`, `WM_ACTIVATE`, then `WM_SETFOCUS` on `InputSiteWindowClass`, the order a `SetFocus` call produces. WinUI's input doesn't come through these windows' messages, and it sets the focus itself |
 | …handing the foreground back on `WM_ACTIVATE` (`SetForegroundWindow` on the window `lParam` names) | **The handler runs and the window that was in front is in front again** (checked 0.9 s after the click) |
 | Full screen with `FullScreenPresenter` on the primary screen | `SHQueryUserNotificationState` reads `BUSY`, and the HUD is still drawn over it |
 | A borderless window covering the primary screen | `BUSY`, and the HUD is still drawn over it |
@@ -43,8 +44,6 @@ Windows 11 25H2, build 26200.9457, x64. Two screens: 3840 × 2160 at 150% (prima
 
 ### Not measured
 
-- **`WM_POINTERACTIVATE`.** Which activation messages reach the HUD and its children on a click, whether mouse input arrives as pointer input (`IsMouseInPointerEnabled`), and whether answering `PA_NOACTIVATE` keeps the HUD from activating. If it does, the HUD needs no focus hand-back. The spike's `trace` and `active-pointer` modes do this.
-- **Mica as the HUD's backdrop,** as the system draws it and kept active (modes `mica`, `mica-active`). See *Which material* below.
 - **Handing focus back when the window in front belongs to another process,** which is the real case (an editor). Two attempts were spoiled: someone was using the PC, other windows came forward during the runs, and both clicks read `clicked=False` with foreground windows the probe didn't open. Windows' rule allows the hand-back: after the click, ClaudeBar *"is the foreground process"* and *"received the last input event"*, either of which lets it call `SetForegroundWindow` ([SetForegroundWindow, Remarks](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow#remarks)). The same page warns that a process *"can be denied … even if it meets these conditions"*, so this is acceptance check 2.
 - **Alt+Tab** wasn't checked on screen; the documentation below says a tool window isn't in it.
 
@@ -75,9 +74,14 @@ So keeping Acrylic active works (measured above), but it puts a transient materi
 
 | Backdrop | Look while another app is in front | Against the guidance |
 |---|---|---|
-| Acrylic kept active | Blurs what's behind it | Material for transient surfaces; GPU cost all day |
-| Mica kept active | Wallpaper-tinted, opaque | Long-lived window: as intended. Shows the active look on a window that isn't |
-| The system's own (Mica or Acrylic, not overridden) | Solid `SolidBackgroundFillColorBase`, like every inactive window | As intended. But a click activates the HUD for a moment (measured), so it would flash to the active look and back |
+| Acrylic kept active | Blurs what's behind it: `rgb(135,7,8)` over red, `rgb(22,21,223)` over blue | Material for transient surfaces; GPU cost all day |
+| **Mica kept active** (chosen) | Opaque, tinted by the wallpaper: `rgb(27,34,36)` over red, blue and stripes alike | Long-lived window: as intended. Shows the active look on a window that isn't |
+| Mica, the system's own | Solid `rgb(32,32,32)`, `SolidBackgroundFillColorBase`, like every inactive window | As intended. A click activates the HUD for a moment (measured), so it would flicker to the active tint and back |
+| Acrylic, the system's own | Solid `rgb(44,44,44)` | Same flicker, from flat grey to blur and back |
+
+[`research-mica.png`](research-mica.png): Mica kept active, over the same red, blue and stripes.
+
+**Chosen: Mica kept active.** It follows the guidance for long-lived windows, costs no continuous blur, and doesn't flicker when a click activates the HUD. Being opaque, it keeps the text's contrast the same whatever is behind it. That matters more for a HUD read at a glance than seeing the editor through it. The price is the active look on a window that is never the active one, and a different look from the Acrylic shown in the first mockup.
 
 ## Similar apps (2026-10-13)
 
@@ -91,9 +95,9 @@ So keeping Acrylic active works (measured above), but it puts a transient materi
 
 ## What the design takes from this
 
-1. **The HUD's backdrop is open:** Acrylic kept active (measured to work), Mica kept active, or the system's solid colour. See *Which material*. The tray flyout's `DesktopAcrylicBackdrop` would show the flat panel. Measured.
+1. **The HUD's backdrop is Mica kept active:** a `MicaController` with its own `SystemBackdropConfiguration { IsInputActive = true }`. See *Which material*. Measured.
 2. **Everything the HUD offers is also in the window.** Keyboard and Narrator users don't reach a no-activate window by navigation, so the window has every reading and every action. The HUD exposes full sentences to UI Automation for anyone who points at it. Documented, and the tree is measured.
 3. **The taskbar dot is an overlay icon while ClaudeBar's window exists,** open or minimized. With the window closed, only a packaged build can mark the pinned button, with a badge glyph. Documented, and it depends on packaging, which is still open.
 4. **Starting at sign-in is offered once,** after the first reading, and is off until accepted. Packaged builds use `StartupTask`; unpackaged ones use a Run entry. Either way the user can turn it off in Settings → Apps → Startup.
 5. **The HUD hides when the foreground window covers the HUD's own screen,** which catches `FullScreenPresenter` and borderless full screen alike, and when the shell reports `PRESENTATION_MODE`. It doesn't hide for the shell's `BUSY`, which missed the second screen and doesn't say which screen it means. Measured: the HUD otherwise stays drawn over full-screen windows, so it must hide itself.
-6. **A click on the HUD mustn't keep the focus.** A click activates the HUD despite `WS_EX_NOACTIVATE` and `MA_NOACTIVATE` (measured). First choice, not yet measured: answer `WM_POINTERACTIVATE` with `PA_NOACTIVATE`. Fallback, measured with a window of the same process: remember the last window outside ClaudeBar to be in front and give the foreground back to it after a click. Windows' rule allows that for another process too; that is acceptance check 2.
+6. **A click on the HUD hands focus back.** A click activates the HUD despite `WS_EX_NOACTIVATE`, `MA_NOACTIVATE` and `PA_NOACTIVATE`: WinUI sets the focus itself (measured, traced). So the HUD remembers the last window outside ClaudeBar to be in front and gives the foreground back to it after a click. That is measured with a window of the same process. Windows' rule allows it for another process too; that is acceptance check 2.
