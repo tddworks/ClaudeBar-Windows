@@ -228,6 +228,7 @@ public sealed partial class MainWindow : Window
             provider["light"]?.GetValue<string>() ?? "#8A8A8A", provider["dark"]?.GetValue<string>() ?? "#8A8A8A")).ToList();
         VersionText.Text = $"ClaudeBar for Windows {state["version"]}";
         var joined = state["joined"]?.GetValue<bool>() == true;
+        CopiedKeyBar.IsOpen = joined && state["copiedKey"]?.GetValue<bool>() == true;
         if (!joined)
         {
             _settingsOpen = false;
@@ -562,12 +563,27 @@ public sealed partial class MainWindow : Window
         var refused = state["refused"]?.GetValue<int>() ?? 0;
         DateTimeOffset? last = state["lastUpload"] is JsonNode at ? DateTimeOffset.Parse(at.GetValue<string>(), CultureInfo.InvariantCulture) : null;
         var stale = last is { } uploadedAt && DateTimeOffset.Now - uploadedAt > TimeSpan.FromDays(1);
-        var text = last is { } uploaded ? $"Uploaded {Ago(uploaded)} · every hour" : "Not uploaded yet · every hour";
-        if (refused > 0) text += $" · {Count(refused, "day")} refused, sent again each hour";
+        var copied = state["copiedKey"]?.GetValue<bool>() == true;
+        var text = copied ? "Not uploading · the key is a copy"
+            : last is { } uploaded ? $"Uploaded {Ago(uploaded)} · every hour" : "Not uploaded yet · every hour";
+        if (refused > 0 && !copied) text += $" · {Count(refused, "day")} refused, sent again each hour";
         UploadStatus.Text = text;
-        UploadIcon.Glyph = stale || last is null ? "\uE7BA" : "\uE930";
-        UploadIcon.Foreground = Resource(stale ? "SystemFillColorCautionBrush" : last is null ? "TextFillColorTertiaryBrush" : "SystemFillColorSuccessBrush");
+        UploadIcon.Glyph = copied || stale || last is null ? "\uE7BA" : "\uE930";
+        UploadIcon.Foreground = Resource(copied || stale ? "SystemFillColorCautionBrush" : last is null ? "TextFillColorTertiaryBrush" : "SystemFillColorSuccessBrush");
         UploadDetail.Text = (last is { } done ? $"Last upload {Ago(done)}." : "Nothing uploaded yet.") + " A missed hour is caught up next time.";
+    }
+
+    /// *Keep the key here*: the other PC is gone, or this is it after a repair.
+    private async void OnKeepKeyHere(object sender, RoutedEventArgs e)
+    {
+        KeepKeyButton.IsEnabled = false;
+        await Guarded(async () =>
+        {
+            var reply = await Swift.KeepKeyHere();
+            if (reply["error"] is null) Tell("This PC keeps the key and uploads again.", InfoBarSeverity.Success);
+            Show(reply);
+        });
+        KeepKeyButton.IsEnabled = true;
     }
 
     private async void OnUploadNow(object sender, RoutedEventArgs e)

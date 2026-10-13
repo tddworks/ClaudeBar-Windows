@@ -21,6 +21,7 @@ internal static unsafe partial class Native
     [LibraryImport(Lib)]
     internal static partial void cbw_set_visible([MarshalAs(UnmanagedType.U1)] bool visible, nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cbw_upload_now(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib)] internal static partial void cbw_keep_key_here(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
     internal static partial void cbw_board(string period, string provider, nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cbw_leave(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
@@ -55,6 +56,7 @@ internal static unsafe class Swift
     }
     internal static Task<JsonObject> SetVisible(bool visible) { var (task, context) = Begin(); Native.cbw_set_visible(visible, context, &OnReply); return task; }
     internal static Task<JsonObject> UploadNow() { var (task, context) = Begin(); Native.cbw_upload_now(context, &OnReply); return task; }
+    internal static Task<JsonObject> KeepKeyHere() { var (task, context) = Begin(); Native.cbw_keep_key_here(context, &OnReply); return task; }
     internal static Task<JsonObject> Board(string period, string provider)
     {
         var (task, context) = Begin();
