@@ -17,9 +17,9 @@ struct MembershipRestartTests {
     private var lockName: String { #"Local\ClaudeBar.test."# + folder.lastPathComponent }
 
     /// A client as a new process builds it: nothing in memory but the file and the key.
-    private func process() -> Client {
+    private func process(on machine: String = "4C4C4544-0042-3510-8048-B3C04F4A3133") -> Client {
         Client(api: server, keys: keys, settings: SettingsFile(url: settingsURL, lockName: lockName),
-               logs: ProviderTokenLogs(), machine: FixedMachine())
+               logs: ProviderTokenLogs(), machine: FixedMachine(hardwareUUID: machine))
     }
 
     @Test func `should still be the member it joined as, sharing the same providers, after a restart`() async throws {
@@ -32,6 +32,35 @@ struct MembershipRestartTests {
         #expect(restarted.isJoined)
         #expect(restarted.username?.value == "tokenwhale")
         #expect(restarted.sharing == ["omp"])
+    }
+
+    /// The settings file and the key copied to another PC, as a cloned disk or
+    /// virtual machine brings them (design §2a): the PC that joined still
+    /// uploads after a restart, and the other notices the copy and uploads nothing.
+    @Test func `should notice the key on another PC after a restart, and not on the one that joined`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try await process(on: "PC-A").membership().join(as: #require(Username("tokenwhale")), sharing: ["omp"])
+
+        let same = process(on: "PC-A"), other = process(on: "PC-B")
+        let sameUpload = same.uploader(for: same.membership()), otherUpload = other.uploader(for: other.membership())
+        await sameUpload.uploadNow()
+        await otherUpload.uploadNow()
+
+        #expect(sameUpload.lastError == nil)
+        #expect(otherUpload.lastError == .keyCopied)
+    }
+
+    /// *Keep the key here* on the other PC holds across its restarts.
+    @Test func `should keep the key on the other PC after a restart, once the person keeps it there`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try await process(on: "PC-A").membership().join(as: #require(Username("tokenwhale")), sharing: ["omp"])
+
+        try process(on: "PC-B").membership().keepKeyHere()
+
+        let restarted = process(on: "PC-B")
+        let upload = restarted.uploader(for: restarted.membership())
+        await upload.uploadNow()
+        #expect(upload.lastError == nil)
     }
 
     /// The uploader runs in a process of its own: it uploads as the member,
@@ -89,6 +118,7 @@ struct MembershipRestartTests {
 }
 
 private struct FixedMachine: MachineIdentity {
+    let hardwareUUID: String?
     var model: DeviceLabel { DeviceLabel("Windows PC")! }
 }
 

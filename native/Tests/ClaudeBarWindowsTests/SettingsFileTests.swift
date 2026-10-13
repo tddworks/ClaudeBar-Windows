@@ -16,7 +16,8 @@ struct SettingsFileTests {
     private let record = LeaderboardRecord(
         username: "tokenwhale", sharing: ["omp", "claude"], visible: false, lastUpload: Date(timeIntervalSince1970: 1_791_692_409.532),
         sharesCountry: true, globeHintDismissed: true, link: ProfileLink(platform: .github, handle: "octocat"),
-        refused: [RefusedDay(provider: "omp", day: "2026-10-10", reason: "cap")], shownDevices: ["k2", "k1"])
+        refused: [RefusedDay(provider: "omp", day: "2026-10-10", reason: "cap")], shownDevices: ["k2", "k1"],
+        machine: "3f1a9c", addedAsDevice: true)
 
     @Test func `should read the record back exactly in another process's file, as after a restart`() {
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -89,6 +90,42 @@ struct SettingsFileTests {
         #expect(file().leaderboardRecord() == read.with(sharing: ["claude"], visible: true, lastUpload: later, refused: []))
     }
 
+    /// The app records which machine the key is on (on first launch, or when
+    /// the person keeps a copied key here) while an upload, from an earlier
+    /// read, records itself: the machine stays, or the next launch would take
+    /// the key for a copy, or forget it is one.
+    @Test func `should keep the machine one process recorded when the other saves an upload from an earlier read`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record.with(machine: nil))
+        let app = file(), uploader = file()
+        let read = try #require(app.leaderboardRecord())
+        _ = uploader.leaderboardRecord()
+        let later = Date(timeIntervalSince1970: 1_791_700_000)
+
+        app.saveLeaderboardRecord(read.with(machine: "7b20e4"))
+        uploader.saveLeaderboardRecord(read.with(lastUpload: later))
+
+        #expect(file().leaderboardRecord() == read.with(lastUpload: later, machine: "7b20e4"))
+    }
+
+    /// A settings file this client wrote before it kept the machine: the
+    /// membership is still read, with no machine and not an added device.
+    @Test func `should still read a membership saved before the machine was kept`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data(#"""
+        {
+          "generation" : 1,
+          "leaderboard" : {
+            "globeHintDismissed" : false, "refused" : [], "sharesCountry" : false, "sharing" : [ "omp" ],
+            "shownDevices" : [], "username" : "tokenwhale", "visible" : true
+          }
+        }
+        """#.utf8).write(to: url)
+
+        #expect(file().leaderboardRecord() == LeaderboardRecord(username: "tokenwhale", sharing: ["omp"], visible: true, lastUpload: nil))
+    }
+
     /// A membership that left while the uploader was running stays gone: the
     /// uploader's save, from before, doesn't bring it back.
     @Test func `should not bring back a membership that left, from a save made before it did`() {
@@ -146,10 +183,11 @@ struct SettingsFileTests {
 
 extension LeaderboardRecord {
     /// This record with some fields changed.
-    func with(sharing: [String]? = nil, visible: Bool? = nil, lastUpload: Date?? = nil, refused: [RefusedDay]? = nil) -> LeaderboardRecord {
+    func with(sharing: [String]? = nil, visible: Bool? = nil, lastUpload: Date?? = nil, refused: [RefusedDay]? = nil,
+              machine: String?? = nil) -> LeaderboardRecord {
         LeaderboardRecord(username: username, sharing: sharing ?? self.sharing, visible: visible ?? self.visible,
                           lastUpload: lastUpload ?? self.lastUpload, sharesCountry: sharesCountry,
                           globeHintDismissed: globeHintDismissed, link: link, refused: refused ?? self.refused,
-                          shownDevices: shownDevices)
+                          shownDevices: shownDevices, machine: machine ?? self.machine, addedAsDevice: addedAsDevice)
     }
 }
