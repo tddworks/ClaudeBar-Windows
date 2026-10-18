@@ -16,3 +16,23 @@ These are the conditions for using `claudebar-api.tddworks.com` from this client
 
 - Windows bugs and features (UI, packaging, the installer): issues in this repo.
 - API, signing or definition changes, and the shared code's Windows adapters: an issue or PR in [tddworks/ClaudeBar](https://github.com/tddworks/ClaudeBar) first.
+
+## Checks before a PR
+
+The **Windows client** workflow runs on every PR to `main`, every push to
+`main`, and on demand. Its **Build and test Windows client** check uses a fresh
+x64 `windows-latest` runner, Swift 6.3.3 and .NET 10. It runs the existing
+`build.ps1` (the native DLL, uploader, runtime staging and self-contained WinUI
+app), then `swift test --package-path native` in the same PowerShell session
+so the tests inherit the MSVC environment the build script loaded. Either
+failure fails the check. It does not launch the GUI, join the Leaderboard,
+upload data or deploy a release; those need separate verification.
+
+For the same check locally, from the repository root on Windows:
+
+```powershell
+& .\build.ps1
+if (-not $?) { exit 1 }
+swift test --package-path native
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+```
