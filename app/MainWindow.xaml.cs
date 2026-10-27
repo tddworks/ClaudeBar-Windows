@@ -761,7 +761,7 @@ public sealed partial class MainWindow : Window
     {
         // Reading the logs can take a minute on a PC with gigabytes of
         // sessions: until it answers, the providers are listed, counting.
-        if (_preview is null && JoinProviders.Children.Count == 0)
+        if (JoinProviders.Children.Count == 0)
         {
             foreach (var provider in _providers) JoinProviders.Children.Add(ProviderRow(provider.Id, provider.Name, "Counting tokens…", 0));
         }
