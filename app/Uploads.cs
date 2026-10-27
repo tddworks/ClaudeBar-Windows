@@ -15,11 +15,15 @@ internal static class Uploads
     /// Whether the task should exist, as last asked; each run acts on this, so
     /// the last ask wins even when an earlier one finishes after it.
     private static volatile bool _wanted;
+    /// Whether this launch has made the task, pointing at its own uploader. A
+    /// copy unzipped to another folder (an update) takes the task over from the
+    /// old one the first time it runs, rather than leave it on a deleted path.
+    private static volatile bool _madeHere;
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
     /// Each runs `schtasks.exe` on a worker thread, one at a time: it can take
     /// a while, and the window mustn't wait.
-    internal static Task<bool> EnsureScheduledAsync() => Apply(wanted: true, create: false);
+    internal static Task<bool> EnsureScheduledAsync() => Apply(wanted: true, create: !_madeHere);
 
     /// Made again even if it exists, as on joining.
     internal static Task<bool> ScheduleAsync() => Apply(wanted: true, create: true);
@@ -42,7 +46,7 @@ internal static class Uploads
     private static bool IsScheduled => Run("/Query", "/TN", TaskName) == 0;
 
     private static bool Schedule() =>
-        Run("/Create", "/F", "/SC", "HOURLY", "/TN", TaskName, "/TR", $"\"{Uploader}\"") == 0;
+        _madeHere = Run("/Create", "/F", "/SC", "HOURLY", "/TN", TaskName, "/TR", $"\"{Uploader}\"") == 0;
 
     private static int Run(params string[] arguments)
     {
