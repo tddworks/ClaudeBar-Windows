@@ -19,6 +19,18 @@ The board is only fair if a day counts the same on Windows as on the Mac. So thi
 
 **Where it stands:** §10's phases 0 to 3 are on ClaudeBar's `main`: the Leaderboard builds and passes its tests on Windows, keeps the key in Credential Manager ([tddworks/ClaudeBar#547](https://github.com/tddworks/ClaudeBar/pull/547)) and labels the machine as a PC. `native/Package.swift` pins ClaudeBar's `v0.5.23` tag.
 
+## Install a release
+
+On Windows 10 (2004) or later, x64. Nothing else to install: the app carries its .NET, WinUI and Swift runtimes.
+
+1. From [Releases](https://github.com/tddworks/ClaudeBar-Windows/releases), download `ClaudeBar-Windows-<version>-x64.zip`. To check it, compare `Get-FileHash .\ClaudeBar-Windows-<version>-x64.zip` with the `.sha256` file beside it.
+2. Extract it where you keep apps, for example `%LOCALAPPDATA%\Programs`, and run `ClaudeBar\ClaudeBar.exe`.
+3. The preview isn't code-signed, so SmartScreen may say *Windows protected your PC*. Choose *More info*, then *Run anyway*.
+
+**Update.** Quit ClaudeBar from its tray icon, extract the new zip over the old folder or into a new one, and run the new `ClaudeBar.exe`. The first time it runs, it points the hourly upload at its own `claudebar-upload.exe`, so the old folder can be deleted.
+
+**Remove.** Leave the Leaderboard in Settings first: that deletes your username and uploaded days on the server, the key and the hourly task. Then quit, and delete the folder and `%LOCALAPPDATA%\ClaudeBar`.
+
 ## Build and run
 
 On Windows 10 (2004) or later, x64, with:

@@ -3,6 +3,7 @@ name: Windows client
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -27,6 +28,18 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+
+      # A release is named by its tag, and the app names itself by Client.version
+      # (the X-Client header, the window) and the csproj's Version (the exe's file
+      # version). All three must agree before anything is built.
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $tag = '${{ github.ref_name }}'.Substring(1)
+          $client = [regex]::Match((Get-Content -Raw native/Sources/ClaudeBarWindows/Client.swift), 'static let version = "([^"]+)"').Groups[1].Value
+          $project = ([xml](Get-Content -Raw app/ClaudeBar.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          "tag $tag, Client.version $client, csproj $project"
+          if ($tag -ne $client -or $tag -ne $project) { Write-Error 'the tag, Client.version and the csproj Version differ'; exit 1 }
 
       # Match the toolchain used by ClaudeBar's Windows package CI.
       - name: Install Swift
@@ -55,3 +68,53 @@ jobs:
           if (-not $?) { exit 1 }
           swift test --package-path native
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The published app, without debug symbols, for the release job.
+      - name: Keep the app for the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: Get-ChildItem out/win-x64 -Recurse -Filter *.pdb | Remove-Item
+
+      - name: Upload the app
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ClaudeBar-win-x64
+          path: out/win-x64
+          if-no-files-found: error
+          retention-days: 7
+
+  # Only a tag publishes, and only this job can write to the repo: the build
+  # above never holds a token that can.
+  release:
+    name: Publish the pre-release
+    needs: client
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the app
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ClaudeBar-win-x64
+          path: ClaudeBar
+
+      # One folder in the zip, so extracting it gives ClaudeBar\ClaudeBar.exe.
+      - name: Zip it, with its SHA-256
+        run: |
+          zip_name="ClaudeBar-Windows-${GITHUB_REF_NAME#v}-x64.zip"
+          zip -q -r -X "$zip_name" ClaudeBar
+          sha256sum "$zip_name" > "$zip_name.sha256"
+          cat "$zip_name.sha256"
+          echo "ZIP=$zip_name" >> "$GITHUB_ENV"
+
+      - name: Create the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" \
+            --prerelease --verify-tag \
+            --title "ClaudeBar for Windows $GITHUB_REF_NAME (preview)" \
+            --notes "The Leaderboard client, x64, not code-signed. How to install, update and remove it: [README](https://github.com/$GH_REPO/blob/$GITHUB_REF_NAME/README.md#install-a-release). Check the download: compare its SHA-256 (\`Get-FileHash\`) with \`$ZIP.sha256\`."

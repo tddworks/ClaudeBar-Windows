@@ -25,8 +25,8 @@ x64 `windows-latest` runner, Swift 6.3.3 and .NET 10. It runs the existing
 `build.ps1` (the native DLL, uploader, runtime staging and self-contained WinUI
 app), then `swift test --package-path native` in the same PowerShell session
 so the tests inherit the MSVC environment the build script loaded. Either
-failure fails the check. It does not launch the GUI, join the Leaderboard,
-upload data or deploy a release; those need separate verification.
+failure fails the check. It does not launch the GUI, join the Leaderboard
+or upload data; those need separate verification.
 
 For the same check locally, from the repository root on Windows:
 
@@ -36,3 +36,13 @@ if (-not $?) { exit 1 }
 swift test --package-path native
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 ```
+
+## Releases
+
+A release is a tag. Set the version in both `native/Sources/ClaudeBarWindows/Client.swift`
+(`Client.version`, which the app sends as `X-Client`) and `app/ClaudeBar.csproj`
+(`Version`), merge, then push `v<version>` on `main`. The same workflow checks the
+tag matches both, builds and tests as above, and a second job, the only one with
+write access, publishes `ClaudeBar-Windows-<version>-x64.zip` and its SHA-256 as a
+pre-release. Before tagging, run the build on a Windows PC and open the app: CI
+never launches it.
