@@ -759,35 +759,47 @@ public sealed partial class MainWindow : Window
 
     private async Task LoadPreview()
     {
+        // Reading the logs can take a minute on a PC with gigabytes of
+        // sessions: until it answers, the providers are listed, counting.
+        if (JoinProviders.Children.Count == 0)
+        {
+            foreach (var provider in _providers) JoinProviders.Children.Add(ProviderRow(provider.Id, provider.Name, "Counting tokens…", 0));
+        }
         _preview = await Swift.Preview();
         JoinProviders.Children.Clear();
         foreach (var provider in _preview["providers"]?.AsArray() ?? new JsonArray())
         {
-            var id = provider!["id"]!.GetValue<string>();
-            var tokens = provider["tokens"]!.GetValue<long>();
+            var tokens = provider!["tokens"]!.GetValue<long>();
             var days = provider["days"]!.GetValue<int>();
-            var line = new Grid { ColumnSpacing = 10 };
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            line.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = Brush(ColorOf(id)), VerticalAlignment = VerticalAlignment.Center });
-            var name = new TextBlock { Text = provider["name"]!.GetValue<string>() };
-            Grid.SetColumn(name, 1);
-            line.Children.Add(name);
-            var amount = new TextBlock { Text = tokens > 0 ? $"{Tokens(tokens)} · {Count(days, "day")}" : "No tokens on this PC", FontSize = 12, Foreground = Resource("TextFillColorSecondaryBrush"), VerticalAlignment = VerticalAlignment.Center };
-            Grid.SetColumn(amount, 2);
-            line.Children.Add(amount);
-            var box = new CheckBox
-            {
-                Content = line, IsChecked = tokens > 0, IsEnabled = tokens > 0, Tag = id,
-                HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, MinWidth = 0,
-            };
-            AutomationProperties.SetName(box, $"Share {provider["name"]}");
-            box.Checked += (_, _) => UpdateJoin();
-            box.Unchecked += (_, _) => UpdateJoin();
-            JoinProviders.Children.Add(new Border { Style = (Style)Root.Resources["Card"], CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 4, 12, 4), Child = box });
+            JoinProviders.Children.Add(ProviderRow(provider["id"]!.GetValue<string>(), provider["name"]!.GetValue<string>(),
+                tokens > 0 ? $"{Tokens(tokens)} · {Count(days, "day")}" : "No tokens on this PC", tokens));
         }
         UpdateJoin();
+    }
+
+    /// A provider to share, ticked and offered only when it has tokens.
+    private Border ProviderRow(string id, string providerName, string amountText, long tokens)
+    {
+        var line = new Grid { ColumnSpacing = 10 };
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        line.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = Brush(ColorOf(id)), VerticalAlignment = VerticalAlignment.Center });
+        var name = new TextBlock { Text = providerName };
+        Grid.SetColumn(name, 1);
+        line.Children.Add(name);
+        var amount = new TextBlock { Text = amountText, FontSize = 12, Foreground = Resource("TextFillColorSecondaryBrush"), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(amount, 2);
+        line.Children.Add(amount);
+        var box = new CheckBox
+        {
+            Content = line, IsChecked = tokens > 0, IsEnabled = tokens > 0, Tag = id,
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, MinWidth = 0,
+        };
+        AutomationProperties.SetName(box, $"Share {providerName}");
+        box.Checked += (_, _) => UpdateJoin();
+        box.Unchecked += (_, _) => UpdateJoin();
+        return new Border { Style = (Style)Root.Resources["Card"], CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 4, 12, 4), Child = box };
     }
 
     private IEnumerable<string> TickedProviders() =>

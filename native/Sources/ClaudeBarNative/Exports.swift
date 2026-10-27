@@ -117,20 +117,26 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
 /// them (`DailyTokens.summed`), cache included; and today's rows exactly as
 /// an upload sends them, for *Exactly what gets uploaded*. Every day is the
 /// person's own, in their time zone (`DataSources.calendar()`), as an upload's
-/// is; Foundation's own calendar is GMT on Windows (ClaudeBar#565).
+/// is; Foundation's own calendar is GMT on Windows (ClaudeBar#565). The logs
+/// are read once: the 7 days are taken from the 30, since a PC with gigabytes
+/// of sessions takes tens of seconds for each read.
 /// `{providers: [{id, name, tokens, days, week}], today: String, rows: [DailyTokens], state}`.
 @c public func cbw_preview(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     run(context, callback) { _ in
         let calendar = DataSources.calendar()
-        let month = await client.logs.days(in: DateRange.last(30, calendar: calendar))
-        let week = await client.logs.days(in: DateRange.last(7, calendar: calendar))
+        // One moment for the 30 days, the 7 and today: a read that runs past
+        // midnight still answers for the day it started, every part alike.
+        let now = Date()
+        let month = await client.logs.days(in: DateRange.last(30, endingOn: now, calendar: calendar))
+        let lastWeek = DateRange.last(7, endingOn: now, calendar: calendar)
+        let week = month.map { $0.within(lastWeek) }
         let providers = client.logs.providers.map { provider -> [String: Any] in
             let days = DailyTokens.summed(month, providers: [provider.id], calendar: calendar)
             let weekTokens = DailyTokens.summed(week, providers: [provider.id], calendar: calendar).reduce(0) { $0 + $1.total }
             return ["id": provider.id, "name": provider.name, "tokens": days.reduce(0) { $0 + $1.total },
                     "days": days.count, "week": weekTokens]
         }
-        let today = DailyTokens.day(of: Date(), calendar: calendar)
+        let today = DailyTokens.day(of: now, calendar: calendar)
         let rows = DailyTokens.summed(week, providers: client.logs.providersWithLogs, calendar: calendar)
             .filter { $0.day == today }.map { row -> [String: Any] in
                 ["provider": row.provider, "day": row.day, "input": row.input, "output": row.output,

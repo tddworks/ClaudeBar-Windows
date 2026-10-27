@@ -60,6 +60,14 @@ public final class ProviderTokenLogs: TokenLogs {
     }
 }
 
+extension LoginDays {
+    /// The days from `range`'s first through its last: a shorter run taken
+    /// from a longer read, instead of reading every log again.
+    public func within(_ range: DateRange) -> LoginDays {
+        LoginDays(providerId: providerId, days: days.filter { $0.date >= range.first && $0.date <= range.last })
+    }
+}
+
 /// Provider settings for a client that only reads token logs: every provider
 /// on, one login each, nothing kept.
 public final class DefaultProviderSettings: MultiAccountSettingsRepository, @unchecked Sendable {
