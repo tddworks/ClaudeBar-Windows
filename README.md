@@ -29,7 +29,7 @@ On Windows 10 (2004) or later, x64. Nothing else to install: the app carries its
 
 **Update.** Quit ClaudeBar from its tray icon, extract the new zip over the old folder or into a new one, and run the new `ClaudeBar.exe`. The first time it runs, it points the hourly upload at its own `claudebar-upload.exe`, so the old folder can be deleted.
 
-**Remove.** Leave the Leaderboard in Settings first: that deletes your username and uploaded days on the server, the key and the hourly task. Then quit, and delete the folder and `%LOCALAPPDATA%\ClaudeBar`.
+**Remove.** Leave the Leaderboard in Settings first: that deletes your username and uploaded days on the server, the key and the hourly task. Then quit, and delete the folder and `%LOCALAPPDATA%\ClaudeBar`. If Task Scheduler still lists *ClaudeBar Leaderboard upload*, delete it there too: leaving doesn't say when removing it failed.
 
 ## Build and run
 
