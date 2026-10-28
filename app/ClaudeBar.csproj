@@ -5,7 +5,7 @@
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>ClaudeBar</RootNamespace>
     <AssemblyName>ClaudeBar</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\ClaudeBar.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
