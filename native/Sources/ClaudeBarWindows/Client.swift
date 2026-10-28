@@ -6,7 +6,7 @@ import Leaderboard
 @MainActor
 public final class Client {
     /// How this client names itself on every request (`X-Client`).
-    nonisolated public static let version = "0.1.0"
+    nonisolated public static let version = "0.1.1"
     nonisolated public static var xClient: String { "claudebar-windows/\(version)" }
 
     public let api: any LeaderboardAPI
