@@ -163,6 +163,80 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
     }
 }
 
+// MARK: - Adding this PC to a member (ClaudeBar design §2a)
+
+/// The one request this PC is making to be added to a member, with the key it
+/// asked with. Only in this process's memory: nothing is kept until the person
+/// agrees to the member it was approved for (`cbw_join_device`).
+@MainActor private var deviceRequest: DeviceRequest?
+
+/// *Already a member? Add this PC*: asks the server for a code to type on a
+/// device the member has, replacing any earlier request. `{code, state}` or
+/// `{error, state}`.
+@c public func cbw_request_device(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    run(context, callback) { membership in
+        deviceRequest?.stopWaiting()
+        deviceRequest = nil
+        let request = try await membership.requestToJoin()
+        deviceRequest = request
+        return ["code": request.code.description]
+    }
+}
+
+/// Waits, at the server's pace, until a device of the member approves the
+/// code. `{member, state}` once approved; `{cancelled: true, state}` after
+/// `cbw_cancel_device`; `{expired: true, error, state}` when the code ran out.
+@c public func cbw_wait_device(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    run(context, callback) { _ in
+        guard let request = deviceRequest else { throw LeaderboardError.notJoined }
+        do {
+            return ["member": try await request.waitForApproval().value]
+        } catch is CancellationError {
+            return ["cancelled": true]
+        } catch LeaderboardError.codeExpired {
+            deviceRequest = nil
+            return ["expired": true, "error": LeaderboardError.codeExpired.errorDescription ?? "The code expired."]
+        }
+    }
+}
+
+/// The person knows the member the code was approved for: this PC joins as
+/// their device, sharing the comma-separated provider ids, then sends the last
+/// 30 days. `{uploaded: Bool, state}` or `{error, state}`.
+@c public func cbw_join_device(_ sharing: UnsafePointer<CChar>?,
+                               _ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    let providers = Set(string(sharing).split(separator: ",").map(String.init))
+    run(context, callback) { membership in
+        guard let request = deviceRequest else { throw LeaderboardError.notJoined }
+        try membership.join(through: request, sharing: providers)
+        deviceRequest = nil
+        let uploader = client.uploader(for: membership)
+        await uploader.uploadNow()
+        return ["uploaded": uploader.lastError == nil]
+    }
+}
+
+/// The person doesn't know that member: this PC removes itself from it and
+/// keeps nothing. `{state}` or `{error, state}`.
+@c public func cbw_decline_device(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    run(context, callback) { _ in
+        guard let request = deviceRequest else { return [:] }
+        try await request.decline()
+        deviceRequest = nil
+        return [:]
+    }
+}
+
+/// *Cancel*: stops waiting and forgets the code, which expires unused on the
+/// server. The pending `cbw_wait_device` replies `{cancelled: true}`. `{state}`.
+@c public func cbw_cancel_device(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    run(context, callback) { _ in
+        deviceRequest?.stopWaiting()
+        deviceRequest = nil
+        return [:]
+    }
+}
+
 /// Shares a provider, or stops sharing it. `{state}` or `{error, state}`.
 @c public func cbw_set_sharing(_ provider: UnsafePointer<CChar>?, _ shared: Bool,
                                _ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {

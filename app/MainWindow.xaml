@@ -80,14 +80,34 @@
                     <StackPanel x:Name="MiniPodium" Grid.Column="1" Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center" VerticalAlignment="Bottom" />
                 </Grid>
 
-                <TextBlock Text="Username" Margin="0,0,0,6" />
-                <Grid>
-                    <TextBox x:Name="UsernameBox" PlaceholderText="pick-a-name" MaxLength="20" Padding="12,6,36,6"
-                             TextChanged="OnJoinInputChanged" KeyDown="OnUsernameKeyDown" AutomationProperties.Name="Username" />
-                    <FontIcon x:Name="UsernameOk" Glyph="&#xE930;" FontSize="16" Margin="0,0,12,0" HorizontalAlignment="Right"
-                              Foreground="{ThemeResource SystemFillColorSuccessBrush}" Visibility="Collapsed" IsHitTestVisible="False" />
-                </Grid>
-                <TextBlock Text="3 to 20 letters, digits, - or _. Shown on the board unless you hide it." Style="{StaticResource Tertiary}" Margin="0,6,0,18" />
+                <StackPanel x:Name="NewMemberFields">
+                    <TextBlock Text="Username" Margin="0,0,0,6" />
+                    <Grid>
+                        <TextBox x:Name="UsernameBox" PlaceholderText="pick-a-name" MaxLength="20" Padding="12,6,36,6"
+                                 TextChanged="OnJoinInputChanged" KeyDown="OnUsernameKeyDown" AutomationProperties.Name="Username" />
+                        <FontIcon x:Name="UsernameOk" Glyph="&#xE930;" FontSize="16" Margin="0,0,12,0" HorizontalAlignment="Right"
+                                  Foreground="{ThemeResource SystemFillColorSuccessBrush}" Visibility="Collapsed" IsHitTestVisible="False" />
+                    </Grid>
+                    <TextBlock Text="3 to 20 letters, digits, - or _. Shown on the board unless you hide it." Style="{StaticResource Tertiary}" Margin="0,6,0,18" />
+                </StackPanel>
+
+                <!-- Adding this PC to a member already on the leaderboard from another computer (ClaudeBar design §2a) -->
+                <StackPanel x:Name="DevicePanel" Visibility="Collapsed" Spacing="8" Margin="0,0,0,18">
+                    <TextBlock Text="Add this PC to your membership" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock Text="On a computer that's already on the leaderboard, open ClaudeBar's settings, go to Leaderboard, then Devices, choose Add a device and type this code."
+                               Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" />
+                    <TextBlock x:Name="DeviceCodeText" FontFamily="Cascadia Mono, Consolas" FontSize="28" FontWeight="SemiBold"
+                               IsTextSelectionEnabled="True" CharacterSpacing="120" AutomationProperties.Name="Code" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing x:Name="DeviceBusy" IsActive="False" Width="16" Height="16" />
+                        <TextBlock x:Name="DeviceStatus" Style="{StaticResource Secondary}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="DeclineDeviceButton" Content="That's not me" Visibility="Collapsed" Click="OnDeclineDevice" />
+                        <Button x:Name="NewCodeButton" Content="Get a new code" Visibility="Collapsed" Click="OnAddThisPc" />
+                        <Button x:Name="CancelDeviceButton" Content="Cancel" Click="OnCancelDevice" />
+                    </StackPanel>
+                </StackPanel>
 
                 <TextBlock Text="Share tokens from" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,0,0,8" />
                 <StackPanel x:Name="JoinProviders" Spacing="4" />
@@ -113,6 +133,7 @@
                 </Grid>
                 <TextBlock Text="Never prompts, projects, paths, costs or emails. This PC uploads every hour while you're signed in; leaving deletes it all."
                            Style="{StaticResource Tertiary}" Margin="2,10,2,0" />
+                <HyperlinkButton x:Name="AddThisPcLink" Content="Already on the leaderboard from another computer? Add this PC" Margin="-10,10,0,0" Click="OnAddThisPc" />
             </StackPanel>
         </ScrollViewer>
 

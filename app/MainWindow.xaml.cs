@@ -42,6 +42,12 @@ public sealed partial class MainWindow : Window
     private bool _joining;
     private bool _uploading;
     private bool _settingsOpen;
+    /// True while the Join page adds this PC to a member instead of making one.
+    private bool _addingDevice;
+    /// The member the code was approved for; joining waits for it.
+    private string? _deviceMember;
+    /// Counts code requests, so an answer for one cancelled or replaced is dropped.
+    private int _deviceAsk;
     /// True while the window sets its own switches, so their events don't call back.
     private bool _showing;
     /// Counts board reads, so an answer for a board no longer picked is dropped.
@@ -809,12 +815,21 @@ public sealed partial class MainWindow : Window
 
     /// Join is offered for a name the server would take and at least one
     /// provider; the payload shows exactly today's rows for what's ticked.
+    /// Adding this PC, it is offered once the code is approved, as that member.
     private void UpdateJoin()
     {
+        var ticked = TickedProviders().ToHashSet();
+        if (_addingDevice)
+        {
+            JoinButton.Content = _deviceMember is { } member ? $"Join as @{member}" : "Join once the code is approved";
+            JoinButton.IsEnabled = !_joining && _deviceMember is not null && ticked.Count > 0;
+            PayloadText.Text = Payload(_deviceMember ?? "you", ticked);
+            return;
+        }
         var name = UsernameBox.Text.Trim();
         var valid = UsernameRule.IsMatch(name);
         UsernameOk.Visibility = valid ? Visibility.Visible : Visibility.Collapsed;
-        var ticked = TickedProviders().ToHashSet();
+        JoinButton.Content = "Join leaderboard";
         JoinButton.IsEnabled = !_joining && valid && ticked.Count > 0;
         PayloadText.Text = Payload(valid ? name : "you", ticked);
     }
@@ -852,19 +867,29 @@ public sealed partial class MainWindow : Window
     private async void OnJoin(object sender, RoutedEventArgs e)
     {
         var sharing = TickedProviders().ToList();
+        var member = _addingDevice ? _deviceMember : null;
+        if (_addingDevice && member is null) return;
         _joining = true;
         UpdateJoin();
         JoinBusy.IsActive = true;
         await Guarded(async () =>
         {
-            var reply = await Swift.Join(UsernameBox.Text.Trim(), sharing);
+            var name = member ?? UsernameBox.Text.Trim();
+            var reply = member is null ? await Swift.Join(name, sharing) : await Swift.JoinDevice(sharing);
             if (reply["error"] is null)
             {
+                if (member is not null) ForgetDeviceRequest();
                 if (!await Uploads.ScheduleAsync()) Tell("Joined, but the hourly upload couldn't be set up.", InfoBarSeverity.Warning);
+                else if (member is not null)
+                {
+                    Tell($"This PC is one of @{name}'s devices now and uploads every hour while you're signed in. For its first week it can't rename, hide or leave the membership; your other computer can.",
+                         InfoBarSeverity.Success);
+                    App.Notify("This PC is on the leaderboard", $"@{name} · this PC uploads every hour while you're signed in.");
+                }
                 else
                 {
                     Tell("You're on the leaderboard. This PC uploads every hour while you're signed in.", InfoBarSeverity.Success);
-                    App.Notify("You're on the leaderboard", $"@{UsernameBox.Text.Trim()} · this PC uploads every hour while you're signed in.");
+                    App.Notify("You're on the leaderboard", $"@{name} · this PC uploads every hour while you're signed in.");
                 }
             }
             Show(reply);
@@ -872,6 +897,94 @@ public sealed partial class MainWindow : Window
         _joining = false;
         JoinBusy.IsActive = false;
         UpdateJoin();
+    }
+
+    // MARK: - Adding this PC to a member (ClaudeBar design §2a)
+
+    /// *Add this PC* or *Get a new code*: shows a code to type on a computer
+    /// already on the leaderboard, and waits until it's approved there.
+    private async void OnAddThisPc(object sender, RoutedEventArgs e)
+    {
+        var ask = ++_deviceAsk;
+        _addingDevice = true;
+        _deviceMember = null;
+        ShowDevicePanel();
+        DeviceCodeText.Text = "";
+        DeviceStatus.Text = "Asking for a code…";
+        DeviceBusy.IsActive = true;
+        DeclineDeviceButton.Visibility = Visibility.Collapsed;
+        NewCodeButton.Visibility = Visibility.Collapsed;
+        UpdateJoin();
+        await Guarded(async () =>
+        {
+            var reply = await Swift.RequestDevice();
+            if (ask != _deviceAsk) return;
+            if (reply["code"]?.GetValue<string>() is not { } code)
+            {
+                DeviceStatus.Text = reply["error"]?.GetValue<string>() ?? "The leaderboard didn't give a code.";
+                NewCodeButton.Visibility = Visibility.Visible;
+                return;
+            }
+            DeviceCodeText.Text = code;
+            DeviceStatus.Text = "Waiting for it to be approved…";
+            var answer = await Swift.WaitDevice();
+            if (ask != _deviceAsk || answer["cancelled"] is not null) return;
+            if (answer["member"]?.GetValue<string>() is { } member)
+            {
+                _deviceMember = member;
+                DeviceStatus.Text = $"Approved for @{member}. If that's you, choose what this PC shares and join. If it isn't, this PC removes itself.";
+                DeclineDeviceButton.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                DeviceStatus.Text = answer["error"]?.GetValue<string>() ?? "The code stopped working. Ask for a new one.";
+                NewCodeButton.Visibility = Visibility.Visible;
+            }
+            UpdateJoin();
+        });
+        if (ask == _deviceAsk) DeviceBusy.IsActive = false;
+    }
+
+    /// *That's not me*: this PC removes itself from the member it was approved for.
+    private async void OnDeclineDevice(object sender, RoutedEventArgs e)
+    {
+        DeclineDeviceButton.IsEnabled = false;
+        await Guarded(async () =>
+        {
+            var reply = await Swift.DeclineDevice();
+            if (reply["error"] is JsonNode error)
+            {
+                Tell(error.GetValue<string>(), InfoBarSeverity.Error);
+                return;
+            }
+            ForgetDeviceRequest();
+            Tell("This PC removed itself from that membership and kept nothing.", InfoBarSeverity.Success);
+        });
+        DeclineDeviceButton.IsEnabled = true;
+    }
+
+    /// *Cancel*: stops waiting and forgets the code, back to joining.
+    private async void OnCancelDevice(object sender, RoutedEventArgs e)
+    {
+        ForgetDeviceRequest();
+        await Guarded(async () => await Swift.CancelDevice());
+    }
+
+    private void ForgetDeviceRequest()
+    {
+        _deviceAsk++;
+        _addingDevice = false;
+        _deviceMember = null;
+        DeviceBusy.IsActive = false;
+        ShowDevicePanel();
+        UpdateJoin();
+    }
+
+    private void ShowDevicePanel()
+    {
+        DevicePanel.Visibility = _addingDevice ? Visibility.Visible : Visibility.Collapsed;
+        NewMemberFields.Visibility = _addingDevice ? Visibility.Collapsed : Visibility.Visible;
+        AddThisPcLink.Visibility = _addingDevice ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // MARK: - Helpers
