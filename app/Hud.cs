@@ -44,7 +44,9 @@ internal sealed class Hud : IDisposable
     {
         _read = read;
         _window = new HudWindow(_foreground) { CloseRequested = () => SetShown(false) };
-        _window.ThemeChanged = Render;
+        // Drawn again after the theme change has gone through the tree: replacing
+        // the content inside ActualThemeChanged crashes XAML (seen with --theme light on a dark PC).
+        _window.ThemeChanged = () => queue.TryEnqueue(DispatcherQueuePriority.Low, Render);
         _view.Refresh = () => _ = Read(refresh: true);
         _view.ToggleOnTop = () => SetOnTop(!Preferences.HudOnTop);
         _view.ShowStrip = () => { _peek = false; SetStyle("strip"); };
