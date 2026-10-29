@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
+using Microsoft.Windows.AppNotifications;
 using Windows.Graphics;
 using Path = System.IO.Path;
 
@@ -30,6 +31,7 @@ internal sealed class HudCheck
     private readonly Window _behind = new() { Title = "ClaudeBar HUD check" };
     private readonly Hud _hud;
     private readonly DispatcherQueueTimer _commands;
+    private readonly DispatcherQueue _queue;
 
     internal HudCheck(string[] arguments)
     {
@@ -41,6 +43,7 @@ internal sealed class HudCheck
         if (Value(arguments, "--style") == "strip") Preferences.HudStyle = "strip";
 
         var queue = DispatcherQueue.GetForCurrentThread();
+        _queue = queue;
         _sample = Value(arguments, "--sample") == "fine" ? "hud-check-fine.json" : "hud-check.json";
         _hud = new Hud(queue, Sample)
         {
@@ -95,6 +98,34 @@ internal sealed class HudCheck
                 foreach (var item in array) Shift(item, seconds);
                 break;
         }
+    }
+
+    private bool _notifying;
+
+    /// The crossing notification for `omp/Kimi 7d`, sent as the app sends it
+    /// (`App.Notify`, `MainWindow.OnCrossed`). Its *Quiet until reset* button
+    /// comes back through Windows, is read as `MainWindow.Open` reads it, and
+    /// quiets that limit; activated.txt says what arrived and what was kept.
+    private void Notify()
+    {
+        const string key = "omp/Kimi 7d";
+        if (!_notifying)
+        {
+            AppNotificationManager.Default.NotificationInvoked += (_, invoked) =>
+            {
+                var action = LaunchArguments.NotificationAction(invoked.Argument) ?? "";
+                var quiet = LaunchArguments.Quiet(action);
+                _queue.TryEnqueue(() =>
+                {
+                    if (quiet is not null) _hud.Quiet(quiet);
+                    var kept = Preferences.HudLines.TryGetValue(key, out var line) ? line.QuietUntil?.ToString("o") ?? "none" : "no such limit";
+                    File.WriteAllText(Path.Combine(Folder, "activated.txt"), $"argument={invoked.Argument}\naction={action}\nquiet={quiet}\nquietUntil={kept}\n");
+                });
+            };
+            AppNotificationManager.Default.Register();
+            _notifying = true;
+        }
+        App.Notify("omp is at 31%", "It resets on Thursday.", ("Show the HUD", "--hud"), ("Quiet until reset", $"--quiet={Uri.EscapeDataString(key)}"));
     }
 
     private static Windows.UI.Color Color(byte r, byte g, byte b) => Windows.UI.Color.FromArgb(255, r, g, b);
@@ -203,9 +234,13 @@ internal sealed class HudCheck
                 break;
             case "exit":
                 File.WriteAllText(Path.Combine(Folder, "ack-exit.txt"), "");
+                if (_notifying) try { AppNotificationManager.Default.Unregister(); } catch (Exception) { }
                 _hud.Dispose();
                 Application.Current.Exit();
                 return;
+            case "notify":
+                Notify();
+                break;
             case "reshow":
                 // Hidden and shown again, as the switch and the shortcut do: it mustn't take the focus.
                 _hud.SetShown(false);

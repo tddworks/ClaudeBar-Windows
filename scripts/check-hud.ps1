@@ -10,7 +10,7 @@ param(
   [string]$Exe = (Join-Path $PSScriptRoot '..\out\win-x64\ClaudeBar.exe'),
   [string]$Shots = (Join-Path $env:TEMP 'claudebar-hud-shots'),
   [string[]]$Themes = @('light', 'dark'),
-  [string[]]$Tests = @('focus', 'measure', 'click', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'shots')
+  [string[]]$Tests = @('focus', 'measure', 'click', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots')
 )
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -322,6 +322,31 @@ foreach ($theme in $Themes) {
     $shown = [H]::IsWindowVisible($check.Hud)
     "  {0} still shown with a full-screen window on the other screen: visible={1}" -f (Pass $shown), $shown
     [void](Command 'restore'); Start-Sleep -Seconds 1
+  }
+
+  if ($Tests -contains 'notify' -and $theme -eq $Themes[0]) {
+    # A crossing notification, through Windows and back: its *Quiet until reset* quiets that limit.
+    [void](Command 'notify')
+    $cond = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Quiet until reset')
+    $windows = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ClassNameProperty, 'Windows.UI.Core.CoreWindow')
+    $button = $null
+    for ($i = 0; $i -lt 16 -and -not $button; $i++) {
+      Start-Sleep -Milliseconds 500
+      foreach ($w in [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, $windows)) {
+        $button = $w.FindFirst([Windows.Automation.TreeScope]::Descendants, $cond)
+        if ($button) { break }
+      }
+    }
+    if (-not $button) { "  notification: no 'Quiet until reset' button on screen (notifications off, or Do not disturb); not checked" }
+    else {
+      Remove-Item (Join-Path $dir 'activated.txt') -ErrorAction SilentlyContinue
+      try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { "  invoke failed: $_" }
+      for ($i = 0; $i -lt 50 -and -not (Test-Path (Join-Path $dir 'activated.txt')); $i++) { Start-Sleep -Milliseconds 100 }
+      $got = Get-Content (Join-Path $dir 'activated.txt') -ErrorAction SilentlyContinue
+      $got | ForEach-Object { "    $_" }
+      $quiet = ($got -match '^quiet=omp/Kimi 7d$').Count -eq 1 -and -not ($got -match '^quietUntil=(none|no such limit)$')
+      "  {0} 'Quiet until reset' on the notification quiets omp's Kimi 7d" -f (Pass $quiet)
+    }
   }
 
   if ($Tests -contains 'contrast') {
