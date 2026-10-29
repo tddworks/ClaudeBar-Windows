@@ -175,6 +175,8 @@ function Click-At($x, $y) {
   [void][H]::SetCursorPos($saved.X, $saved.Y)
 }
 # Every text run on the HUD, against the HUD around it (design, acceptance check 10).
+# Each row reads as one sentence, its texts left out of UI Automation's control
+# view, so the runs come from the raw view: a TextBlock or a link each, not the row.
 function Contrast($check, $name) {
   $h = Rect $check.Hud
   $bmp = Grab $h $name 4
@@ -188,12 +190,17 @@ function Contrast($check, $name) {
   $types = New-Object Windows.Automation.OrCondition(
     (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text)),
     (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Hyperlink)))
-  $results = foreach ($e in $root.FindAll([Windows.Automation.TreeScope]::Descendants, $types)) {
-    $r = $e.Current.BoundingRectangle
-    if ($r.IsEmpty -or $r.Width -lt 2 -or $r.Height -lt 2 -or -not $e.Current.Name) { continue }
+  $raw = New-Object Windows.Automation.CacheRequest
+  $raw.TreeFilter = [Windows.Automation.Automation]::RawViewCondition
+  foreach ($p in 'NameProperty', 'BoundingRectangleProperty', 'ClassNameProperty') { $raw.Add([Windows.Automation.AutomationElement]::$p) }
+  $raw.Push()
+  try { $all = $root.FindAll([Windows.Automation.TreeScope]::Descendants, $types) } finally { $raw.Pop() }
+  $results = foreach ($e in $all) {
+    $r = $e.Cached.BoundingRectangle
+    if ($e.Cached.ClassName -eq 'HudRow' -or $r.IsEmpty -or $r.Width -lt 2 -or $r.Height -lt 2 -or -not $e.Cached.Name) { continue }
     $x = [int]$r.X - $h.L + 4; $y = [int]$r.Y - $h.T + 4
     $ratio = [H]::TextContrast($bytes, $data.Stride, $x, $y, [int]$r.Width, [int]$r.Height, $cx, $cy, $c.R - $c.L, $c.B - $c.T, $corner)
-    [pscustomobject]@{ Name = $e.Current.Name; Ratio = $ratio }
+    [pscustomobject]@{ Name = $e.Cached.Name; Ratio = $ratio }
   }
   $bmp.Dispose()
   $results
