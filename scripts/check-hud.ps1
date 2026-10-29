@@ -279,7 +279,10 @@ foreach ($theme in $Themes) {
         [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
         Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
         $before = Fg
-        try { $refresh.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); $inv = 'ok' } catch { $inv = "failed: $_" }
+        # A refresh draws the card again: the button found before it is gone, so find it each time.
+        $button = $null
+        for ($i = 0; $i -lt 30 -and -not $button; $i++) { $button = Find-Named $root 'Refresh the limits'; if (-not $button) { Start-Sleep -Milliseconds 100 } }
+        try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); $inv = 'ok' } catch { $inv = "failed: $_" }
         Start-Sleep -Milliseconds 900
         $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
         $after = Fg
