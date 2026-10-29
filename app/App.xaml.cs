@@ -36,7 +36,8 @@ public partial class App : Application
         {
             try { AppNotificationManager.Default.Unregister(); } catch (Exception) { }
         };
-        _window.Activate();
+        _window.Start();
+        // Opens the window, unless the launch is for the HUD alone (signed in, or a notification's action).
         _window.Open(Arguments(AppInstance.GetCurrent().GetActivatedEventArgs()));
     }
 
