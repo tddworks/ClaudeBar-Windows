@@ -9,7 +9,8 @@ namespace ClaudeBar;
 /// follows activation, and the HUD is never the active window except for a
 /// moment after a click, so the system's own Mica would sit at its solid
 /// inactive colour and flicker to the active tint on each click (measured,
-/// design-concept/hud/research.md).
+/// design-concept/hud/research.md). Its own configuration, so it takes the
+/// theme itself, and never the framework's default one.
 internal sealed class KeptActiveMica : SystemBackdrop
 {
     private MicaController? _controller;
@@ -24,6 +25,16 @@ internal sealed class KeptActiveMica : SystemBackdrop
         _controller = new MicaController { Kind = MicaKind.Base };
         _controller.AddSystemBackdropTarget(target);
         _controller.SetSystemBackdropConfiguration(_configuration);
+    }
+
+    /// Windows' theme or contrast changed: the framework's default configuration
+    /// did, which this material doesn't use. Not passed to the base: it updates
+    /// that default for this target, and threw ArgumentException ("target",
+    /// E_INVALIDARG) on a Windows theme switch, which XAML turned into a fail-fast
+    /// (0xC000027B in combase), seen with the HUD up on the PC.
+    protected override void OnDefaultSystemBackdropConfigurationChanged(ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot)
+    {
+        if (_configuration is { } c) c.Theme = Theme(xamlRoot);
     }
 
     protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop target)
