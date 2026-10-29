@@ -35,5 +35,8 @@
     <!-- ClaudeBarNative.dll, claudebar-upload.exe, the Swift runtime and ClaudeBar's resource bundles, staged by build.ps1. -->
     <Content Include="..\native-out\$(RuntimeIdentifier)\**\*" LinkBase="." CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The sample readings the HUD check shows (HudCheck.cs). -->
+    <EmbeddedResource Include="..\tests\hud-check.json" LogicalName="hud-check.json" />
+    <EmbeddedResource Include="..\tests\hud-check-fine.json" LogicalName="hud-check-fine.json" />
   </ItemGroup>
 </Project>

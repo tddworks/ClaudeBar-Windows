@@ -38,10 +38,10 @@ public sealed partial class MainWindow : Window
     private JsonObject? _preview;
     private string _period = "7d";
     private string _provider = "";
-    private bool _shown;
     private bool _joining;
     private bool _uploading;
-    private bool _settingsOpen;
+    /// The page picked on the left: `limits`, `usage`, `leaderboard` or `settings`.
+    private string _section = "limits";
     /// True while the Join page adds this PC to a member instead of making one.
     private bool _addingDevice;
     /// The member the code was approved for; joining waits for it.
@@ -62,8 +62,14 @@ public sealed partial class MainWindow : Window
     private string? _pending;
     /// The last board read and your place on it, for the tray's flyout.
     private (List<Member> Members, JsonObject? You, bool Hidden)? _lastBoard;
-    /// Quit from the tray: close for real instead of hiding there.
+    /// Quit from the tray or the HUD: close for real instead of hiding there.
     private bool _quitting;
+    /// The HUD, and the limits the Limits page shows.
+    private readonly Hud _hud;
+    /// Today's tokens read again now and then, for the HUD's footer and Usage.
+    private readonly DispatcherQueueTimer _usage;
+    /// The id `RegisterHotKey` knows the HUD's shortcut by.
+    private const int ShortcutId = 1;
 
     public MainWindow()
     {
@@ -78,8 +84,14 @@ public sealed partial class MainWindow : Window
         _pump.Interval = TimeSpan.FromMilliseconds(16);
         _pump.Tick += (_, _) => Native.cbw_drain_main_queue();
         _pump.Start();
-        Activated += OnActivated;
-        Root.ActualThemeChanged += (_, _) => { BuildMiniPodium(); BuildPills(); if (BoardPage.Visibility == Visibility.Visible) _ = LoadBoard(keepList: false); };
+        Root.ActualThemeChanged += (_, _) =>
+        {
+            BuildMiniPodium();
+            BuildPills();
+            ShowLimits();
+            ShowUsage();
+            if (BoardPage.Visibility == Visibility.Visible) _ = LoadBoard(keepList: false);
+        };
 
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _taskbar = new Taskbar(handle);
@@ -88,15 +100,30 @@ public sealed partial class MainWindow : Window
             OpenWindow = () => Open(""),
             OpenFlyout = OpenTrayFlyout,
             UploadNow = () => Open("--upload"),
-            Quit = QuitFromTray,
+            Quit = Quit,
         };
-        _taskbar.OnMessage = _tray.Handle;
+        _taskbar.OnMessage = (message, wParam, lParam) => _tray.Handle(message, wParam, lParam) || OnShortcut(message, wParam);
         if (Preferences.TrayIcon) _tray.Show();
         Taskbar.SetJumpList();
+        _hud = new Hud(DispatcherQueue, refresh => refresh ? Swift.HudRefresh() : Swift.HudReading())
+        {
+            OpenWindow = () => Open(""),
+            OpenSettings = () => { Open(""); Navigate("settings"); },
+            OpenLimits = () => { Open(""); Navigate("limits"); },
+            ChooseTools = () => { Open(""); Navigate("settings"); OnChooseTools(HudToolsButton, new RoutedEventArgs()); },
+            Quit = Quit,
+            Changed = OnHudChanged,
+            Crossed = OnCrossed,
+            ShownChanged = ShowHudSettings,
+        };
+        _usage = DispatcherQueue.CreateTimer();
+        _usage.Interval = TimeSpan.FromMinutes(30);
+        _usage.Tick += (_, _) => _ = ReadUsage();
+        RegisterShortcut();
         AppWindow.Closing += (_, e) =>
         {
-            // With the tray icon on, closing keeps ClaudeBar there.
-            if (_tray.IsShown && !_quitting)
+            // With the tray icon or the HUD on, closing keeps ClaudeBar running there.
+            if ((_tray.IsShown || _hud.IsShown) && !_quitting)
             {
                 e.Cancel = true;
                 AppWindow.Hide();
@@ -106,27 +133,64 @@ public sealed partial class MainWindow : Window
         {
             _tray.Dispose();
             _flyout?.Close();
+            _usage.Stop();
+            _hud.Dispose();
+            Win32.UnregisterHotKey(handle, ShortcutId);
         };
+        ShowHudSettings();
+        Navigate("limits");
     }
 
-    /// A launch's arguments, this one's or a second launch's handed over:
-    /// `--upload`, `--settings`, or the board.
+    /// Reads the membership, the limits and today's tokens. The window may stay
+    /// hidden meanwhile: started with Windows, the HUD is enough.
+    internal void Start()
+    {
+        _ = Guarded(async () => Show(await Swift.State()));
+        Startup.Adopt();
+        _hud.Start();
+        _ = ReadUsage();
+        _usage.Start();
+    }
+
+    /// A launch's arguments, this one's or a second launch's handed over, or a
+    /// notification's: `--startup` (signed in: the window waits behind the HUD
+    /// or the tray), `--hud` (show the HUD), `--refresh`, `--quiet=<limit>`,
+    /// `--upload`, `--settings`, `--board`, or just the window.
     internal void Open(string arguments)
     {
+        var words = LaunchArguments.Words(arguments);
+        // These need no window, while ClaudeBar shows somewhere: the HUD, the tray or the window itself.
+        var shownElsewhere = Preferences.Hud || _tray.IsShown || AppWindow.IsVisible;
+        if (LaunchArguments.Quiet(arguments) is { } quiet)
+        {
+            _hud.Quiet(quiet);
+            if (shownElsewhere) return;
+        }
+        else if (words.Contains("--hud"))
+        {
+            _hud.SetShown(true);
+            return;
+        }
+        else if (words.Contains("--refresh"))
+        {
+            _ = _hud.Read(refresh: true);
+            if (shownElsewhere) return;
+        }
+        else if (words.Contains("--startup") && shownElsewhere) return;
         AppWindow.Show();
         Activate();
+        if (words.Contains("--settings")) Navigate("settings");
+        else if (words.Contains("--board")) Navigate("leaderboard");
         if (_state is null)
         {
             _pending = arguments;
             return;
         }
         if (_state["joined"]?.GetValue<bool>() != true) return;
-        if (arguments.Contains("--settings")) OnOpenSettings(this, new RoutedEventArgs());
-        else if (arguments.Contains("--board")) OnCloseSettings(this, new RoutedEventArgs());
-        if (arguments.Contains("--upload")) OnUploadNow(this, new RoutedEventArgs());
+        if (words.Contains("--upload")) OnUploadNow(this, new RoutedEventArgs());
     }
 
-    private void QuitFromTray()
+    private void Quit()
     {
         _quitting = true;
         Close();
@@ -201,26 +265,19 @@ public sealed partial class MainWindow : Window
         if (TraySwitch.IsOn) _tray.Show(); else _tray.Hide();
     }
 
-    /// 480 × 760 effective pixels, centred, never taller than the work area:
+    /// 760 × 760 effective pixels, centred, never larger than the work area:
     /// `AppWindow` sizes in physical pixels, so the display's scale is applied here.
     private void Place()
     {
         var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-        var width = Math.Min((int)(480 * scale), work.Width);
+        var width = Math.Min((int)(760 * scale), work.Width);
         var height = Math.Min((int)(760 * scale), work.Height);
         AppWindow.MoveAndResize(new RectInt32(work.X + (work.Width - width) / 2, work.Y + (work.Height - height) / 2, width, height));
     }
 
     [LibraryImport("user32.dll")]
     private static partial uint GetDpiForWindow(nint window);
-
-    private async void OnActivated(object sender, WindowActivatedEventArgs e)
-    {
-        if (_shown) return;
-        _shown = true;
-        await Guarded(async () => Show(await Swift.State()));
-    }
 
     // MARK: - Pages
 
@@ -235,19 +292,20 @@ public sealed partial class MainWindow : Window
         VersionText.Text = $"ClaudeBar for Windows {state["version"]}";
         var joined = state["joined"]?.GetValue<bool>() == true;
         CopiedKeyBar.IsOpen = joined && state["copiedKey"]?.GetValue<bool>() == true;
+        LeaderboardSettings.Visibility = joined ? Visibility.Visible : Visibility.Collapsed;
+        NotJoinedSettings.Visibility = joined ? Visibility.Collapsed : Visibility.Visible;
+        UpdatePages();
         if (!joined)
         {
-            _settingsOpen = false;
-            ShowPage(JoinPage);
             _ = Uploads.UnscheduleAsync();
             _taskbar.Clear();
             _lastBoard = null;
+            _hud.Place = null;
             Standings.Children.Clear();
             Podium.Children.Clear();
             _ = Guarded(LoadPreview);
             return;
         }
-        ShowPage(_settingsOpen ? SettingsPage : BoardPage);
         _ = EnsureScheduled();
         if (Pills.Children.Count == 0) BuildPills();
         ShowUploadStatus(state);
@@ -260,24 +318,48 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void ShowPage(FrameworkElement page)
+    /// Picks a page on the left, as a click there would.
+    private void Navigate(string section)
     {
-        foreach (var each in new FrameworkElement[] { JoinPage, BoardPage, SettingsPage })
-            each.Visibility = each == page ? Visibility.Visible : Visibility.Collapsed;
+        Nav.SelectedItem = section switch
+        {
+            "usage" => UsageItem,
+            "leaderboard" => LeaderboardItem,
+            "settings" => Nav.SettingsItem,
+            _ => LimitsItem,
+        };
+        _section = section;
+        UpdatePages();
     }
 
-    private void OnOpenSettings(object sender, RoutedEventArgs e)
+    private void OnNavigate(NavigationView sender, NavigationViewSelectionChangedEventArgs e)
     {
-        _settingsOpen = true;
-        ShowPage(SettingsPage);
-        _ = Guarded(LoadWeek);
+        var section = e.IsSettingsSelected ? "settings" : (e.SelectedItem as NavigationViewItem)?.Tag as string ?? "limits";
+        _section = section;
+        UpdatePages();
+        if (section == "settings")
+        {
+            ShowHudSettings();
+            if (_state?["joined"]?.GetValue<bool>() == true) _ = Guarded(LoadWeek);
+        }
+        if (section == "usage") _ = ReadUsage();
     }
 
-    private void OnCloseSettings(object sender, RoutedEventArgs e)
+    /// The picked page; the Leaderboard is the board once joined, else joining.
+    private void UpdatePages()
     {
-        _settingsOpen = false;
-        ShowPage(BoardPage);
+        var joined = _state?["joined"]?.GetValue<bool>() == true;
+        void Set(FrameworkElement page, bool shown) => page.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        Set(LimitsPage, _section == "limits");
+        Set(UsagePage, _section == "usage");
+        Set(JoinPage, _section == "leaderboard" && _state is not null && !joined);
+        Set(BoardPage, _section == "leaderboard" && joined);
+        Set(SettingsPage, _section == "settings");
     }
+
+    private void OnOpenSettings(object sender, RoutedEventArgs e) => Navigate("settings");
+
+    private void OnOpenLeaderboard(object sender, RoutedEventArgs e) => Navigate("leaderboard");
 
     // MARK: - Board
 
@@ -345,6 +427,8 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, UpdatePinnedYou);
         _lastBoard = (members, reply["you"] as JsonObject, hidden);
         _taskbar.Show(GlanceOf(reply["you"] as JsonObject, members, hidden), IsDark, AccentColor());
+        _hud.Place = reply["you"]?["rank"]?.GetValue<int>() is int place ? $"#{place} {PlacePhrase(period)}" : null;
+        _hud.Render();
     }
 
     private Glance GlanceOf(JsonObject? you, List<Member> members, bool hidden)
@@ -662,7 +746,7 @@ public sealed partial class MainWindow : Window
 
     private async Task LoadWeek()
     {
-        _preview = await Swift.Preview();
+        await ReadPreview();
         if (_state is not null) ShowSettings(_state);
     }
 
@@ -771,9 +855,9 @@ public sealed partial class MainWindow : Window
         {
             foreach (var provider in _providers) JoinProviders.Children.Add(ProviderRow(provider.Id, provider.Name, "Counting tokens…", 0));
         }
-        _preview = await Swift.Preview();
+        await ReadPreview();
         JoinProviders.Children.Clear();
-        foreach (var provider in _preview["providers"]?.AsArray() ?? new JsonArray())
+        foreach (var provider in _preview?["providers"]?.AsArray() ?? new JsonArray())
         {
             var tokens = provider!["tokens"]!.GetValue<long>();
             var days = provider["days"]!.GetValue<int>();
@@ -1128,6 +1212,14 @@ public sealed partial class MainWindow : Window
         "today" => "Today",
         "30d" => "30 days",
         _ => "7 days",
+    };
+
+    /// Your place's board, as the HUD's footer says it: `#18 this week`.
+    private static string PlacePhrase(string period) => period switch
+    {
+        "today" => "today",
+        "30d" => "in 30 days",
+        _ => "this week",
     };
 
     private static string PeriodPhrase(string period) => period switch

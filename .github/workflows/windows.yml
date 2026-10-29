@@ -79,6 +79,13 @@ jobs:
           swift test --package-path native
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      # The app's own tests: its pure C# (where the HUD sits, what it says),
+      # compiled without WinUI, so they need no Windows App SDK.
+      - name: Test the app's C#
+        run: |
+          dotnet test tests/ClaudeBar.Tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # The published app, without debug symbols, for the release job.
       - name: Keep the app for the release
         if: startsWith(github.ref, 'refs/tags/v')

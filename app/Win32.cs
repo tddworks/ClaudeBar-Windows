@@ -2,9 +2,10 @@ using System.Runtime.InteropServices;
 
 namespace ClaudeBar;
 
-/// The Win32 calls the taskbar glance and the tray icon need, which WinUI
-/// doesn't wrap: window subclassing, DWM's iconic thumbnails, GDI to draw
-/// them, the notification area, a popup menu, and the jump list's COM objects.
+/// The Win32 calls the taskbar glance, the tray icon and the HUD need, which
+/// WinUI doesn't wrap: window subclassing, DWM's iconic thumbnails, GDI to draw
+/// them, the notification area, a popup menu, the jump list's COM objects, and
+/// the HUD's window styles and the foreground window.
 internal static class Win32
 {
     internal delegate IntPtr SubclassProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data);
@@ -90,10 +91,69 @@ internal static class Win32
     [DllImport("user32.dll")] internal static extern bool GetCursorPos(out POINT point);
     internal const uint MF_STRING = 0, MF_SEPARATOR = 0x800, TPM_RETURNCMD = 0x100, TPM_RIGHTBUTTON = 2, TPM_BOTTOMALIGN = 0x20;
 
+    // The HUD: the foreground window, and handing it back after a click.
+    internal delegate void WinEventProc(IntPtr hook, uint eventType, IntPtr window, int objectId, int childId, uint thread, uint time);
+    [DllImport("user32.dll")] internal static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc proc, uint process, uint thread, uint flags);
+    [DllImport("user32.dll")] internal static extern bool UnhookWinEvent(IntPtr hook);
+    [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll")] internal static extern bool IsWindow(IntPtr window);
+    internal const uint EVENT_SYSTEM_FOREGROUND = 0x0003, WINEVENT_OUTOFCONTEXT = 0;
+
+    // The HUD's window: its styles, where the foreground window is, and whether it's full screen.
+    [DllImport("user32.dll")] internal static extern IntPtr GetWindowLongPtrW(IntPtr window, int index);
+    [DllImport("user32.dll")] internal static extern IntPtr SetWindowLongPtrW(IntPtr window, int index, IntPtr value);
+    [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr window, out RECT rect);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern int GetClassNameW(IntPtr window, System.Text.StringBuilder name, int size);
+    [DllImport("shell32.dll")] internal static extern int SHQueryUserNotificationState(out int state);
+    internal const int GWL_EXSTYLE = -20;
+    internal const long WS_EX_NOACTIVATE = 0x08000000L, WS_EX_TOOLWINDOW = 0x00000080L;
+    internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2;
+    internal const int QUNS_PRESENTATION_MODE = 4;
+    internal const uint WM_EXITSIZEMOVE = 0x0232, WM_DPICHANGED = 0x02E0, WM_DISPLAYCHANGE = 0x007E, WM_SETTINGCHANGE = 0x001A;
+
+    // The taskbar button's dot (an icon made from a bitmap) and the HUD's shortcut.
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ICONINFO { [MarshalAs(UnmanagedType.Bool)] public bool IsIcon; public int HotspotX; public int HotspotY; public IntPtr Mask; public IntPtr Color; }
+    [DllImport("user32.dll")] internal static extern IntPtr CreateIconIndirect(ref ICONINFO info);
+    [DllImport("gdi32.dll")] internal static extern IntPtr CreateBitmap(int width, int height, uint planes, uint bitCount, IntPtr bits);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern uint RegisterWindowMessageW(string name);
+    [DllImport("user32.dll")] internal static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
+    [DllImport("user32.dll")] internal static extern bool UnregisterHotKey(IntPtr window, int id);
+    internal const uint WM_HOTKEY = 0x0312, MOD_ALT = 1, MOD_CONTROL = 2, MOD_SHIFT = 4, MOD_WIN = 8, MOD_NOREPEAT = 0x4000;
+
     internal static uint ColorRef(Windows.UI.Color color) => (uint)(color.R | (color.G << 8) | (color.B << 16));
 
     internal static int LowWord(IntPtr value) => (short)((long)value & 0xFFFF);
     internal static int HighWord(IntPtr value) => (short)(((long)value >> 16) & 0xFFFF);
+}
+
+// MARK: - The taskbar button's overlay icon
+
+[ComImport, Guid("EA1AFB91-9E28-4B86-90E9-9E9F8A5EEFAF"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface ITaskbarList3
+{
+    // ITaskbarList
+    void HrInit();
+    void AddTab(IntPtr window);
+    void DeleteTab(IntPtr window);
+    void ActivateTab(IntPtr window);
+    void SetActiveAlt(IntPtr window);
+    // ITaskbarList2
+    void MarkFullscreenWindow(IntPtr window, [MarshalAs(UnmanagedType.Bool)] bool fullscreen);
+    // ITaskbarList3
+    void SetProgressValue(IntPtr window, ulong completed, ulong total);
+    void SetProgressState(IntPtr window, int flags);
+    void RegisterTab(IntPtr tab, IntPtr window);
+    void UnregisterTab(IntPtr tab);
+    void SetTabOrder(IntPtr tab, IntPtr insertBefore);
+    void SetTabActive(IntPtr tab, IntPtr window, uint reserved);
+    void ThumbBarAddButtons(IntPtr window, uint count, IntPtr buttons);
+    void ThumbBarUpdateButtons(IntPtr window, uint count, IntPtr buttons);
+    void ThumbBarSetImageList(IntPtr window, IntPtr images);
+    void SetOverlayIcon(IntPtr window, IntPtr icon, [MarshalAs(UnmanagedType.LPWStr)] string? description);
+    void SetThumbnailTooltip(IntPtr window, [MarshalAs(UnmanagedType.LPWStr)] string? tip);
+    void SetThumbnailClip(IntPtr window, IntPtr clip);
 }
 
 // MARK: - The jump list's COM objects

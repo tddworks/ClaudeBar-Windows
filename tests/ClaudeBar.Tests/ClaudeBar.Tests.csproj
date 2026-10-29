@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The app is a WinUI exe, which a plain test project can't reference: its
+         pure files, with no WinUI in them, are compiled in here by link. -->
+    <Compile Include="..\..\app\HudGeometry.cs" Link="HudGeometry.cs" />
+    <Compile Include="..\..\app\HudText.cs" Link="HudText.cs" />
+    <Compile Include="..\..\app\HudData.cs" Link="HudData.cs" />
+    <Compile Include="..\..\app\HudCrossings.cs" Link="HudCrossings.cs" />
+    <Compile Include="..\..\app\LaunchArguments.cs" Link="LaunchArguments.cs" />
+    <!-- The sample the HUD check shows, read as the C interface sends it. -->
+    <Content Include="..\hud-check.json" Link="hud-check.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\hud-check-fine.json" Link="hud-check-fine.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
