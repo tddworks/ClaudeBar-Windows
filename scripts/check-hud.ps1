@@ -8,12 +8,13 @@
 # make (a skipped click, a group with nothing to measure): those never count
 # as a pass. It exits 1 on any FAIL, 2 when nothing failed but something went
 # unverified, and 0 only when every check ran and passed.
-#   .\scripts\check-hud.ps1 [-Exe out\win-x64\ClaudeBar.exe] [-Shots dir] [-Themes light,dark]
+#   .\scripts\check-hud.ps1 [-Exe out\win-x64\ClaudeBar.exe] [-Shots dir] [-Themes light,dark] [-Tests theme,...]
+# The `theme` step switches the Windows apps theme (and puts it back), as Settings does.
 param(
   [string]$Exe = (Join-Path $PSScriptRoot '..\out\win-x64\ClaudeBar.exe'),
   [string]$Shots = (Join-Path $env:TEMP 'claudebar-hud-shots'),
   [string[]]$Themes = @('light', 'dark'),
-  [string[]]$Tests = @('focus', 'measure', 'click', 'style', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots')
+  [string[]]$Tests = @('focus', 'measure', 'click', 'style', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots', 'theme')
 )
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -56,6 +57,9 @@ public static class H {
   public static bool Front(IntPtr h) { keybd_event(0x12, 0, 0, UIntPtr.Zero); var ok = SetForegroundWindow(h); keybd_event(0x12, 0, 2, UIntPtr.Zero); return ok; }
   public static string Title(IntPtr h) { var s = new StringBuilder(256); GetWindowTextW(h, s, 256); return s.ToString(); }
   public static IntPtr RootAt(int x, int y) { var p = new POINT { X = x, Y = y }; return GetAncestor(WindowFromPoint(p), 2); }
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageTimeoutW(IntPtr h, uint m, UIntPtr w, string l, uint f, uint t, out UIntPtr r);
+  // WM_SETTINGCHANGE to every top-level window, as Settings sends it ("ImmersiveColorSet" for the theme).
+  public static void SettingChange(string what) { UIntPtr r; SendMessageTimeoutW((IntPtr)0xffff, 0x1A, UIntPtr.Zero, what, 2, 5000, out r); }
 
   // WCAG contrast from a BGRA capture. The background is the median luminance
   // of a 2 px ring around the box; the text is the 98th percentile of contrast
@@ -131,6 +135,22 @@ function Measure-Hud($hud, $s, $name) {
   $bmp = Grab $h $name
   "  HUD left margin : " + (Stats $bmp (2 * $s) (40 * $s) (10 * $s) (($h.B - $h.T) - 40 * $s))
   $bmp.Dispose()
+}
+# The mean luminance (0-255) of the HUD's left margin, where only the material shows.
+function Margin-Luminance($hud, $s) {
+  $h = Rect $hud
+  $l = $h.L + [int](2 * $s); $t = $h.T + [int](40 * $s); $w = [int](8 * $s); $hh = [math]::Max(4, ($h.B - $h.T) - [int](80 * $s))
+  $bmp = New-Object Drawing.Bitmap $w, $hh
+  $g = [Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($l, $t, 0, 0, (New-Object Drawing.Size $w, $hh)); $g.Dispose()
+  $sum = 0; $n = 0
+  for ($y = 0; $y -lt $hh; $y += 2) { for ($x = 0; $x -lt $w; $x += 2) { $c = $bmp.GetPixel($x, $y); $sum += 0.2126 * $c.R + 0.7152 * $c.G + 0.0722 * $c.B; $n++ } }
+  $bmp.Dispose()
+  $sum / $n
+}
+# The Windows apps theme (1 light, 0 dark), as Settings switches it.
+function Set-AppsTheme($light) {
+  Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' AppsUseLightTheme ([int]$light)
+  [H]::SettingChange('ImmersiveColorSet')
 }
 function Other-App {
   # Another process in front, as an editor would be. (Windows 11's Notepad hands
@@ -469,6 +489,38 @@ foreach ($theme in $Themes) {
       "  screenshot: " + (Join-Path $Shots "strip-$theme.png")
       Stop-Check $check
     }
+  }
+}
+
+if ($Tests -contains 'theme') {
+  # Windows switching between light and dark with the HUD up, twice each way: the HUD
+  # follows Windows here (no --theme), stays up, and draws on the new theme's Mica
+  # in that theme's text (the contrast holds only with dark text on light Mica).
+  "== theme switch"
+  $was = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize').AppsUseLightTheme
+  $check = Start-Check 'system' $null
+  if ($check) {
+    try {
+      foreach ($light in @((1 - $was), $was, (1 - $was), $was)) {
+        $name = if ($light -eq 1) { 'light' } else { 'dark' }
+        Set-AppsTheme $light; Start-Sleep -Seconds 4
+        $alive = -not $check.Process.HasExited
+        $shown = $alive -and [H]::IsWindowVisible($check.Hud)
+        if (-not $shown) {
+          "  {0} switched to {1}: the check process alive={2}, HUD shown={3}{4}" -f (Pass $false), $name, $alive, $shown, $(if (-not $alive) { ' exit=0x{0:X}' -f $check.Process.ExitCode } else { '' })
+          Get-Content (Join-Path $dir 'crash.txt') -ErrorAction SilentlyContinue | Select-Object -First 15 | ForEach-Object { "    crash.txt: $_" }
+          break
+        }
+        [void][H]::Front($check.Behind); Start-Sleep -Milliseconds 1500
+        $lum = Margin-Luminance $check.Hud $check.Scale
+        $mica = if ($light -eq 1) { $lum -gt 170 } else { $lum -lt 90 }
+        $runs = @(Contrast $check "theme-switched-$name")
+        $low = @($runs | Where-Object { $_.Ratio -lt 4.5 })
+        "  {0} switched to {1}: HUD still up, Mica luminance {2:N0} ({3}), text contrast over {4} runs lowest {5:N2}:1, screenshot theme-switched-{1}.png" -f (Pass ($mica -and $runs.Count -gt 0 -and $low.Count -eq 0)), $name, $lum, $(if ($light -eq 1) { 'light: over 170' } else { 'dark: under 90' }), $runs.Count, (($runs | Measure-Object Ratio -Minimum).Minimum)
+      }
+    }
+    finally { Set-AppsTheme $was }
+    if (-not $check.Process.HasExited) { Stop-Check $check }
   }
 }
 "== {0} failed, {1} unverified" -f $script:failures, $script:unverified
