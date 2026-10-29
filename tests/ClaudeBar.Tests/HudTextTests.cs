@@ -53,11 +53,15 @@ public sealed class HudTextTests
         var reply = (JsonObject)JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "hud-check.json")))!;
         var data = HudData.Parse(reply)!;
 
-        Assert.AreEqual("claude,codex,gemini", string.Join(",", data.Tools.Select(tool => tool.Id)));
+        Assert.AreEqual("claude,codex,omp,cursor,gemini,copilot", string.Join(",", data.Tools.Select(tool => tool.Id)));
         Assert.AreEqual("5h,7d", string.Join(",", data.Tools[0].Lines.Select(line => line.Window)));
-        Assert.AreEqual(DateTimeOffset.FromUnixTimeSeconds(1_791_900_000 + 2 * 3600 + 14 * 60), data.Tools[0].Lines[0].ResetsAt);
+        Assert.AreEqual(DateTimeOffset.FromUnixTimeSeconds(1_791_900_000 + 3 * 3600 + 36 * 60), data.Tools[0].Lines[0].ResetsAt);
+        Assert.HasCount(13, data.Tools[2].Lines);
+        Assert.AreEqual(("Kimi 7d", 12, 2), (data.Tools[2].HeadlineLine.Window, data.Tools[2].OthersCount, data.Tools[2].OthersAttention));
         Assert.AreEqual("depleted", data.Worst);
-        Assert.AreEqual("signedOut", data.Problems[1].Kind);
+        Assert.AreEqual("signedOut", data.Stale("cursor")!.Kind);
+        Assert.AreEqual("claude,codex,omp,cursor", string.Join(",", data.Summary().Rows.Select(row => row.Tool!.Id)));
+        Assert.AreEqual("gemini,copilot", string.Join(",", data.Summary().Fine!.Ids));
         Assert.AreEqual("Codex", data.LookOf("codex.work").Name);
     }
 }

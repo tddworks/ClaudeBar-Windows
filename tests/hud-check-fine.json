@@ -1,0 +1,155 @@
+{
+  "reading": {
+    "tools": [
+      {
+        "id": "claude",
+        "lines": [
+          {
+            "window": "5h",
+            "percentLeft": 62,
+            "resetsAt": 1791908040,
+            "windowSeconds": 18000,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 44.7,
+            "strip": true
+          },
+          {
+            "window": "7d",
+            "percentLeft": 71,
+            "resetsAt": 1792180800,
+            "windowSeconds": 604800,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 46.4,
+            "strip": false
+          }
+        ],
+        "outUntil": null,
+        "runningHot": false,
+        "headline": 0,
+        "others": {
+          "count": 1,
+          "attention": 0
+        },
+        "readAt": 1791900000
+      },
+      {
+        "id": "codex",
+        "lines": [
+          {
+            "window": "5h",
+            "percentLeft": 88,
+            "resetsAt": 1791908040,
+            "windowSeconds": 18000,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 44.7,
+            "strip": true
+          },
+          {
+            "window": "7d",
+            "percentLeft": 90,
+            "resetsAt": 1792335600,
+            "windowSeconds": 604800,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 72.6,
+            "strip": false
+          }
+        ],
+        "outUntil": null,
+        "runningHot": false,
+        "headline": 0,
+        "others": {
+          "count": 1,
+          "attention": 0
+        },
+        "readAt": 1791900000
+      },
+      {
+        "id": "gemini",
+        "lines": [
+          {
+            "window": "1d",
+            "percentLeft": 93,
+            "resetsAt": 1791934800,
+            "windowSeconds": 86400,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 40.3,
+            "strip": true
+          }
+        ],
+        "outUntil": null,
+        "runningHot": false,
+        "headline": 0,
+        "others": {
+          "count": 0,
+          "attention": 0
+        },
+        "readAt": 1791900000
+      }
+    ],
+    "worst": "healthy"
+  },
+  "readAt": 1791900000,
+  "problems": [],
+  "looks": [
+    {
+      "id": "claude",
+      "name": "Claude",
+      "light": "#E2674A",
+      "dark": "#FA8C73"
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "light": "#1C9E93",
+      "dark": "#59D9C7"
+    },
+    {
+      "id": "omp",
+      "name": "omp",
+      "light": "#7A5AF8",
+      "dark": "#B9A6FF"
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "light": "#5C5C5C",
+      "dark": "#C8C8C8"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "light": "#1A73E8",
+      "dark": "#8AB4F8"
+    },
+    {
+      "id": "copilot",
+      "name": "Copilot",
+      "light": "#6E40C9",
+      "dark": "#B392F0"
+    }
+  ],
+  "state": {
+    "joined": false,
+    "providers": [
+      {
+        "id": "claude",
+        "name": "Claude",
+        "light": "#E2674A",
+        "dark": "#FA8C73",
+        "shared": false
+      },
+      {
+        "id": "codex",
+        "name": "Codex",
+        "light": "#1C9E93",
+        "dark": "#59D9C7",
+        "shared": false
+      }
+    ]
+  }
+}

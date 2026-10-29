@@ -77,6 +77,19 @@ internal static class HudText
     }
 
     /// How long ago the numbers were read: `just now`, `1m ago`, `2h ago`.
+    /// The other limits of a tool, after its headline: `+12`, or `+2 low`
+    /// when some of them aren't healthy; nothing when it has no others.
+    internal static string Others(int count, int attention) =>
+        count == 0 ? "" : attention > 0 ? $"+{attention} low" : $"+{count}";
+
+    /// A time ahead, short: `3:40 PM` within a day, `Thu 3:40 PM` after.
+    internal static string When(DateTimeOffset at, DateTimeOffset now, CultureInfo culture) =>
+        at - now < TimeSpan.FromDays(1) ? Clock(at, culture) : $"{at.ToLocalTime().ToString("ddd", culture)} {Clock(at, culture)}";
+
+    /// The same, as a sentence says it: `at 3:40 PM`, `on Thursday at 3:40 PM`.
+    internal static string SpokenWhen(DateTimeOffset at, DateTimeOffset now, CultureInfo culture) =>
+        at - now < TimeSpan.FromDays(1) ? $"at {Clock(at, culture)}" : $"on {at.ToLocalTime().ToString("dddd", culture)} at {Clock(at, culture)}";
+
     internal static string Ago(TimeSpan since) =>
         since < TimeSpan.FromMinutes(1) ? "just now"
         : since < TimeSpan.FromHours(1) ? $"{(long)since.TotalMinutes}m ago"

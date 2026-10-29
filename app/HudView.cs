@@ -39,6 +39,8 @@ internal sealed class HudView
     internal Action? OpenWindow;
     internal Action? OpenSettings;
     internal Action? ChooseTools;
+    /// A click on a row: the window's Limits page, where every limit is.
+    internal Action? OpenLimits;
     internal Action? HideHud;
     internal Action? Quit;
     /// After an action a click on the HUD ran: the person's window again.
@@ -60,6 +62,10 @@ internal sealed class HudView
 
     // MARK: - The card
 
+    /// The card (design, What it shows): a row for each tool that needs the
+    /// person, every fine tool in one quiet row, so a glance answers *can I
+    /// keep going, and until when?* A click on a row opens the Limits page,
+    /// which lists every limit.
     internal FrameworkElement Card(Input input)
     {
         _calibrated = false;
@@ -75,160 +81,229 @@ internal sealed class HudView
         root.Children.Add(grip);
         _captions.Add(grip);
 
-        var body = new StackPanel { Spacing = 12, Padding = new Thickness(14, 0, 14, 12) };
-        _windowWidth = WindowColumn(input.Data);
-        FrameworkElement? firstFlag = null;
+        var body = new StackPanel { Spacing = 10, Padding = new Thickness(14, 0, 14, 12) };
         if (input.Data is { IsEmpty: true })
         {
             body.Children.Add(Empty());
         }
         else if (input.Data is { } data)
         {
-            foreach (var tool in data.Tools)
-            {
-                var look = data.LookOf(tool.Id);
-                var (block, flag) = ToolBlock(look, tool, data.Failed(tool.Id), input);
-                firstFlag ??= flag;
-                body.Children.Add(block);
-            }
-            foreach (var problem in data.Alone)
-            {
-                var (block, flag) = problem.Kind == "reading"
-                    ? (PendingBlock(data.LookOf(problem.Id), new[] { "" }, input.Dark), null)
-                    : ProblemBlock(data.LookOf(problem.Id), problem, input.Dark);
-                firstFlag ??= flag;
-                body.Children.Add(block);
-            }
+            var summary = data.Summary();
+            Measure(data, summary);
+            foreach (var row in summary.Rows)
+                body.Children.Add(Clickable(row.Tool is null ? DownRow(data.LookOf(row.Problem!.Id), row.Problem, input.Dark) : ToolRow(data, row, input)));
+            if (summary.Fine is { } fine) body.Children.Add(Clickable(QuietRow(data, fine)));
         }
         else
         {
-            foreach (var (look, windows) in input.Pending) body.Children.Add(PendingBlock(look, windows, input.Dark));
+            _nameWidth = 0;
+            _labelWidth = 0;
+            foreach (var (look, _) in input.Pending) body.Children.Add(PendingRow(look, input.Dark));
         }
         var scroll = new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollMode = ScrollMode.Disabled };
         Grid.SetRow(scroll, 1);
         root.Children.Add(scroll);
 
-        var footer = Footer(input);
+        // The footer, where the buttons show while the pointer is over the card.
+        var (footer, age) = Footer(input);
         Grid.SetRow(footer, 2);
         root.Children.Add(footer);
         _captions.Add(footer);
-
-        // The three buttons, shown while the pointer is over the card, where the first tool's flag is.
         var tools = Toolbar(input.OnTop);
-        Grid.SetRowSpan(tools, 2);
-        root.Children.Add(tools);
+        Grid.SetColumn(tools, 1);
+        footer.Children.Add(tools);
         root.PointerEntered += (_, _) =>
         {
             tools.Visibility = Visibility.Visible;
-            if (firstFlag is not null) firstFlag.Opacity = 0;
+            if (age is not null) age.Visibility = Visibility.Collapsed;
         };
         root.PointerExited += (_, _) =>
         {
             tools.Visibility = Visibility.Collapsed;
-            if (firstFlag is not null) firstFlag.Opacity = 1;
+            if (age is not null) age.Visibility = Visibility.Visible;
         };
         root.ContextFlyout = Menu();
         return root;
     }
 
-    /// A tool's limits. One whose last read failed shows its last numbers as
-    /// offline, says it couldn't read, and offers a retry.
-    private (FrameworkElement Block, FrameworkElement? Flag) ToolBlock(HudData.Look look, HudData.Tool tool, HudData.Problem? failed, Input input)
+    /// The names' and the window labels' columns: as wide as the widest of
+    /// the rows drawn, so the bars line up; a long one ends in an ellipsis.
+    private double _nameWidth;
+    private double _labelWidth;
+
+    private void Measure(HudData data, HudSummary summary)
     {
-        var block = new StackPanel { Spacing = 6 };
-        string? flagText = null;
-        var flagStyle = "HudSecondary";
-        if (failed is not null)
+        _nameWidth = 0;
+        _labelWidth = 0;
+        foreach (var row in summary.Rows.Where(row => row.Tool is not null))
         {
-            flagText = "Couldn't read";
-            input = input with { Offline = true };
+            _nameWidth = Math.Max(_nameWidth, Width(data.LookOf(row.Tool!.Id).Name, "HudStrong"));
+            if (row.Tool.Lines.Count > 1) _labelWidth = Math.Max(_labelWidth, Width(row.Headline!.Window, "HudSecondary"));
         }
-        else if (tool.OutUntil is { } back)
-        {
-            flagText = $"Out until {HudText.Clock(back, _culture)}";
-            flagStyle = "HudCritical";
-        }
-        else if (tool.RunningHot)
-        {
-            flagText = "Running hot";
-            flagStyle = "HudCaution";
-        }
-        var (header, flag) = Header(look, input.Dark, flagText, flagStyle);
-        AutomationProperties.SetName(header, look.Name + (flagText is null ? "" : $": {flagText.ToLowerInvariant()}"));
-        block.Children.Add(header);
-        foreach (var line in tool.Lines) block.Children.Add(LineRow(look, tool, line, input));
-        if (failed is not null) block.Children.Add(Note(look, failed, retry: true));
-        return (block, flag);
+        _nameWidth = Math.Min(_nameWidth, 96);
+        _labelWidth = Math.Min(_labelWidth, 64);
     }
 
-    private (HudRow Header, FrameworkElement? Flag) Header(HudData.Look look, bool dark, string? flagText, string flagStyle)
+    private static double Width(string text, string style)
     {
-        var header = new HudRow();
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        name.Children.Add(Dot(look, dark));
-        name.Children.Add(Text(look.Name, "HudStrong"));
-        header.Children.Add(name);
-        TextBlock? flag = null;
-        if (flagText is not null)
-        {
-            flag = Text(flagText, flagStyle);
-            flag.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(flag, 1);
-            header.Children.Add(flag);
-        }
-        return (header, flag);
+        var probe = new TextBlock { Text = text, Style = Style(style) };
+        probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        return Math.Ceiling(probe.DesiredSize.Width);
     }
 
-    /// One limit: its window, a bar of what's left with the even-pace tick,
-    /// the share left and the time to its reset, in the same columns for every tool.
-    private HudRow LineRow(HudData.Look look, HudData.Tool tool, HudData.Line line, Input input)
+    /// One tool by its headline: `● Claude  5h  [bar]  12%  · 1h 40m  +2 low`.
+    /// Out: `out · back 4:10 PM`, in the critical colour. Running hot: when it
+    /// runs out at this pace, in the caution colour, for the countdown. Its
+    /// numbers not live (signed out, or the read failed): dimmed, and since when.
+    private HudRow ToolRow(HudData data, HudSummary.Row summary, Input input)
     {
-        var row = new HudRow { ColumnSpacing = 8 };
-        foreach (var width in new[] { new GridLength(_windowWidth), new GridLength(1, GridUnitType.Star), new GridLength(44), new GridLength(62) })
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = width });
-        var window = Text(line.Window, "HudSecondary");
-        window.TextTrimming = TextTrimming.CharacterEllipsis;
-        if (window.Text.Length > 4) ToolTipService.SetToolTip(window, line.Window);
-        var bar = Bar(HudData.Key(tool, line), line);
-        if (input.Offline) bar.Opacity = 0.45;
-        var share = Text($"{Math.Max(0, line.PercentLeft)}%", input.Offline ? "HudStrongSecondary" : "HudStrong");
-        share.HorizontalAlignment = HorizontalAlignment.Right;
-        Tabular(share);
-        var reset = Text(HudText.Reset(line.PercentLeft, line.ResetsAt, input.Now, _culture), Calibrate && !_calibrated ? "HudCalibrationTertiary" : "HudSecondary");
-        _calibrated |= Calibrate;
-        reset.HorizontalAlignment = HorizontalAlignment.Right;
-        Tabular(reset);
-        var cells = new FrameworkElement[] { window, bar, share, reset };
-        for (var column = 0; column < cells.Length; column++)
+        var tool = summary.Tool!;
+        var line = summary.Headline!;
+        var look = data.LookOf(tool.Id);
+        var stale = summary.Problem;
+        var dim = input.Offline || stale is not null;
+        var row = Row(look, input.Dark, hollow: false, look.Name, dim ? "HudStrongSecondary" : "HudStrong");
+        if (tool.Lines.Count > 1) Place(row, Trimmed(Text(line.Window, "HudSecondary"), _labelWidth), 2);
+        string sentence;
+        if (stale is not null)
         {
-            cells[column].VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(cells[column], column);
-            row.Children.Add(cells[column]);
+            // The numbers it had, dimmed, and why they aren't live.
+            var words = stale.Kind == "signedOut" ? "signed out" : "couldn't read";
+            var from = tool.ReadAt ?? data.ReadAt;
+            var since = from is { } at ? $" · numbers from {HudText.Clock(at, _culture)}" : "";
+            var parts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            parts.Children.Add(Tabular(Text($"{Math.Max(0, line.PercentLeft)}%", "HudStrongSecondary")));
+            parts.Children.Add(Trimmed(Text(words + since, Tail("HudSecondary")), double.NaN));
+            Place(row, parts, 3, span: 3);
+            sentence = $"{look.Name}: {words}{(from is { } read ? $". Numbers from {HudText.Clock(read, _culture)}" : "")}. " + HudText.Sentence(look.Name, line, input.Now, _culture);
+            ToolTipService.SetToolTip(row, stale.Message);
         }
-        AutomationProperties.SetName(row, HudText.Sentence(look.Name, line, input.Now, _culture));
+        else if (line.Status == "depleted")
+        {
+            var back = tool.OutUntil ?? line.ResetsAt;
+            var text = back is { } at ? $"out · back {HudText.Clock(at, _culture)}" : "out";
+            Place(row, Text(text, Tail(dim ? "HudSecondary" : "HudCritical")), 3, span: 3);
+            sentence = HudText.Sentence(look.Name, line, input.Now, _culture);
+        }
+        else
+        {
+            var bar = Bar(HudData.Key(tool, line), line);
+            if (dim) bar.Opacity = 0.45;
+            bar.MinWidth = 24;
+            Place(row, bar, 3);
+            Place(row, Tabular(Text($"{Math.Max(0, line.PercentLeft)}%", dim ? "HudStrongSecondary" : "HudStrong")), 4);
+            sentence = HudText.Sentence(look.Name, line, input.Now, _culture);
+            if (line.RunsOutAt is { } runsOut)
+            {
+                Place(row, Text($"↑ runs out ~{HudText.When(runsOut, input.Now, _culture)}", Tail(dim ? "HudSecondary" : "HudCaution")), 5);
+                sentence += $". At this pace it runs out {HudText.SpokenWhen(runsOut, input.Now, _culture)}";
+            }
+            else
+            {
+                Place(row, Tabular(Text("· " + HudText.Reset(line.PercentLeft, line.ResetsAt, input.Now, _culture), Tail("HudSecondary"))), 5);
+            }
+        }
+        var others = HudText.Others(tool.OthersCount, tool.OthersAttention);
+        if (others != "")
+        {
+            Place(row, Text(others, "HudSecondary"), 6);
+            sentence += tool.OthersAttention > 0
+                ? $". {tool.OthersAttention} of its {tool.OthersCount} other limits {(tool.OthersAttention == 1 ? "is" : "are")} low"
+                : $". {tool.OthersCount} other {(tool.OthersCount == 1 ? "limit" : "limits")}, fine";
+        }
+        AutomationProperties.SetName(row, sentence);
+        return row;
+    }
+
+    /// A tool without numbers, dimmed: `○ Cursor  signed out`; what to do is its tooltip and its sentence.
+    private HudRow DownRow(HudData.Look look, HudData.Problem problem, bool dark)
+    {
+        var row = Row(look, dark, hollow: true, look.Name, "HudStrongSecondary");
+        var words = problem.Kind switch { "signedOut" => "signed out", "reading" => "reading…", _ => "couldn't read" };
+        Place(row, Text(words, Tail("HudSecondary")), 3, span: 4);
+        AutomationProperties.SetName(row, problem.Message == "" ? $"{look.Name}: {words.TrimEnd('…')}" : $"{look.Name}: {words.TrimEnd('…')}. {problem.Message}");
+        if (problem.Message != "") ToolTipService.SetToolTip(row, problem.Message);
+        return row;
+    }
+
+    /// Every fine tool in one row, and the lowest of them: `✓ Codex · Gemini   lowest 62%`;
+    /// when that's every tool, `✓ All fine · lowest Claude 62%`.
+    private HudRow QuietRow(HudData data, HudSummary.Quiet fine)
+    {
+        var row = new HudRow { ColumnSpacing = 8, Background = new SolidColorBrush(Colors.Transparent) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var check = Text("\uE73E", "HudSecondary");
+        check.FontFamily = new FontFamily("Segoe Fluent Icons");
+        check.FontSize = 12;
+        Place(row, check, 0);
+        var names = fine.Ids.Select(id => data.LookOf(id).Name).ToList();
+        var lowest = data.LookOf(fine.LowestId).Name;
+        Place(row, Trimmed(Text(fine.All ? "All fine" : string.Join(" · ", names), "HudBody"), double.NaN), 1);
+        Place(row, Tabular(Text(fine.All ? $"lowest {lowest} {fine.LowestPercent}%" : $"lowest {fine.LowestPercent}%", Tail("HudSecondary"))), 2);
+        AutomationProperties.SetName(row, fine.All
+            ? $"All fine. Lowest: {lowest}, {fine.LowestPercent}% left"
+            : $"Fine: {string.Join(", ", names)}. Lowest: {lowest}, {fine.LowestPercent}% left");
+        return row;
+    }
+
+    /// Reading for the first time: a row for each tool it showed last, at its final height.
+    private HudRow PendingRow(HudData.Look look, bool dark)
+    {
+        var row = Row(look, dark, hollow: false, look.Name, "HudStrong");
+        var bone = new Border { Style = Style("HudSkeleton"), VerticalAlignment = VerticalAlignment.Center };
+        Place(row, bone, 3, span: 4);
+        AutomationProperties.SetName(row, $"{look.Name}: reading");
+        return row;
+    }
+
+    /// A row's columns: the dot, the name, the window label, the bar, the
+    /// share, the time and the other limits.
+    private HudRow Row(HudData.Look look, bool dark, bool hollow, string name, string nameStyle)
+    {
+        var row = new HudRow { ColumnSpacing = 6, MinHeight = 20, Background = new SolidColorBrush(Colors.Transparent) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = _nameWidth > 0 ? new GridLength(_nameWidth) : GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = _labelWidth > 0 ? new GridLength(_labelWidth) : new GridLength(0) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (var column = 4; column < 7; column++) row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Place(row, hollow ? Ring(look, dark) : Dot(look, dark), 0);
+        Place(row, Trimmed(Text(name, nameStyle), double.NaN), 1);
+        return row;
+    }
+
+    private static void Place(Grid row, FrameworkElement element, int column, int span = 1)
+    {
+        element.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(element, column);
+        if (span > 1) Grid.SetColumnSpan(element, span);
+        row.Children.Add(element);
+    }
+
+    private static TextBlock Trimmed(TextBlock text, double maxWidth)
+    {
+        text.TextTrimming = TextTrimming.CharacterEllipsis;
+        if (!double.IsNaN(maxWidth)) text.MaxWidth = maxWidth;
+        return text;
+    }
+
+    /// The first time column drawn in the tertiary colour, for the check's calibration.
+    private string Tail(string style)
+    {
+        if (!Calibrate || _calibrated) return style;
+        _calibrated = true;
+        return "HudCalibrationTertiary";
+    }
+
+    /// A click on a row opens the Limits page.
+    private HudRow Clickable(HudRow row)
+    {
+        row.Tapped += (_, _) => OpenLimits?.Invoke();
         return row;
     }
 
     private bool _calibrated;
-
-    /// The window names' column: as wide as the widest name (`5h`, or a quota's
-    /// own title such as `Claude 5h · work`), from 22 up to 120 px, the same for
-    /// every tool so the bars line up; longer names end in an ellipsis.
-    private double _windowWidth = 22;
-
-    private static double WindowColumn(HudData? data)
-    {
-        var widest = 22.0;
-        foreach (var line in data?.Tools.SelectMany(tool => tool.Lines) ?? Enumerable.Empty<HudData.Line>())
-        {
-            var probe = new TextBlock { Text = line.Window, Style = Style("HudSecondary") };
-            probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-            widest = Math.Max(widest, Math.Ceiling(probe.DesiredSize.Width));
-        }
-        return Math.Min(widest, 120);
-    }
 
     /// A 4 px track, its fill in the accent, caution or critical colour, and a
     /// 2 × 10 px tick where an even pace would end.
@@ -267,65 +342,6 @@ internal sealed class HudView
 
     private static float Fraction(int percent) => Math.Clamp(percent, 0, 100) / 100f;
 
-    /// Signed out says what to type; couldn't read says who failed and offers a retry.
-    private (FrameworkElement Block, FrameworkElement? Flag) ProblemBlock(HudData.Look look, HudData.Problem problem, bool dark)
-    {
-        var signedOut = problem.Kind == "signedOut";
-        var flagText = signedOut ? "Signed out" : "Couldn't read";
-        var block = new StackPanel { Spacing = 4 };
-        var (header, flag) = Header(look, dark, flagText, "HudSecondary");
-        AutomationProperties.SetName(header, $"{look.Name}: {flagText.ToLowerInvariant()}");
-        block.Children.Add(header);
-        block.Children.Add(Note(look, problem, retry: !signedOut));
-        return (block, flag);
-    }
-
-    /// What a problem says, and *Try again* for a read that failed.
-    private HudRow Note(HudData.Look look, HudData.Problem problem, bool retry)
-    {
-        var flagText = problem.Kind == "signedOut" ? "Signed out" : "Couldn't read";
-        var note = new HudRow { ColumnSpacing = 6 };
-        note.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        note.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var message = Text(problem.Message, "HudSecondary");
-        message.TextWrapping = TextWrapping.Wrap;
-        note.Children.Add(message);
-        AutomationProperties.SetName(note, $"{look.Name}: {flagText.ToLowerInvariant()}. {problem.Message}");
-        if (retry)
-        {
-            var link = Link("Try again", $"Try reading {look.Name} again", () => Refresh?.Invoke());
-            link.VerticalAlignment = VerticalAlignment.Top;
-            Grid.SetColumn(link, 1);
-            note.Children.Add(link);
-        }
-        return note;
-    }
-
-    /// Reading for the first time: the rows it will fill, at their final size.
-    private FrameworkElement PendingBlock(HudData.Look look, IReadOnlyList<string> windows, bool dark)
-    {
-        var block = new StackPanel { Spacing = 6 };
-        var (header, _) = Header(look, dark, null, "HudSecondary");
-        AutomationProperties.SetName(header, $"{look.Name}: reading");
-        block.Children.Add(header);
-        foreach (var window in windows)
-        {
-            var row = new HudRow { ColumnSpacing = 8, Height = 20 };
-            foreach (var width in new[] { new GridLength(_windowWidth), new GridLength(1, GridUnitType.Star), new GridLength(44), new GridLength(62) })
-                row.ColumnDefinitions.Add(new ColumnDefinition { Width = width });
-            if (window != "") row.Children.Add(Text(window, "HudSecondary"));
-            for (var column = 1; column < 4; column++)
-            {
-                var bone = new Border { Style = Style("HudSkeleton"), VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(bone, column);
-                row.Children.Add(bone);
-            }
-            AutomationProperties.SetName(row, window == "" ? $"{look.Name}: reading" : $"{look.Name}, {HudText.LimitName(window, null)}: reading");
-            block.Children.Add(row);
-        }
-        return block;
-    }
-
     /// Nothing found: one sentence and one button.
     private FrameworkElement Empty()
     {
@@ -348,17 +364,21 @@ internal sealed class HudView
     }
 
     /// Today's tokens and the place, then when the numbers were read; offline,
-    /// the time of the last numbers and *Retry*.
-    private FrameworkElement Footer(Input input)
+    /// the time of the last numbers and *Retry*. Its right column also holds
+    /// the buttons while the pointer is over the card: the age, the text they
+    /// replace, is returned with it.
+    private (HudRow Footer, FrameworkElement? Age) Footer(Input input)
     {
-        var footer = new HudRow { Padding = new Thickness(14, 8, 14, 8), ColumnSpacing = 8, Style = Style("HudDivider") };
+        var footer = new HudRow { Padding = new Thickness(14, 6, 10, 6), ColumnSpacing = 8, MinHeight = 38, Style = Style("HudDivider") };
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var left = Text("", "HudSecondary");
         left.TextTrimming = TextTrimming.CharacterEllipsis;
+        left.VerticalAlignment = VerticalAlignment.Center;
         Tabular(left);
         footer.Children.Add(left);
         string sentence;
+        FrameworkElement? age = null;
         if (input.Data is null)
         {
             left.Text = "Reading limits…";
@@ -369,8 +389,10 @@ internal sealed class HudView
             var asOf = input.Data.ReadAt is { } read ? HudText.Clock(read, _culture) : "–";
             left.Text = $"Offline · as of {asOf}";
             var retry = Link("Retry", "Retry reading the limits", () => Refresh?.Invoke());
+            retry.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(retry, 1);
             footer.Children.Add(retry);
+            age = retry;
             sentence = $"Offline. These are the limits as of {asOf}";
         }
         else
@@ -391,26 +413,28 @@ internal sealed class HudView
                 if (space > 0) left.Inlines.Add(new Run { Text = place[space..] });
                 parts.Add(place);
             }
-            var age = input.Data.ReadAt is { } read ? HudText.Ago(input.Now - read) : "";
-            var right = Text(age, "HudSecondary");
-            Tabular(right);
+            var ago = input.Data.ReadAt is { } read ? HudText.Ago(input.Now - read) : "";
+            var right = Tabular(Text(ago, "HudSecondary"));
+            right.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(right, 1);
             footer.Children.Add(right);
-            parts.Add($"read {age}");
+            age = right;
+            parts.Add($"read {ago}");
             sentence = string.Join(", ", parts);
         }
         AutomationProperties.SetName(footer, sentence);
-        return footer;
+        return (footer, age);
     }
 
-    /// Keep on top, the strip, and ClaudeBar's window.
+    /// Refresh, keep on top, the strip, and ClaudeBar's window.
     private FrameworkElement Toolbar(bool onTop)
     {
         var tools = new StackPanel
         {
             Orientation = Orientation.Horizontal, Spacing = 2, HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 4, 8, 0), Visibility = Visibility.Collapsed,
+            VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
         };
+        tools.Children.Add(IconButton("\uE72C", "Refresh the limits", () => { Refresh?.Invoke(); AfterClick?.Invoke(); }));
         tools.Children.Add(IconButton(onTop ? "\uE718" : "\uE77A", onTop ? "Keep on top: on" : "Keep on top: off", () => { ToggleOnTop?.Invoke(); AfterClick?.Invoke(); }));
         tools.Children.Add(IconButton("\uE73F", "Collapse to the strip", () => { ShowStrip?.Invoke(); AfterClick?.Invoke(); }));
         tools.Children.Add(IconButton("\uE8A7", "Open ClaudeBar", () => OpenWindow?.Invoke()));
@@ -444,92 +468,118 @@ internal sealed class HudView
 
     // MARK: - The strip
 
-    /// One row: each tool's shortest limit, and its other limits only while
-    /// they need you; a divider between tools only. A click shows the card.
+    /// One line: the worst tool's headline, then a dot per other tool in its
+    /// status colour. A click shows the card.
     internal FrameworkElement Strip(Input input)
     {
         _captions.Clear();
         _passthrough.Clear();
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Padding = new Thickness(12, 8, 12, 8), Background = new SolidColorBrush(Colors.Transparent) };
-        var first = true;
-        void Divider()
-        {
-            if (!first) row.Children.Add(new Border { Width = 1, Style = Style("HudStripDivider") });
-            first = false;
-        }
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Padding = new Thickness(12, 8, 12, 8), Background = new SolidColorBrush(Colors.Transparent) };
+        var item = new HudRow();
+        var parts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        item.Children.Add(parts);
+        row.Children.Add(item);
+        var sentences = new List<string>();
         if (input.Data is { IsEmpty: false } data)
         {
-            foreach (var tool in data.Tools)
+            var summary = data.Summary();
+            // The worst: the first live row at the reading's worst status, else the first live row.
+            var live = summary.Rows.Where(r => r.Tool is not null && r.Problem is null).ToList();
+            var lead = live.FirstOrDefault(r => r.Headline!.Status == data.Worst) ?? live.FirstOrDefault();
+            if (lead is not null)
             {
-                var look = data.LookOf(tool.Id);
-                Divider();
-                var item = new HudRow();
-                var parts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+                var look = data.LookOf(lead.Tool!.Id);
+                var line = lead.Headline!;
                 parts.Children.Add(Dot(look, input.Dark));
                 parts.Children.Add(Text(look.Name, "HudBody"));
-                var shown = tool.Lines.Where(line => line.Strip).ToList();
-                var sentences = new List<string>();
-                for (var index = 0; index < shown.Count; index++)
+                if (lead.Tool.Lines.Count > 1) parts.Children.Add(Text(line.Window, "HudSecondary"));
+                if (line.Status == "depleted")
                 {
-                    var line = shown[index];
-                    if (index > 0) parts.Children.Add(Text(line.Window, "HudSecondary", leftMargin: 6));
-                    var stale = input.Offline || data.Failed(tool.Id) is not null;
-                    var share = Text($"{Math.Max(0, line.PercentLeft)}%", stale ? "HudStrongSecondary" : line.Status switch
+                    var back = lead.Tool.OutUntil ?? line.ResetsAt;
+                    parts.Children.Add(Text(back is { } at ? $"out · back {HudText.Clock(at, _culture)}" : "out", input.Offline ? "HudSecondary" : "HudCritical"));
+                }
+                else
+                {
+                    parts.Children.Add(Tabular(Text($"{Math.Max(0, line.PercentLeft)}%", input.Offline ? "HudStrongSecondary" : line.Status switch
                     {
                         "warning" => "HudStrongCaution",
-                        "critical" or "depleted" => "HudStrongCritical",
+                        "critical" => "HudStrongCritical",
                         _ => "HudStrong",
-                    });
-                    Tabular(share);
-                    parts.Children.Add(share);
-                    var reset = Text(HudText.Reset(line.PercentLeft, line.ResetsAt, input.Now, _culture), "HudSecondary");
-                    Tabular(reset);
-                    parts.Children.Add(reset);
-                    sentences.Add(HudText.Sentence(look.Name, line, input.Now, _culture));
+                    })));
+                    parts.Children.Add(line.RunsOutAt is { } runsOut
+                        ? Text($"↑ runs out ~{HudText.When(runsOut, input.Now, _culture)}", input.Offline ? "HudSecondary" : "HudCaution")
+                        : Tabular(Text(HudText.Reset(line.PercentLeft, line.ResetsAt, input.Now, _culture), "HudSecondary")));
                 }
-                foreach (var child in parts.Children.OfType<FrameworkElement>()) child.VerticalAlignment = VerticalAlignment.Center;
-                item.Children.Add(parts);
-                AutomationProperties.SetName(item, string.Join(". ", sentences));
-                row.Children.Add(item);
+                sentences.Add(HudText.Sentence(look.Name, line, input.Now, _culture));
+            }
+            else if (summary.Fine is { } fine)
+            {
+                var lowest = data.LookOf(fine.LowestId).Name;
+                var check = Text("\uE73E", "HudSecondary");
+                check.FontFamily = new FontFamily("Segoe Fluent Icons");
+                check.FontSize = 12;
+                parts.Children.Add(check);
+                parts.Children.Add(Text(fine.All ? "All fine" : "Fine", "HudBody"));
+                parts.Children.Add(Tabular(Text($"lowest {lowest} {fine.LowestPercent}%", "HudSecondary")));
+                sentences.Add($"{(fine.All ? "All fine" : "Fine")}. Lowest: {lowest}, {fine.LowestPercent}% left");
+            }
+            // A dot for every other tool: fine, low, critical or out; a ring for one without live numbers.
+            var dots = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(4, 0, 0, 0) };
+            var others = new List<string>();
+            foreach (var tool in data.Tools.Where(tool => tool.Lines.Count > 0 && tool.Id != lead?.Tool!.Id))
+            {
+                var name = data.LookOf(tool.Id).Name;
+                var stale = data.Stale(tool.Id);
+                var status = tool.HeadlineLine.Status;
+                if (lead is null && stale is null && status == "healthy" && !tool.HeadlineLine.RunningHot) continue;
+                var words = stale is not null ? (stale.Kind == "signedOut" ? "signed out" : "couldn't read")
+                    : status switch { "warning" => "low", "critical" => "critical", "depleted" => "out", _ => tool.HeadlineLine.RunningHot ? "running hot" : "fine" };
+                dots.Children.Add(StatusDot(stale is not null ? "HudDotDown" : status switch
+                {
+                    "warning" => "HudDotCaution",
+                    "critical" or "depleted" => "HudDotCritical",
+                    _ => tool.HeadlineLine.RunningHot ? "HudDotCaution" : "HudDotFine",
+                }, $"{name}: {words}"));
+                others.Add($"{name} {words}");
             }
             foreach (var problem in data.Alone)
             {
-                var look = data.LookOf(problem.Id);
-                Divider();
-                var item = new HudRow();
-                var parts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-                parts.Children.Add(Dot(look, input.Dark));
-                parts.Children.Add(Text(look.Name, "HudBody"));
-                var words = problem.Kind switch { "signedOut" => "Signed out", "reading" => "Reading…", _ => "Couldn't read" };
-                parts.Children.Add(Text(words, "HudSecondary"));
-                foreach (var child in parts.Children.OfType<FrameworkElement>()) child.VerticalAlignment = VerticalAlignment.Center;
-                item.Children.Add(parts);
-                AutomationProperties.SetName(item, $"{look.Name}: {words.ToLowerInvariant()}");
-                row.Children.Add(item);
+                var name = data.LookOf(problem.Id).Name;
+                var words = problem.Kind switch { "signedOut" => "signed out", "reading" => "reading", _ => "couldn't read" };
+                dots.Children.Add(StatusDot("HudDotDown", $"{name}: {words}"));
+                others.Add($"{name} {words}");
             }
+            if (dots.Children.Count > 0) parts.Children.Add(dots);
+            if (others.Count > 0) sentences.Add(string.Join(", ", others));
         }
         else
         {
-            var item = new HudRow();
             var text = Text(input.Data is null ? "Reading limits…" : "No AI tools signed in here yet", "HudSecondary");
-            item.Children.Add(text);
-            AutomationProperties.SetName(item, text.Text);
-            row.Children.Add(item);
+            parts.Children.Add(text);
+            sentences.Add(text.Text);
         }
         if (input.Offline)
         {
-            Divider();
-            var item = new HudRow();
             var asOf = input.Data?.ReadAt is { } read ? HudText.Clock(read, _culture) : "–";
-            item.Children.Add(Text($"Offline · as of {asOf}", "HudSecondary"));
-            AutomationProperties.SetName(item, $"Offline. These are the limits as of {asOf}");
-            row.Children.Add(item);
+            parts.Children.Add(Text($"· offline, as of {asOf}", "HudSecondary"));
+            sentences.Add($"Offline. These are the limits as of {asOf}");
         }
+        foreach (var child in parts.Children.OfType<FrameworkElement>()) child.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetName(item, string.Join(". ", sentences));
         // A click on it opens the card. It has no caption region, so it doesn't
         // drag: the card does, and the strip keeps the card's corner.
         row.Tapped += (_, _) => { ShowCard?.Invoke(); AfterClick?.Invoke(); };
         row.ContextFlyout = Menu();
         return row;
+    }
+
+    /// An 8 px dot in a status colour, named for the tooltip and the strip's sentence.
+    private static Border StatusDot(string style, string name)
+    {
+        var dot = new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Style = Style(style), VerticalAlignment = VerticalAlignment.Center };
+        ToolTipService.SetToolTip(dot, name);
+        AutomationProperties.SetAccessibilityView(dot, AccessibilityView.Raw);
+        return dot;
     }
 
     // MARK: - Pieces
@@ -544,12 +594,23 @@ internal sealed class HudView
         return block;
     }
 
-    private static void Tabular(TextBlock text) => Typography.SetNumeralAlignment(text, FontNumeralAlignment.Tabular);
+    private static TextBlock Tabular(TextBlock text)
+    {
+        Typography.SetNumeralAlignment(text, FontNumeralAlignment.Tabular);
+        return text;
+    }
 
     private static Ellipse Dot(HudData.Look look, bool dark) => new()
     {
         Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center,
         Fill = new SolidColorBrush(Hex(dark ? look.Dark : look.Light)),
+    };
+
+    /// A tool without live numbers: a ring in its colour.
+    private static Ellipse Ring(HudData.Look look, bool dark) => new()
+    {
+        Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center, StrokeThickness = 1.5,
+        Stroke = new SolidColorBrush(Hex(dark ? look.Dark : look.Light)),
     };
 
     private HyperlinkButton Link(string text, string name, Action action)

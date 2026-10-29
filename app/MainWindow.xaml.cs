@@ -109,6 +109,7 @@ public sealed partial class MainWindow : Window
         {
             OpenWindow = () => Open(""),
             OpenSettings = () => { Open(""); Navigate("settings"); },
+            OpenLimits = () => { Open(""); Navigate("limits"); },
             ChooseTools = () => { Open(""); Navigate("settings"); OnChooseTools(HudToolsButton, new RoutedEventArgs()); },
             Quit = Quit,
             Changed = OnHudChanged,

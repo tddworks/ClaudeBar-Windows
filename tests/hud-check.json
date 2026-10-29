@@ -6,27 +6,34 @@
         "lines": [
           {
             "window": "5h",
-            "percentLeft": 62,
-            "resetsAt": 1791908040,
+            "percentLeft": 58,
+            "resetsAt": 1791912960,
             "windowSeconds": 18000,
             "status": "healthy",
-            "runningHot": false,
-            "tick": 44.7,
-            "strip": true
+            "runningHot": true,
+            "tick": 72.0,
+            "strip": true,
+            "runsOutAt": 1791905100
           },
           {
             "window": "7d",
-            "percentLeft": 41,
+            "percentLeft": 81,
             "resetsAt": 1792180800,
             "windowSeconds": 604800,
-            "status": "warning",
-            "runningHot": true,
+            "status": "healthy",
+            "runningHot": false,
             "tick": 46.4,
-            "strip": true
+            "strip": false
           }
         ],
         "outUntil": null,
-        "runningHot": true
+        "runningHot": true,
+        "headline": 0,
+        "others": {
+          "count": 1,
+          "attention": 0
+        },
+        "readAt": 1791900000
       },
       {
         "id": "codex",
@@ -34,11 +41,11 @@
           {
             "window": "5h",
             "percentLeft": 0,
-            "resetsAt": 1791903900,
+            "resetsAt": 1791906000,
             "windowSeconds": 18000,
             "status": "depleted",
             "runningHot": false,
-            "tick": 21.7,
+            "tick": null,
             "strip": true
           },
           {
@@ -48,40 +55,236 @@
             "windowSeconds": 604800,
             "status": "healthy",
             "runningHot": false,
-            "tick": 72.0,
+            "tick": 72.6,
             "strip": false
           }
         ],
-        "outUntil": 1791903900,
-        "runningHot": false
+        "outUntil": 1791906000,
+        "runningHot": false,
+        "headline": 0,
+        "others": {
+          "count": 1,
+          "attention": 0
+        },
+        "readAt": 1791900000
+      },
+      {
+        "id": "omp",
+        "lines": [
+          {
+            "window": "5h",
+            "percentLeft": 88,
+            "resetsAt": 1791908040,
+            "windowSeconds": 18000,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 44.7,
+            "strip": false
+          },
+          {
+            "window": "7d",
+            "percentLeft": 76,
+            "resetsAt": 1792180800,
+            "windowSeconds": 604800,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 46.4,
+            "strip": false
+          },
+          {
+            "window": "Opus 7d",
+            "percentLeft": 69,
+            "resetsAt": 1792180800,
+            "windowSeconds": 604800,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 46.4,
+            "strip": false
+          },
+          {
+            "window": "Sonnet 7d",
+            "percentLeft": 81,
+            "resetsAt": 1792180800,
+            "windowSeconds": 604800,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 46.4,
+            "strip": false
+          },
+          {
+            "window": "Kimi 5h",
+            "percentLeft": 44,
+            "resetsAt": 1791908040,
+            "windowSeconds": 18000,
+            "status": "warning",
+            "runningHot": false,
+            "tick": 44.7,
+            "strip": false
+          },
+          {
+            "window": "Kimi 7d",
+            "percentLeft": 31,
+            "resetsAt": 1792180800,
+            "windowSeconds": 604800,
+            "status": "warning",
+            "runningHot": false,
+            "tick": 46.4,
+            "strip": true
+          },
+          {
+            "window": "GLM 5h",
+            "percentLeft": 95,
+            "resetsAt": 1791908040,
+            "windowSeconds": 18000,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 44.7,
+            "strip": false
+          },
+          {
+            "window": "GLM 7d",
+            "percentLeft": 47,
+            "resetsAt": 1792180800,
+            "windowSeconds": 604800,
+            "status": "warning",
+            "runningHot": false,
+            "tick": 46.4,
+            "strip": false
+          },
+          {
+            "window": "Qwen 1d",
+            "percentLeft": 90,
+            "resetsAt": 1791934800,
+            "windowSeconds": 86400,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 40.3,
+            "strip": false
+          },
+          {
+            "window": "DeepSeek 1d",
+            "percentLeft": 84,
+            "resetsAt": 1791934800,
+            "windowSeconds": 86400,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 40.3,
+            "strip": false
+          },
+          {
+            "window": "Grok 1d",
+            "percentLeft": 73,
+            "resetsAt": 1791934800,
+            "windowSeconds": 86400,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 40.3,
+            "strip": false
+          },
+          {
+            "window": "Mistral 1d",
+            "percentLeft": 92,
+            "resetsAt": 1791934800,
+            "windowSeconds": 86400,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 40.3,
+            "strip": false
+          },
+          {
+            "window": "Codex 7d",
+            "percentLeft": 66,
+            "resetsAt": 1792180800,
+            "windowSeconds": 604800,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 46.4,
+            "strip": false
+          }
+        ],
+        "outUntil": null,
+        "runningHot": false,
+        "headline": 5,
+        "others": {
+          "count": 12,
+          "attention": 2
+        },
+        "readAt": 1791900000
+      },
+      {
+        "id": "cursor",
+        "lines": [
+          {
+            "window": "month",
+            "percentLeft": 72,
+            "resetsAt": 1792936800,
+            "windowSeconds": 2592000,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 60.0,
+            "strip": true
+          }
+        ],
+        "outUntil": null,
+        "runningHot": false,
+        "headline": 0,
+        "others": {
+          "count": 0,
+          "attention": 0
+        },
+        "readAt": 1791893100
       },
       {
         "id": "gemini",
         "lines": [
           {
             "window": "1d",
-            "percentLeft": 12,
+            "percentLeft": 93,
             "resetsAt": 1791934800,
             "windowSeconds": 86400,
-            "status": "critical",
-            "runningHot": true,
+            "status": "healthy",
+            "runningHot": false,
             "tick": 40.3,
             "strip": true
           }
         ],
         "outUntil": null,
-        "runningHot": true
+        "runningHot": false,
+        "headline": 0,
+        "others": {
+          "count": 0,
+          "attention": 0
+        },
+        "readAt": 1791900000
+      },
+      {
+        "id": "copilot",
+        "lines": [
+          {
+            "window": "month",
+            "percentLeft": 64,
+            "resetsAt": 1792936800,
+            "windowSeconds": 2592000,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 60.0,
+            "strip": true
+          }
+        ],
+        "outUntil": null,
+        "runningHot": false,
+        "headline": 0,
+        "others": {
+          "count": 0,
+          "attention": 0
+        },
+        "readAt": 1791900000
       }
     ],
     "worst": "depleted"
   },
   "readAt": 1791900000,
   "problems": [
-    {
-      "id": "copilot",
-      "kind": "failed",
-      "message": "GitHub didn't answer."
-    },
     {
       "id": "cursor",
       "kind": "signedOut",
@@ -102,6 +305,18 @@
       "dark": "#59D9C7"
     },
     {
+      "id": "omp",
+      "name": "omp",
+      "light": "#7A5AF8",
+      "dark": "#B9A6FF"
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "light": "#5C5C5C",
+      "dark": "#C8C8C8"
+    },
+    {
       "id": "gemini",
       "name": "Gemini",
       "light": "#1A73E8",
@@ -112,12 +327,6 @@
       "name": "Copilot",
       "light": "#6E40C9",
       "dark": "#B392F0"
-    },
-    {
-      "id": "cursor",
-      "name": "Cursor",
-      "light": "#5C5C5C",
-      "dark": "#C8C8C8"
     }
   ],
   "state": {

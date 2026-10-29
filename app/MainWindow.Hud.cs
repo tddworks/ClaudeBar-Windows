@@ -44,7 +44,7 @@ public sealed partial class MainWindow
             LimitsList.Children.Add(new Border { Style = (Style)Root.Resources["Card"], Padding = new Thickness(16, 12, 16, 12), Child = empty });
             return;
         }
-        foreach (var tool in data.Tools) LimitsList.Children.Add(LimitsCard(data, tool.Id, tool, data.Failed(tool.Id)));
+        foreach (var tool in data.Tools) LimitsList.Children.Add(LimitsCard(data, tool.Id, tool, data.Stale(tool.Id)));
         foreach (var problem in data.Alone) LimitsList.Children.Add(LimitsCard(data, problem.Id, null, problem));
     }
 
@@ -57,10 +57,12 @@ public sealed partial class MainWindow
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         header.Children.Add(new Ellipse { Width = 10, Height = 10, Fill = Brush(Hex(IsDark ? look.Dark : look.Light)), VerticalAlignment = VerticalAlignment.Center });
         header.Children.Add(new TextBlock { Text = look.Name, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        // Numbers that aren't live say since when.
+        var since = tool is not null && (tool.ReadAt ?? data.ReadAt) is { } from ? $" · numbers from {HudText.Clock(from, culture)}" : "";
         var flag = problem?.Kind switch
         {
-            "signedOut" => ("Signed out", "TextFillColorSecondaryBrush"),
-            "failed" => ("Couldn't read", "TextFillColorSecondaryBrush"),
+            "signedOut" => ("Signed out" + since, "TextFillColorSecondaryBrush"),
+            "failed" => ("Couldn't read" + since, "TextFillColorSecondaryBrush"),
             "reading" => ("Reading…", "TextFillColorSecondaryBrush"),
             _ when tool?.OutUntil is { } back => ($"Out until {HudText.Clock(back, culture)}", "SystemFillColorCriticalBrush"),
             _ when tool?.RunningHot == true => ("Running hot", "SystemFillColorCautionBrush"),
@@ -122,7 +124,8 @@ public sealed partial class MainWindow
         if (line.ResetsAt is { } reset)
         {
             var first = line.PercentLeft <= 0 ? $"back {ClockDay(reset, now, culture)}"
-                : (line.RunningHot ? "Running hot · " : "resets in ") + HudText.Until(reset - now);
+                : line.RunsOutAt is { } runsOut ? $"Running hot · runs out {ClockDay(runsOut, now, culture)}"
+                : (line.RunningHot ? "Running hot · resets in " : "resets in ") + HudText.Until(reset - now);
             meta.Children.Add(new TextBlock { Text = first, FontSize = 12, Foreground = Resource(line.RunningHot && line.PercentLeft > 0 ? "SystemFillColorCautionBrush" : "TextFillColorSecondaryBrush") });
             if (line.PercentLeft > 0) meta.Children.Add(new TextBlock { Text = ClockDay(reset, now, culture), FontSize = 12, Foreground = Resource("TextFillColorSecondaryBrush") });
         }

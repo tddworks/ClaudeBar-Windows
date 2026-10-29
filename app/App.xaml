@@ -71,9 +71,19 @@
                 <Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="0,1,0,0" />
             </Style>
-            <Style x:Key="HudStripDivider" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                <Setter Property="Margin" Value="0,2,0,2" />
+            <!-- The strip's dot per tool: fine, low or running hot, critical or out, and without live numbers. -->
+            <Style x:Key="HudDotFine" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <Style x:Key="HudDotCaution" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource SystemFillColorCautionBrush}" />
+            </Style>
+            <Style x:Key="HudDotCritical" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            </Style>
+            <Style x:Key="HudDotDown" TargetType="Border">
+                <Setter Property="BorderBrush" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="BorderThickness" Value="1.5" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>

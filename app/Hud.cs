@@ -11,7 +11,7 @@ namespace ClaudeBar;
 /// the HUD's window, and says when a limit crosses into trouble or comes back.
 internal sealed class Hud : IDisposable
 {
-    private const double CardWidth = 320;
+    private const double CardWidth = 340;
     private readonly Func<bool, Task<JsonObject>> _read;
     private readonly ForegroundTracker _foreground = new();
     private readonly HudWindow _window;
@@ -33,6 +33,8 @@ internal sealed class Hud : IDisposable
     internal Action<HudData.Tool, HudData.Line, Crossing>? Crossed;
     internal Action? OpenWindow;
     internal Action? OpenSettings;
+    /// A click on one of the card's rows: the window's Limits page.
+    internal Action? OpenLimits;
     internal Action? ChooseTools;
     internal Action? Quit;
     /// Shown or hidden from the HUD itself (its menu, or closing it): Settings follows.
@@ -53,6 +55,7 @@ internal sealed class Hud : IDisposable
         _view.ShowCard = () => { _peek = true; Render(); };
         _view.OpenWindow = () => OpenWindow?.Invoke();
         _view.OpenSettings = () => OpenSettings?.Invoke();
+        _view.OpenLimits = () => OpenLimits?.Invoke();
         _view.ChooseTools = () => ChooseTools?.Invoke();
         _view.HideHud = () => SetShown(false);
         _view.Quit = () => Quit?.Invoke();

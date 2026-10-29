@@ -12,7 +12,11 @@ A small window you leave on screen while you code, showing each signed-in AI too
 
 One question per glance: *can I keep going, and until when.*
 
-- **One block per signed-in tool:** an 8 px dot in the tool's colour and its name. One line per limit: the window (`5h`, `7d`, `1d`), a bar of what's left, the share left, and the time to reset. Every tool uses the same columns. A footer has today's tokens and, when joined, the Leaderboard place, then when the numbers were read.
+- **What stops you first, not every limit.** On real data one tool can have 13 limits, so the HUD shows each tool by its *headline*: the limit that will stop the person first, by ClaudeBar's rule (the worst status, then running hot, then the lowest share, then the soonest reset; Swift picks it, the HUD never ranks again). The window's *Limits* page lists every limit; a click on any row opens it.
+  - **A row for each tool that needs you** (its headline isn't healthy, or runs hot): `● Claude  5h  [bar]  12%  · 1h 40m  +2 low`. The window label shows only for a tool with more than one limit; `+12` counts its other limits, `+2 low` the ones of those that aren't healthy. Out: `out · back 4:10 PM` in red. Running hot: `↑ runs out ~3:40 PM` in amber for the countdown, from ClaudeBar's forecast.
+  - **Every fine tool in one quiet row:** `✓ Codex · Gemini · omp   lowest 62%`. When every tool is fine, that row is the whole HUD: `✓ All fine · lowest Claude 62%`.
+  - **A tool without live numbers** gets a dimmed row: `○ Cursor  signed out`, what to do in its tooltip and its sentence. One that has numbers *and* is signed out, or whose read failed, keeps them dimmed and says since when: `signed out · numbers from 14:05`; stale numbers never pass for live ones.
+  - Tools keep the person's order. A footer has today's tokens and, when joined, the Leaderboard place, then when the numbers were read; while the pointer is over the HUD it holds *Refresh*, *Keep on top*, *Collapse to the strip* and *Open ClaudeBar* instead.
 - **The pace tick** sits on each bar where the bar's end would be if the limit were used evenly (100% minus the share of the window gone). A bar ending left of its tick means the tool says *Running hot*.
 - **Colour means trouble.**
   - Healthy bars use the Windows accent, as a `ProgressBar` does.
@@ -20,9 +24,9 @@ One question per glance: *can I keep going, and until when.*
   - The thresholds are the Mac app's `QuotaStatus` and `StatusPolicy`: warning under 50% (or, with the pace setting, only while running hot), critical under 20%, depleted at 0.
   - A limit at 0 says when it's *back*, as a clock time.
 - **Every piece of text is readable in both themes:** at least WinUI's secondary text colour, 4.5:1 or more against the HUD. Tertiary text isn't used, because it measures 3.3:1 on light Mica. Offline numbers turn secondary instead of fading. Measured in the mockup with `design-concept/hud/contrast.js`: 236 text runs on the HUD, the strip and the window, light and dark, none under 4.5:1, the lowest *Running hot* in amber at 4.63:1. Before this rule, 27 failed: the window names, reset times and footer at 3.28:1 in light, and offline numbers at 4.36:1 in dark.
-- **The words carry the meaning without the colour:** *Running hot*, *Out until 14:30*, *Signed out*, *Couldn't read*. These are the Mac app's words where it has them (`UsagePace.displayName`).
-- **The strip** is the same HUD, one line high. It shows each tool's shortest limit, and a tool's other limit joins beside it only while that limit needs you. Click it for the card.
-- **States:** reading for the first time (rows at their final size), fine, running hot, low, out, offline (the last numbers faded, with their time), signed out (what to type), couldn't read (who failed, *Try again*), and nothing found (one sentence and *Choose tools*). Light, dark and high contrast all follow Windows.
+- **The words carry the meaning without the colour:** *runs out ~15:40*, *out · back 14:30*, *signed out*, *couldn't read*, *+2 low*. These are the Mac app's words where it has them (`UsagePace.displayName`).
+- **The strip** is the same HUD, one line high: the worst tool's headline, then a dot per other tool in its status colour (a ring for one without live numbers). When everything is fine, `✓ All fine · lowest Claude 62%`. Click it for the card.
+- **States:** reading for the first time (a row per tool it showed last, at its final size), all fine, running hot, low, out, offline (the last numbers faded, with their time, and *Retry*), signed out or couldn't read (with or without the numbers it had), and nothing found (one sentence and *Choose tools*). Light, dark and high contrast all follow Windows.
 - **The window** has *Limits* (every limit by its full name, the reset as a clock time, the account, a link to the tool's usage page), *Usage* (today's tokens and cost from the local logs), *Leaderboard* (today's board) and *Settings*, in a `NavigationView`.
 
 ## How it behaves
@@ -36,7 +40,7 @@ One question per glance: *can I keep going, and until when.*
 | Hiding | Hidden while the foreground window's rectangle covers the HUD's screen (`FullScreenPresenter` and borderless full screen both do), and while `SHQueryUserNotificationState` reports `PRESENTATION_MODE`. Not for `BUSY`, which missed a full-screen window on the second screen and doesn't say which screen it means. Shown again when that ends | Measured: the HUD otherwise stays over full-screen windows; `BUSY` on the primary screen only |
 | Time | Countdowns tick once a minute from the reset times, online or not. Readings follow the app's refresh interval and run on demand from *Refresh* | — |
 | Motion | None on entry. A bar eases to a new length when a reading changes it | — |
-| Size | 320 effective pixels wide. Height from the rows, up to the work area's height minus the margins, then it scrolls | — |
+| Size | 340 effective pixels wide. Height from the rows, up to the work area's height minus the margins, then it scrolls | — |
 
 ## Keyboard and Narrator
 
@@ -44,9 +48,9 @@ A window that never activates isn't reached by keyboard navigation or by Narrato
 
 | HUD | In the window |
 |---|---|
-| A tool's readings | *Limits*, in the same order, with full names |
-| *Try again* on a tool | *Try again* on that tool's card in *Limits* |
-| *Refresh* (right-click) | *Refresh* in *Limits* |
+| A tool's headline, and its other limits behind `+12` | *Limits*, in the same order, every limit with its full name |
+| A tool that couldn't read | *Try again* on that tool's card in *Limits* |
+| *Refresh* (its footer, or right-click) | *Refresh* in *Limits* |
 | Keep on top, strip or card, hide | Settings → HUD |
 | Open ClaudeBar | The taskbar button, Start, a jump list task, and the shortcut |
 
