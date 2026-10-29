@@ -51,8 +51,11 @@ internal sealed class HudView
     internal bool Calibrate;
 
     private readonly CultureInfo _culture = CultureInfo.CurrentCulture;
-    /// Each bar's fill, kept between readings so it eases to its new length.
-    private readonly Dictionary<string, Border> _fills = new();
+    /// Each bar's fill and the track it was last in, kept between readings so it
+    /// eases to its new length. Taken out of that track, not `fill.Parent`: after
+    /// card -> strip -> card that left it in the old card's track, and adding it
+    /// to the new one threw 0x800F1000, so the card never came back.
+    private readonly Dictionary<string, (Border Fill, Panel Track)> _fills = new();
     private readonly List<FrameworkElement> _captions = new();
     private readonly List<FrameworkElement> _passthrough = new();
 
@@ -311,9 +314,11 @@ internal sealed class HudView
     {
         var bar = new Grid { Height = 10 };
         var track = new Grid { Height = 4, VerticalAlignment = VerticalAlignment.Center, Style = Style("HudTrack") };
-        if (_fills.Remove(key, out var fill))
+        Border fill;
+        if (_fills.Remove(key, out var kept))
         {
-            (fill.Parent as Panel)?.Children.Remove(fill);
+            fill = kept.Fill;
+            kept.Track.Children.Remove(fill);
         }
         else
         {
@@ -322,7 +327,7 @@ internal sealed class HudView
             // Set after the first length, so a new bar doesn't animate in.
             fill.ScaleTransition = new Vector3Transition();
         }
-        _fills[key] = fill;
+        _fills[key] = (fill, track);
         fill.Style = Style(line.Status switch { "warning" => "HudFillCaution", "critical" or "depleted" => "HudFillCritical", _ => "HudFillAccent" });
         fill.Scale = new Vector3(Fraction(line.PercentLeft), 1, 1);
         track.Children.Add(fill);
