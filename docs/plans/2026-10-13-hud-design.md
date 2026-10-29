@@ -36,7 +36,7 @@ One question per glance: *can I keep going, and until when.*
 | Window | A second WinUI `Window`. `OverlappedPresenter` with `IsAlwaysOnTop`, `SetBorderAndTitleBar(true, false)`, not resizable. `IsShownInSwitchers = false`. `WS_EX_NOACTIVATE \| WS_EX_TOOLWINDOW`. `DWMWCP_ROUND` | Measured: on top, rounded, bordered |
 | Backdrop | Mica kept active: a custom `SystemBackdrop` that attaches a `MicaController` with its own `SystemBackdropConfiguration { IsInputActive = true }`, its theme following the HUD's `ActualTheme`. Microsoft gives Mica to long-lived windows and keeps Acrylic, GPU-intensive, for transient ones; opaque, it also keeps the text's contrast whatever is behind (research.md, *Which material*) | Measured: the same wallpaper tint while another app is in front, and no flicker when a click activates the HUD |
 | Focus | It never activates itself to show anything. A click on one of its buttons does activate it, despite `WS_EX_NOACTIVATE`, `AllowFocusOnInteraction = false` and `MA_NOACTIVATE` (all measured). `PA_NOACTIVATE` on `WM_POINTERACTIVATE` doesn't stop it either: no activation message reaches the HUD's windows, WinUI sets the focus itself (measured, traced). So the HUD tracks the last window outside ClaudeBar to be in front (`SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`) and call `SetForegroundWindow` on it after a click's action; menus and the shortcut hand it back when they close. UI Automation's Invoke and `SetFocus` activate it too (measured); there `Esc` hands focus back | Measured with a window of the same process. Another process: Windows' rule, acceptance check 2 |
-| Place | Snaps to the nearest corner of the screen it's dropped on, 12 effective pixels from the work area's edge. Remembers the corner and the screen. Moves back inside the work area when screens or DPI change | — |
+| Place | Snaps to the nearest corner of the screen it's dropped on, its frame 12 effective pixels from the work area's edge. Remembers the corner and the screen. Moves back inside the work area when screens or DPI change | Measured: a window's rectangle includes an invisible resize border, 9 px left, right and below at 150%, so the frame (`DWMWA_EXTENDED_FRAME_BOUNDS`) is what's placed, and the content gets its size inside the border |
 | Hiding | Hidden while the foreground window's rectangle covers the HUD's screen (`FullScreenPresenter` and borderless full screen both do), and while `SHQueryUserNotificationState` reports `PRESENTATION_MODE`. Not for `BUSY`, which missed a full-screen window on the second screen and doesn't say which screen it means. Shown again when that ends | Measured: the HUD otherwise stays over full-screen windows; `BUSY` on the primary screen only |
 | Time | Countdowns tick once a minute from the reset times, online or not. Readings follow the app's refresh interval and run on demand from *Refresh* | — |
 | Motion | None on entry. A bar eases to a new length when a reading changes it | — |
@@ -69,11 +69,11 @@ Every HUD element also has a full sentence for UI Automation (*"Claude, 5-hour l
 
 *Show the HUD* (on), *Style* (Card, Strip), *Corner*, *Keep it on top* (on; hidden for full-screen apps), *Tools on the HUD*, *Shortcut to show or hide it* (none set). Starting with Windows is under General.
 
-## What it needs from ClaudeBar's package
+## Where the limits come from
 
-The limits come from ClaudeBar's providers running on Windows. That is §10's phase 4 (paths and shells) and phase 5 (processes, the pseudo-terminal, the JS engine, SQLite, `Monitoring`), and neither is done.
+ClaudeBar's package, on this PC: its `QuotaMonitor` over every provider it finds here, made as the Mac makes them, with the person's provider settings from ClaudeBar's own `settings.json`, read only (`HudMonitor`, `ClaudeBarSettings`). The C interface sends one reading (`cbw_hud_reading`, at once from the snapshots the monitor holds; `cbw_hud_refresh` reads every login first), each tool with its headline and its other limits counted. A provider that doesn't read here says why: not set up, signed out, or couldn't read.
 
-Until then, the HUD's frame, behaviour, settings, taskbar and window can be built and tested on sample snapshots. The footer's tokens and place already come from the data the Leaderboard client reads.
+The footer's tokens and place come from the data the Leaderboard client reads. `ClaudeBar.exe --hud-check` draws the HUD on sample readings (`tests/hud-check.json`, `tests/hud-check-fine.json`) for `scripts/check-hud.ps1` and the screenshots.
 
 ## Native acceptance checks
 
