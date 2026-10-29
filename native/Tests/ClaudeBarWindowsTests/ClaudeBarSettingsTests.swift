@@ -43,6 +43,17 @@ struct ClaudeBarSettingsTests {
         #expect(settings.value("region", forProvider: "kimi") == "cn")
     }
 
+    @Test func `should read a number as text, as ClaudeBar reads a value an old card saved as one`() throws {
+        let settings = try keep(#"""
+        {"zai": {"limit": 5, "ratio": 2.5, "strict": true, "regions": ["cn", "us"]}}
+        """#)
+
+        #expect(settings.value("limit", forProvider: "zai") == "5")
+        #expect(settings.value("ratio", forProvider: "zai") == "2.5")
+        #expect(settings.value("regions", forProvider: "zai") == "cn, us")
+        #expect(settings.value("strict", forProvider: "zai") == nil, "a switch isn't text, in ClaudeBar's store either")
+    }
+
     @Test func `should keep every default when ClaudeBar keeps no settings on this PC`() {
         let settings = ClaudeBarSettings(url: url)
 

@@ -104,6 +104,34 @@ public sealed class HudSummaryTests
     }
 
     [TestMethod]
+    public void Should_show_why_a_tool_without_limit_lines_has_no_numbers()
+    {
+        // Balances only: the reading sends the tool without a line to draw.
+        var data = Read(new[] { Tool("amp", 0), Tool("codex", 0, Line("5h", 88)) }, ("amp", "failed"));
+
+        var row = data.Summary().Rows.Single();
+
+        Assert.IsNull(row.Tool);
+        Assert.AreEqual(("amp", "failed"), (row.Problem!.Id, row.Problem.Kind));
+        Assert.AreEqual("amp", data.Alone.Single().Id);
+    }
+
+    [TestMethod]
+    public void Should_give_a_tool_without_limit_lines_a_row_that_says_so()
+    {
+        var data = Read(new[] { Tool("amp", 0) });
+
+        var summary = data.Summary();
+
+        Assert.IsFalse(data.IsEmpty);
+        var row = summary.Rows.Single();
+        Assert.AreEqual("amp", row.Tool!.Id);
+        Assert.IsNull(row.Headline);
+        Assert.IsNull(row.Problem);
+        Assert.IsNull(summary.Fine);
+    }
+
+    [TestMethod]
     public void Should_take_the_headline_and_the_others_from_the_reading()
     {
         var data = Read(new[] { Tool("omp", 2, Line("5h", 20, "warning"), Line("7d", 10, "critical"), Line("Kimi 7d", 31, "warning"), Line("GLM 5h", 90)) });

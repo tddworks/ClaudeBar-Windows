@@ -20,27 +20,29 @@ struct HudMonitorTests {
     /// ClaudeBar's usage JSON carries whole seconds.
     private let now = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded())
 
-    private func hud(_ products: [(id: String, ready: Bool)]) -> HudMonitor {
+    private func hud(_ products: [(id: String, ready: Bool)], cli: Set<String> = []) -> HudMonitor {
         // No settings file: every default applies, as on a PC ClaudeBar's Mac app never ran on.
         let settings = ClaudeBarSettings(url: FileManager.default.temporaryDirectory
             .appendingPathComponent("cbw-\(UUID().uuidString).json"))
-        let made = products.map { stubbed($0.id, ready: $0.ready, settings: settings) }
+        let made = products.map { stubbed($0.id, ready: $0.ready, cli: cli.contains($0.id), settings: settings) }
         let monitor = QuotaMonitor(providers: Providers(made, settings: settings, make: { _ in fatalError("no adding in tests") }),
                                    clock: Parked(), settingsRepository: settings, statusPolicy: { .absolute })
         return HudMonitor(monitor: monitor)
     }
 
-    private func stubbed(_ id: String, ready: Bool, settings: ClaudeBarSettings) -> Provider {
+    /// A provider read over HTTP, or with `cli` by running its CLI, named as it is.
+    private func stubbed(_ id: String, ready: Bool, cli: Bool, settings: ClaudeBarSettings) -> Provider {
+        let fetch = cli ? #"{"command":{"cli":"\#(id)","timeout":5}}"# : #"{"http":{"url":"https://stub.invalid/\#(id)"}}"#
         let json = """
         {"profile":{"id":"\(id)","name":"\(id.prefix(1).uppercased() + id.dropFirst())","links":{}},
-         "dataSources":[{"kind":"stub","credential":{"environment":"STUB_READY"},
-                         "fetch":{"http":{"url":"https://stub.invalid/\(id)"}},"mapping":{"usage":{}}}],
-         "defaultDataSource":"stub"}
+         "dataSources":[{"kind":"\(cli ? "cli" : "stub")","credential":{"environment":"STUB_READY"},
+                         "fetch":\(fetch),"mapping":{"usage":{}}}],
+         "defaultDataSource":"\(cli ? "cli" : "stub")"}
         """
         let definition = try! ProviderDefinition.parse(Data(json.utf8), origin: .custom)
         let server = server
         return Provider(definition: definition, settings: settings, accounts: [], makeDataSource: { source, _ in
-            DataSources.make(source, providerId: id, cliExecutor: NoCLI(), network: server,
+            DataSources.make(source, providerId: id, cliExecutor: Commands(server: server), network: server,
                              makeTransport: { _, _, _, _ in throw UsageError.executionFailed("no RPC in a stub") },
                              environment: { $0 == "STUB_READY" && ready ? "ready" : nil },
                              homeDirectory: FileManager.default.temporaryDirectory, now: { Date() })
@@ -138,6 +140,23 @@ struct HudMonitorTests {
         #expect(answer.problems.allSatisfy { !$0.message.isEmpty })
         #expect(answer.looks.map(\.id) == ["amp", "kimi", "grok", "zai"])
     }
+
+    @Test func `should keep a tool whose CLI is gone visible as failed while it has numbers, and not set up while it has none`() async throws {
+        server.answer("claude", ["quotas": [["type": "session", "percentRemaining": 62, "resetsAt": now.addingTimeInterval(2 * hour)]]])
+        server.answer("gemini", ["quotas": [["type": "session", "percentRemaining": 40, "resetsAt": now.addingTimeInterval(2 * hour)]]])
+        server.uninstall("codex")
+        let hud = hud([("claude", true), ("gemini", true), ("codex", true)], cli: ["claude", "gemini", "codex"])
+        _ = await hud.refresh()
+
+        server.uninstall("claude")
+        server.breakStart("gemini")
+        let answer = await hud.refresh()
+
+        #expect(answer.reading.tools.map(\.id) == ["claude", "gemini"], "the numbers they had stay")
+        #expect(answer.problems.map(\.id) == ["claude", "gemini", "codex"])
+        #expect(answer.problems.map(\.kind) == ["failed", "failed", "notSetUp"])
+        #expect(answer.problems.allSatisfy { !$0.message.isEmpty })
+    }
 }
 
 /// The stubbed servers: each provider's URL answers with ClaudeBar's usage
@@ -146,6 +165,8 @@ private final class Answers: NetworkClient {
     private struct State {
         var bodies: [String: [String: Any]] = [:]
         var statuses: [String: Int] = [:]
+        var missing: Set<String> = []
+        var broken: Set<String> = []
         var asked: [String: Int] = [:]
     }
 
@@ -160,6 +181,12 @@ private final class Answers: NetworkClient {
 
     func answer(_ id: String, _ usage: [String: Any]) { locked { $0.bodies[id] = usage } }
     func refuse(_ id: String, status: Int) { locked { $0.statuses[id] = status } }
+    /// Its CLI is no longer on this PC.
+    func uninstall(_ id: String) { locked { _ = $0.missing.insert(id) } }
+    func isInstalled(_ id: String) -> Bool { locked { !$0.missing.contains(id) } }
+    /// Its CLI is still found, but no longer starts.
+    func breakStart(_ id: String) { locked { _ = $0.broken.insert(id) } }
+    func starts(_ id: String) -> Bool { locked { !$0.missing.contains(id) && !$0.broken.contains(id) } }
     func asked(_ id: String) -> Int { locked { $0.asked[id] ?? 0 } }
 
     func request(_ request: URLRequest) async throws -> (Data, URLResponse) {
@@ -171,6 +198,15 @@ private final class Answers: NetworkClient {
         }
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
         return (try JSONSerialization.data(withJSONObject: Self.iso(body)), response)
+    }
+
+    /// What the CLI named `id` prints: its usage JSON.
+    func run(_ id: String) throws -> String {
+        let body = locked { state -> [String: Any] in
+            state.asked[id, default: 0] += 1
+            return state.bodies[id] ?? [:]
+        }
+        return String(decoding: try JSONSerialization.data(withJSONObject: Self.iso(body)), as: UTF8.self)
     }
 
     /// Dates as ISO 8601 text, as the usage JSON has them.
@@ -186,11 +222,15 @@ private final class Answers: NetworkClient {
 
 extension Answers: @unchecked Sendable {}
 
-private struct NoCLI: CLIExecutor {
-    func locate(_ binary: String) -> String? { nil }
+/// The CLIs on this PC: each prints its usage JSON, until it's uninstalled.
+private struct Commands: CLIExecutor {
+    let server: Answers
+    /// Found by its name, so it runs under that name.
+    func locate(_ binary: String) -> String? { server.isInstalled(binary) ? binary : nil }
     func execute(binary: String, args: [String], input: String?, timeout: TimeInterval,
                  workingDirectory: URL?, autoResponses: [String: String]) async throws -> CLIResult {
-        throw UsageError.cliNotFound(binary)
+        guard server.starts(binary) else { throw UsageError.cliNotFound(binary) }
+        return CLIResult(output: try server.run(binary))
     }
 }
 
