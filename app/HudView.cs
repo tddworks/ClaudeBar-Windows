@@ -386,7 +386,9 @@ internal sealed class HudView
     /// replace, is returned with it.
     private (HudRow Footer, FrameworkElement? Age) Footer(Input input)
     {
-        var footer = new HudRow { Padding = new Thickness(14, 6, 10, 6), ColumnSpacing = 8, MinHeight = 38, Style = Style("HudDivider") };
+        // As tall with the buttons (26 px, the padding and the divider above) as with the read time,
+        // so a redraw with the pointer on the card is the same height as one without.
+        var footer = new HudRow { Padding = new Thickness(14, 6, 10, 6), ColumnSpacing = 8, MinHeight = 39, Style = Style("HudDivider") };
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var left = Text("", "HudSecondary");
