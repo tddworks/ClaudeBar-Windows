@@ -32,9 +32,11 @@ internal static unsafe partial class Native
     internal static partial void cbw_join_device(string sharing, nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cbw_decline_device(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cbw_cancel_device(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib)] internal static partial void cbw_hud_reading(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib)] internal static partial void cbw_hud_refresh(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
 }
 
-/// ClaudeBar's leaderboard, as Tasks. Each call replies once with JSON that
+/// ClaudeBar's leaderboard and the HUD's limits, as Tasks. Each call replies once with JSON that
 /// carries "state", and "error" when it failed. The reply comes on the UI
 /// thread, which drains Swift's main queue (Pump); awaits resume there too.
 internal static unsafe class Swift
@@ -81,6 +83,12 @@ internal static unsafe class Swift
     }
     internal static Task<JsonObject> DeclineDevice() { var (task, context) = Begin(); Native.cbw_decline_device(context, &OnReply); return task; }
     internal static Task<JsonObject> CancelDevice() { var (task, context) = Begin(); Native.cbw_cancel_device(context, &OnReply); return task; }
+
+    /// The HUD's reading (HudData): every signed-in tool's limits, from the
+    /// numbers ClaudeBar's monitor holds now. The first call starts the monitor.
+    internal static Task<JsonObject> HudReading() { var (task, context) = Begin(); Native.cbw_hud_reading(context, &OnReply); return task; }
+    /// *Refresh*: reads every tool again, then replies as `HudReading` does.
+    internal static Task<JsonObject> HudRefresh() { var (task, context) = Begin(); Native.cbw_hud_refresh(context, &OnReply); return task; }
 
     private static (Task<JsonObject>, nint) Begin()
     {
