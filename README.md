@@ -55,6 +55,13 @@ for its scope and the equivalent local commands.
 
 A small window in a corner of the screen with each AI tool's limits, as ClaudeBar reads them on this PC ([design](docs/plans/2026-10-13-hud-design.md)). It answers one question: can I keep going, and until when.
 
+| Card | Everything fine | Strip |
+|---|---|---|
+| ![The HUD with tools that need attention, dark](design-concept/hud/shots/sample-hud-dark.png) | ![Every tool fine, dark](design-concept/hud/shots/sample-fine-dark.png) | ![The strip, dark](design-concept/hud/shots/sample-strip-dark.png) |
+| ![The HUD with tools that need attention, light](design-concept/hud/shots/sample-hud-light.png) | ![Every tool fine, light](design-concept/hud/shots/sample-fine-light.png) | ![The strip, light](design-concept/hud/shots/sample-strip-light.png) |
+
+*A sample reading, from `ClaudeBar.exe --hud-check`.*
+
 - **What it shows.** For each tool, the limit that stops you first, by ClaudeBar's rule: the worst status, then running hot, then the least left, then the soonest reset. A tool that needs you gets a row: its bar, what's left, and when it resets, runs out or is back; `+12` counts its other limits, `+2 low` the ones that aren't fine. Every fine tool shares one quiet row (`✓ Codex · Gemini   lowest 62%`), and when every tool is fine that row is the whole HUD. A tool that's signed out, or couldn't be read, is dimmed and says why; numbers it had before say since when. The footer has today's tokens, your place on the board and when the limits were read. A click on a row opens the window's *Limits* page, which lists every limit. The *Strip* style is the same in one line.
 - **Where.** It shows after the first reading, in the bottom-right corner. Drag it by its top edge: it snaps to the nearest corner of the screen you drop it on, 12 effective pixels inside the work area, clear of the taskbar. While the pointer is over it, its footer holds *Refresh*, *Keep on top*, *Collapse to the strip* and *Open ClaudeBar*; right-click it for *Refresh*, *Hide the HUD*, *Settings* and *Quit ClaudeBar*.
 - **Notifications.** Once per limit when it falls under 20%, reaches 0, or comes back, with *Show the HUD* and *Quiet until reset*. Under Do not disturb, Windows keeps them in the notification centre.
