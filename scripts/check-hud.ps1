@@ -56,6 +56,8 @@ public static class H {
   // The usual way a test harness gets past the foreground lock: an Alt key event first.
   public static bool Front(IntPtr h) { keybd_event(0x12, 0, 0, UIntPtr.Zero); var ok = SetForegroundWindow(h); keybd_event(0x12, 0, 2, UIntPtr.Zero); return ok; }
   public static string Title(IntPtr h) { var s = new StringBuilder(256); GetWindowTextW(h, s, 256); return s.ToString(); }
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, StringBuilder s, int n);
+  public static string ClassOf(IntPtr h) { var s = new StringBuilder(256); GetClassNameW(h, s, 256); return s.ToString(); }
   public static IntPtr RootAt(int x, int y) { var p = new POINT { X = x, Y = y }; return GetAncestor(WindowFromPoint(p), 2); }
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageTimeoutW(IntPtr h, uint m, UIntPtr w, string l, uint f, uint t, out UIntPtr r);
   // WM_SETTINGCHANGE to every top-level window, as Settings sends it ("ImmersiveColorSet" for the theme).
@@ -187,9 +189,11 @@ function Stop-Check($check) {
   [void](Command 'exit')
   if (-not $check.Process.WaitForExit(5000)) { $check.Process.Kill() }
 }
+# A click at (x, y); $script:under says which window was there as the button went down.
 function Click-At($x, $y) {
   $saved = New-Object H+POINT; [void][H]::GetCursorPos([ref]$saved)
   [void][H]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 120
+  $at = [H]::RootAt($x, $y); $script:under = '{0} "{1}" {2}' -f $at, [H]::Title($at), [H]::ClassOf($at); $script:at = (Get-Date).ToString('HH:mm:ss.fff')
   [H]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [H]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
   Start-Sleep -Milliseconds 120
   [void][H]::SetCursorPos($saved.X, $saved.Y)
@@ -291,10 +295,10 @@ foreach ($theme in $Themes) {
           Click-At $cx $cy; Start-Sleep -Milliseconds 900
           $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
           $after = Fg
-          [pscustomobject]@{ Ok = $clicked -and $before -eq $after; Text = "clicked=$clicked before=$before after=$after" }
+          [pscustomobject]@{ Ok = $clicked -and $before -eq $after; Text = "#$n at $script:at clicked=$clicked under=$script:under before=$before after=$after" }
         }
         $bad = @($results | Where-Object { -not $_.Ok })
-        "  {0} mouse click on 'Refresh the limits' ran it and handed the focus back, 20 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + $bad[0].Text + ")" } else { "" })
+        "  {0} mouse click on 'Refresh the limits' ran it and handed the focus back, 20 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + (($bad | ForEach-Object Text) -join '; ') + ")" } else { "" })
       }
       $results = for ($n = 0; $n -lt 20; $n++) {
         [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
