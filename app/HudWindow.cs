@@ -127,6 +127,9 @@ internal sealed class HudWindow
         _widthDip = Math.Ceiling(widthDip ?? content.DesiredSize.Width);
         _heightDip = Math.Ceiling(content.DesiredSize.Height);
         if (_wanted) Place();
+        // Laid out now, not at the next frame: a press arriving before that fell on
+        // nothing, as the new card wasn't arranged yet.
+        _root.UpdateLayout();
     }
 
     /// The parts a drag starts from, and the controls inside them that stay clickable.
