@@ -101,11 +101,12 @@ public final class HudMonitor {
         }
     }
 
-    /// Which logins without numbers or an error have nothing to read with:
-    /// the monitor skips them without a word, as ClaudeBar's popover does.
+    /// Which logins without an error have nothing to read with: the monitor
+    /// skips them without a word, as ClaudeBar's popover does, and keeps any
+    /// numbers they showed before.
     private func checkReadiness() async {
         var found: Set<String> = []
-        for login in monitor.lineup where monitor.usage(of: login) == nil && login.lastError == nil {
+        for login in monitor.lineup where login.lastError == nil {
             if let product = monitor.product(of: login), await !product.isAvailable(login) { found.insert(login.id) }
         }
         notReady = found
@@ -135,15 +136,19 @@ public final class HudMonitor {
         }
         if let error = login.lastError {
             switch error as? UsageError {
-            case .cliNotFound?: return Problem(id: login.id, kind: "notSetUp", message: setup())
+            // Not set up is left out of the HUD; a CLI gone while its numbers stay makes them stale, a failure.
+            case .cliNotFound? where monitor.usage(of: login) == nil: return Problem(id: login.id, kind: "notSetUp", message: setup())
             case .authenticationRequired?, .sessionExpired?: return Problem(id: login.id, kind: "signedOut", message: setup())
             default:
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 return Problem(id: login.id, kind: "failed", message: message)
             }
         }
+        if notReady.contains(login.id) {
+            // As with a CLI gone: nothing to read with, so numbers it still has are stale.
+            return Problem(id: login.id, kind: monitor.usage(of: login) == nil ? "notSetUp" : "failed", message: setup())
+        }
         guard monitor.usage(of: login) == nil else { return nil }
-        if notReady.contains(login.id) { return Problem(id: login.id, kind: "notSetUp", message: setup()) }
         return Problem(id: login.id, kind: "reading", message: "")
     }
 }
