@@ -53,15 +53,18 @@ public partial class App : Application
     /// HUD's crossings). Its buttons run launch arguments through the open
     /// window (`MainWindow.Open`), as each button's `action`, which arrives
     /// encoded (`LaunchArguments.NotificationAction`); *Open the board* when none are given.
-    internal static void Notify(string title, string body, params (string Label, string Arguments)[] buttons)
+    /// Null once Windows took it; else why not, for the HUD's check (the window says it too).
+    internal static string? Notify(string title, string body, params (string Label, string Arguments)[] buttons)
     {
         try
         {
             var builder = new AppNotificationBuilder().AddText(title).AddText(body);
             foreach (var (label, arguments) in buttons.Length > 0 ? buttons : new[] { ("Open the board", "--board") })
                 builder.AddButton(new AppNotificationButton(label).AddArgument("action", arguments));
-            AppNotificationManager.Default.Show(builder.BuildNotification());
+            var notification = builder.BuildNotification();
+            AppNotificationManager.Default.Show(notification);
+            return notification.Id != 0 ? null : $"not shown: notifications {AppNotificationManager.Default.Setting}";
         }
-        catch (Exception) { /* The window says it too. */ }
+        catch (Exception exception) { return exception.Message; }
     }
 }

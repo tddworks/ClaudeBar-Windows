@@ -115,9 +115,15 @@ internal sealed class HudCheck
     /// The crossing notification for `omp/Kimi 7d`, sent as the app sends it
     /// (`App.Notify`, `MainWindow.OnCrossed`). Its *Quiet until reset* button
     /// comes back through Windows, is read as `MainWindow.Open` reads it, and
-    /// quiets that limit; activated.txt says what arrived and what was kept.
-    private static void Notify() =>
-        App.Notify("omp is at 31%", "It resets on Thursday.", ("Show the HUD", "--hud"), ("Quiet until reset", $"--quiet={Uri.EscapeDataString(QuietKey)}"));
+    /// quiets that limit; activated.txt says what arrived and what was kept,
+    /// notify.txt whether Windows took it.
+    private void Notify()
+    {
+        var failed = _notifying
+            ? App.Notify("omp is at 31%", "It resets on Thursday.", ("Show the HUD", "--hud"), ("Quiet until reset", $"--quiet={Uri.EscapeDataString(QuietKey)}"))
+            : "not registered for notifications (crash.txt)";
+        File.WriteAllText(Path.Combine(Folder, "notify.txt"), failed ?? "shown");
+    }
 
     private void Activated(string argument)
     {
