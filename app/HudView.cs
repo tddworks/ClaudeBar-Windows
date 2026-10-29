@@ -30,7 +30,8 @@ internal sealed class HudView
         string? Place,
         DateTimeOffset Now,
         bool Dark,
-        bool OnTop);
+        bool OnTop,
+        bool PointerOver);
 
     internal Action? Refresh;
     internal Action? ToggleOnTop;
@@ -45,6 +46,8 @@ internal sealed class HudView
     internal Action? Quit;
     /// After an action a click on the HUD ran: the person's window again.
     internal Action? AfterClick;
+    /// The footer's buttons showed or hid: where a drag starts changed.
+    internal Action? RegionsChanged;
 
     /// Draws one label in the tertiary colour: the check's proof that its
     /// contrast measure finds a label under 4.5:1 (plan, Task 7).
@@ -115,16 +118,18 @@ internal sealed class HudView
         var tools = Toolbar(input.OnTop);
         Grid.SetColumn(tools, 1);
         footer.Children.Add(tools);
-        root.PointerEntered += (_, _) =>
+        // Drawn again (each read, the minute's tick) with the pointer already on
+        // it, its buttons show at once: XAML says the pointer entered the new card
+        // only a frame or more later, or not until it moves, and a press before
+        // that fell on the footer and was lost.
+        void Hover(bool over)
         {
-            tools.Visibility = Visibility.Visible;
-            if (age is not null) age.Visibility = Visibility.Collapsed;
-        };
-        root.PointerExited += (_, _) =>
-        {
-            tools.Visibility = Visibility.Collapsed;
-            if (age is not null) age.Visibility = Visibility.Visible;
-        };
+            tools.Visibility = over ? Visibility.Visible : Visibility.Collapsed;
+            if (age is not null) age.Visibility = over ? Visibility.Collapsed : Visibility.Visible;
+        }
+        Hover(input.PointerOver);
+        root.PointerEntered += (_, _) => { Hover(true); RegionsChanged?.Invoke(); };
+        root.PointerExited += (_, _) => { Hover(false); RegionsChanged?.Invoke(); };
         root.ContextFlyout = Menu();
         return root;
     }

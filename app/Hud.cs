@@ -60,6 +60,8 @@ internal sealed class Hud : IDisposable
         _view.HideHud = () => SetShown(false);
         _view.Quit = () => Quit?.Invoke();
         _view.AfterClick = _window.AfterClick;
+        // The buttons are passed through the footer's drag region only while they show.
+        _view.RegionsChanged = () => _window.SetDragRegions(_view.Captions, _view.Passthrough);
         _poll = queue.CreateTimer();
         _poll.Interval = TimeSpan.FromSeconds(30);
         _poll.Tick += (_, _) => _ = Read(refresh: false);
@@ -189,7 +191,7 @@ internal sealed class Hud : IDisposable
         }
         if (data is { IsEmpty: true }) _shownEmpty = true;
         var input = new HudView.Input(data, pending, _offline, TodayTokens, Place, DateTimeOffset.Now,
-                                      _window.ActualTheme == ElementTheme.Dark, Preferences.HudOnTop);
+                                      _window.ActualTheme == ElementTheme.Dark, Preferences.HudOnTop, _window.PointerOver);
         var strip = Preferences.HudStyle == "strip" && !_peek;
         var content = strip ? _view.Strip(input) : _view.Card(input);
         if (_peek) content.PointerExited += (_, _) => { _peek = false; Render(); };

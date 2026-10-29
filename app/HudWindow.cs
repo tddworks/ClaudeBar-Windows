@@ -105,6 +105,10 @@ internal sealed class HudWindow
 
     internal ElementTheme ActualTheme => _root.ActualTheme;
 
+    /// The pointer rests on the HUD, not on a window over it.
+    internal bool PointerOver =>
+        _wanted && Win32.GetCursorPos(out var point) && Win32.GetAncestor(Win32.WindowFromPoint(point), Win32.GA_ROOT) == _hwnd;
+
     internal XamlRoot? XamlRoot => _root.XamlRoot;
 
     internal bool OnTop
@@ -244,10 +248,19 @@ internal sealed class HudWindow
         var rects = new List<RectInt32>();
         foreach (var element in elements)
         {
-            if (element.XamlRoot is null || element.ActualWidth <= 0 || element.Visibility != Visibility.Visible) continue;
+            if (element.XamlRoot is null || element.ActualWidth <= 0 || !Shown(element)) continue;
             var bounds = element.TransformToVisual(null).TransformBounds(new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
             rects.Add(new RectInt32((int)(bounds.X * scale), (int)(bounds.Y * scale), (int)Math.Ceiling(bounds.Width * scale), (int)Math.Ceiling(bounds.Height * scale)));
         }
         return rects.ToArray();
+    }
+
+    /// Drawn: neither it nor anything it's in is collapsed (the footer's buttons
+    /// while the pointer is elsewhere), so a drag starts there again.
+    private static bool Shown(FrameworkElement element)
+    {
+        for (DependencyObject? at = element; at is not null; at = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(at))
+            if (at is UIElement { Visibility: Visibility.Collapsed }) return false;
+        return true;
     }
 }
