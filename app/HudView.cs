@@ -174,9 +174,16 @@ internal sealed class HudView
             var words = stale.Kind == "signedOut" ? "signed out" : "couldn't read";
             var from = tool.ReadAt ?? data.ReadAt;
             var since = from is { } at ? $" · numbers from {HudText.Clock(at, _culture)}" : "";
-            var parts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            parts.Children.Add(Tabular(Text($"{Math.Max(0, line.PercentLeft)}%", "HudStrongSecondary")));
-            parts.Children.Add(Trimmed(Text(words + since, Tail("HudSecondary")), double.NaN));
+            // A grid, not a stack panel: the words get what's left of the row and end in an ellipsis.
+            var parts = new Grid { ColumnSpacing = 8 };
+            parts.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            parts.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var percent = Tabular(Text($"{Math.Max(0, line.PercentLeft)}%", "HudStrongSecondary"));
+            var why = Trimmed(Text(words + since, Tail("HudSecondary")), double.NaN);
+            percent.VerticalAlignment = why.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(why, 1);
+            parts.Children.Add(percent);
+            parts.Children.Add(why);
             Place(row, parts, 3, span: 3);
             sentence = $"{look.Name}: {words}{(from is { } read ? $". Numbers from {HudText.Clock(read, _culture)}" : "")}. " + HudText.Sentence(look.Name, line, input.Now, _culture);
             ToolTipService.SetToolTip(row, stale.Message);
