@@ -18,6 +18,7 @@
     <Compile Include="..\..\app\HudText.cs" Link="HudText.cs" />
     <Compile Include="..\..\app\HudData.cs" Link="HudData.cs" />
     <Compile Include="..\..\app\HudCrossings.cs" Link="HudCrossings.cs" />
+    <Compile Include="..\..\app\LaunchArguments.cs" Link="LaunchArguments.cs" />
     <!-- The sample the HUD check shows, read as the C interface sends it. -->
     <Content Include="..\hud-check.json" Link="hud-check.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\hud-check-fine.json" Link="hud-check-fine.json" CopyToOutputDirectory="PreserveNewest" />

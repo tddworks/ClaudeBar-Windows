@@ -158,12 +158,12 @@ public sealed partial class MainWindow : Window
     /// `--upload`, `--settings`, `--board`, or just the window.
     internal void Open(string arguments)
     {
-        var words = Regex.Split(arguments, @"[\s;&=]+").ToHashSet();
+        var words = LaunchArguments.Words(arguments);
         // These need no window, while ClaudeBar shows somewhere: the HUD, the tray or the window itself.
         var shownElsewhere = Preferences.Hud || _tray.IsShown || AppWindow.IsVisible;
-        if (Regex.Match(arguments, @"--quiet=([^\s;&]+)") is { Success: true } quiet)
+        if (LaunchArguments.Quiet(arguments) is { } quiet)
         {
-            _hud.Quiet(Uri.UnescapeDataString(quiet.Groups[1].Value));
+            _hud.Quiet(quiet);
             if (shownElsewhere) return;
         }
         else if (words.Contains("--hud"))

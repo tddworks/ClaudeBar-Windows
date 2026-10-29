@@ -26,7 +26,8 @@ public partial class App : Application
             return;
         }
         // A notification clicked, or a second launch handed over (Program.Main): the open window takes it.
-        AppNotificationManager.Default.NotificationInvoked += (_, invoked) => _window?.DispatcherQueue.TryEnqueue(() => _window.Open(invoked.Argument));
+        AppNotificationManager.Default.NotificationInvoked += (_, invoked) =>
+            _window?.DispatcherQueue.TryEnqueue(() => _window.Open(LaunchArguments.NotificationAction(invoked.Argument) ?? ""));
         try { AppNotificationManager.Default.Register(); }
         catch (Exception) { /* No notifications on this PC; the window says everything too. */ }
         AppInstance.GetCurrent().Activated += (_, activated) => _window?.DispatcherQueue.TryEnqueue(() => _window.Open(Arguments(activated)));
@@ -44,13 +45,14 @@ public partial class App : Application
     private static string Arguments(AppActivationArguments activation) => activation.Data switch
     {
         Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch => launch.Arguments ?? "",
-        AppNotificationActivatedEventArgs notification => notification.Argument,
+        AppNotificationActivatedEventArgs notification => LaunchArguments.NotificationAction(notification.Argument) ?? "",
         _ => "",
     };
 
     /// A Windows notification; few of them (design-concept/leaderboard, and the
     /// HUD's crossings). Its buttons run launch arguments through the open
-    /// window (`MainWindow.Open`); *Open the board* when none are given.
+    /// window (`MainWindow.Open`), as each button's `action`, which arrives
+    /// encoded (`LaunchArguments.NotificationAction`); *Open the board* when none are given.
     internal static void Notify(string title, string body, params (string Label, string Arguments)[] buttons)
     {
         try
