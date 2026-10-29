@@ -108,7 +108,9 @@ internal static class Win32
     [DllImport("shell32.dll")] internal static extern int SHQueryUserNotificationState(out int state);
     internal const int GWL_EXSTYLE = -20;
     internal const long WS_EX_NOACTIVATE = 0x08000000L, WS_EX_TOOLWINDOW = 0x00000080L;
-    internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2;
+    internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2, DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+    [DllImport("dwmapi.dll")] internal static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out RECT value, int size);
+    [DllImport("user32.dll")] internal static extern bool ClientToScreen(IntPtr window, ref POINT point);
     internal const int QUNS_PRESENTATION_MODE = 4;
     internal const uint WM_EXITSIZEMOVE = 0x0232, WM_DPICHANGED = 0x02E0, WM_DISPLAYCHANGE = 0x007E, WM_SETTINGCHANGE = 0x001A;
 

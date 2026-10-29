@@ -37,6 +37,20 @@ internal static class HudGeometry
         return new Box(x, y, width, height);
     }
 
+    /// The window's rectangle, as `MoveAndResize` takes it, for content
+    /// `width` × `height` at `corner`, with the frame Windows draws `margin`
+    /// in from the work area. A window's rectangle counts invisible resize
+    /// borders the screen doesn't show (9 px left, right and below at 150%), and
+    /// the frame draws a border around the content: `window` (GetWindowRect),
+    /// `frame` (DWMWA_EXTENDED_FRAME_BOUNDS) and `client` are one measurement
+    /// of the HUD, in screen pixels, that gives both.
+    internal static Box Place(Corner corner, int width, int height, Box work, int margin, Box window, Box frame, Box client)
+    {
+        var visible = Place(corner, width + frame.Width - client.Width, height + frame.Height - client.Height, work, margin);
+        return new Box(visible.X - (frame.X - window.X), visible.Y - (frame.Y - window.Y),
+                       visible.Width + window.Width - frame.Width, visible.Height + window.Height - frame.Height);
+    }
+
     /// Hidden while the window in front is exactly the HUD's screen (full
     /// screen, a game, a video), unless that's the desktop, and during a
     /// presentation. The shell's own busy state isn't used: it missed a

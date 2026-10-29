@@ -45,6 +45,15 @@ internal sealed class HudCheck
         var queue = DispatcherQueue.GetForCurrentThread();
         _queue = queue;
         _sample = Value(arguments, "--sample") == "fine" ? "hud-check-fine.json" : "hud-check.json";
+        // Before any window, as App.OnLaunched does: registering once a window
+        // is up ended the process in CoreMessagingXP (0xc000027b) on the PC.
+        AppNotificationManager.Default.NotificationInvoked += (_, invoked) => _queue.TryEnqueue(() => Activated(invoked.Argument));
+        try
+        {
+            AppNotificationManager.Default.Register();
+            _notifying = true;
+        }
+        catch (Exception exception) { File.AppendAllText(Path.Combine(Folder, "crash.txt"), "notifications: " + exception + "\n"); }
         _hud = new Hud(queue, Sample)
         {
             OpenWindow = () => Clicked("open"),
@@ -100,32 +109,22 @@ internal sealed class HudCheck
         }
     }
 
-    private bool _notifying;
+    private readonly bool _notifying;
+    private const string QuietKey = "omp/Kimi 7d";
 
     /// The crossing notification for `omp/Kimi 7d`, sent as the app sends it
     /// (`App.Notify`, `MainWindow.OnCrossed`). Its *Quiet until reset* button
     /// comes back through Windows, is read as `MainWindow.Open` reads it, and
     /// quiets that limit; activated.txt says what arrived and what was kept.
-    private void Notify()
+    private static void Notify() =>
+        App.Notify("omp is at 31%", "It resets on Thursday.", ("Show the HUD", "--hud"), ("Quiet until reset", $"--quiet={Uri.EscapeDataString(QuietKey)}"));
+
+    private void Activated(string argument)
     {
-        const string key = "omp/Kimi 7d";
-        if (!_notifying)
-        {
-            AppNotificationManager.Default.NotificationInvoked += (_, invoked) =>
-            {
-                var action = LaunchArguments.NotificationAction(invoked.Argument) ?? "";
-                var quiet = LaunchArguments.Quiet(action);
-                _queue.TryEnqueue(() =>
-                {
-                    if (quiet is not null) _hud.Quiet(quiet);
-                    var kept = Preferences.HudLines.TryGetValue(key, out var line) ? line.QuietUntil?.ToString("o") ?? "none" : "no such limit";
-                    File.WriteAllText(Path.Combine(Folder, "activated.txt"), $"argument={invoked.Argument}\naction={action}\nquiet={quiet}\nquietUntil={kept}\n");
-                });
-            };
-            AppNotificationManager.Default.Register();
-            _notifying = true;
-        }
-        App.Notify("omp is at 31%", "It resets on Thursday.", ("Show the HUD", "--hud"), ("Quiet until reset", $"--quiet={Uri.EscapeDataString(key)}"));
+        var action = LaunchArguments.NotificationAction(argument) ?? "";
+        if (LaunchArguments.Quiet(action) is { } quiet) _hud.Quiet(quiet);
+        var kept = Preferences.HudLines.TryGetValue(QuietKey, out var line) ? line.QuietUntil?.ToString("o") ?? "none" : "no such limit";
+        File.WriteAllText(Path.Combine(Folder, "activated.txt"), $"argument={argument}\naction={action}\nquiet={LaunchArguments.Quiet(action)}\nquietUntil={kept}\n");
     }
 
     private static Windows.UI.Color Color(byte r, byte g, byte b) => Windows.UI.Color.FromArgb(255, r, g, b);

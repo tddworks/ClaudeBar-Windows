@@ -40,6 +40,45 @@ public sealed class HudGeometryTests
         Assert.AreEqual(2088 - 36, HudGeometry.Place(Corner.BottomRight, 480, 3000, Work, 18).Height);
     }
 
+    // One measurement of the HUD at 150% (3840 × 2160, check-hud on the PC), at
+    // its bottom-right corner: GetWindowRect, DWMWA_EXTENDED_FRAME_BOUNDS and the
+    // client area. Windows counts an invisible 9 px resize border left, right and
+    // below in the window's rectangle, and draws 2 px of border inside the frame.
+    private static readonly Box Window = new(3312, 1768, 510, 302);
+    private static readonly Box Frame = new(3321, 1768, 492, 293);
+    private static readonly Box Client = new(3323, 1768, 488, 291);
+
+    [TestMethod]
+    public void Should_put_the_visible_frame_the_margin_in_not_the_invisible_border()
+    {
+        // A drag to the top left landed the frame at x = 27, the border's 9 px past the 18.
+        var window = HudGeometry.Place(Corner.TopLeft, 510, 302, Work, 18, Window, Frame, Client);
+        Assert.AreEqual(new Box(9, 18, 532, 313), window);
+    }
+
+    [TestMethod]
+    public void Should_put_the_frame_s_far_edges_the_margin_in_at_the_bottom_right()
+    {
+        var window = HudGeometry.Place(Corner.BottomRight, 510, 302, Work, 18, Window, Frame, Client);
+        // The frame: 9 px in from the window left, right and below, so it ends at 3822 and 2070.
+        Assert.AreEqual(new Box(3299, 1766, 532, 313), window);
+    }
+
+    [TestMethod]
+    public void Should_give_the_content_its_whole_size_inside_the_borders()
+    {
+        var window = HudGeometry.Place(Corner.TopLeft, 510, 302, Work, 18, Window, Frame, Client);
+        Assert.AreEqual((510, 302), (window.Width - (Window.Width - Client.Width), window.Height - (Window.Height - Client.Height)));
+    }
+
+    [TestMethod]
+    public void Should_place_a_window_without_borders_as_its_content()
+    {
+        var none = new Box(0, 0, 480, 600);
+        Assert.AreEqual(HudGeometry.Place(Corner.BottomRight, 480, 600, Work, 18),
+                        HudGeometry.Place(Corner.BottomRight, 480, 600, Work, 18, none, none, none));
+    }
+
     [TestMethod]
     public void Should_hide_for_a_window_exactly_covering_the_HUD_s_screen()
     {

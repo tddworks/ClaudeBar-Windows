@@ -140,6 +140,8 @@ internal sealed class HudWindow
         _hiddenForFullScreen = false;
         Place();
         _window.AppWindow.Show(false);
+        // Again once shown: DWM may not report the frame of a window it isn't drawing.
+        Place();
         _watch.Start();
         FollowFullScreen();
     }
@@ -179,12 +181,21 @@ internal sealed class HudWindow
         return DisplayArea.Primary;
     }
 
-    /// At its corner of its screen, `MarginDip` in from the work area's edges.
+    /// At its corner of its screen, its frame `MarginDip` in from the work
+    /// area's edges, and its content the size it asked for inside the borders.
     private void Place()
     {
         var work = Chosen().WorkArea;
+        Win32.GetWindowRect(_hwnd, out var w);
+        if (Win32.DwmGetWindowAttribute(_hwnd, Win32.DWMWA_EXTENDED_FRAME_BOUNDS, out var f, System.Runtime.InteropServices.Marshal.SizeOf<Win32.RECT>()) != 0) f = w;
+        Win32.GetClientRect(_hwnd, out var c);
+        var origin = new Win32.POINT();
+        Win32.ClientToScreen(_hwnd, ref origin);
         var box = HudGeometry.Place(Preferences.HudCorner, (int)Math.Ceiling(_widthDip * Scale), (int)Math.Ceiling(_heightDip * Scale),
-                                    new Box(work.X, work.Y, work.Width, work.Height), (int)(MarginDip * Scale));
+                                    new Box(work.X, work.Y, work.Width, work.Height), (int)(MarginDip * Scale),
+                                    window: new Box(w.Left, w.Top, w.Right - w.Left, w.Bottom - w.Top),
+                                    frame: new Box(f.Left, f.Top, f.Right - f.Left, f.Bottom - f.Top),
+                                    client: new Box(origin.X, origin.Y, c.Right, c.Bottom));
         _window.AppWindow.MoveAndResize(new RectInt32(box.X, box.Y, box.Width, box.Height));
     }
 
