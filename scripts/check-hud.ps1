@@ -105,11 +105,12 @@ $script:failures = 0
 function Pass($ok) { if ($ok) { 'PASS' } else { $script:failures++; 'FAIL' } }
 $script:unverified = 0
 function Unverified($what) { $script:unverified++; "  UNVERIFIED $what" }
-function Command($c) {
+# A command to the check, and whether it was done, looked for every `every` ms for 5 s.
+function Command($c, $every = 100) {
   $ack = Join-Path $dir ("ack-{0}.txt" -f $c.Replace(':', '-'))
   Remove-Item $ack -ErrorAction SilentlyContinue
   Set-Content -Path (Join-Path $dir 'cmd.txt') -Value $c
-  for ($i = 0; $i -lt 50 -and -not (Test-Path $ack); $i++) { Start-Sleep -Milliseconds 100 }
+  for ($i = 0; $i -lt 5000 / $every -and -not (Test-Path $ack); $i++) { Start-Sleep -Milliseconds $every }
   Test-Path $ack
 }
 function Grab($r, $name, $margin = 0) {
@@ -315,25 +316,28 @@ foreach ($theme in $Themes) {
       }
       $bad = @($results | Where-Object { -not $_.Ok })
       "  {0} UIA Invoke on 'Refresh the limits', 20 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + $bad[0].Text + ")" } else { "" })
-      # A redraw (a read, the minute's tick) with the pointer resting on the card: its buttons stay.
-      [void][H]::SetCursorPos([int]($h.L + 20 * $check.Scale), [int]($h.B - 12 * $check.Scale)); Start-Sleep -Milliseconds 400
-      $was = [bool](Find-Named $root 'Refresh the limits')
-      [void](Command 'render'); Start-Sleep -Milliseconds 400
-      $kept = [bool](Find-Named $root 'Refresh the limits')
-      "  {0} a redraw with the pointer resting on the card keeps its buttons: before={1} after={2}" -f (Pass ($was -and $kept)), $was, $kept
-      # A redraw between a press on Refresh and its release: the click still runs it.
+      # A redraw (each read, the minute's tick) with the pointer resting on Refresh, and a
+      # press at once, before XAML tells the new card the pointer is over it: the click runs.
       $button = Find-Named $root 'Refresh the limits'
-      if ($button -and $at -eq $check.Hud) {
+      if (-not $button) { Unverified "a press just after a redraw: no 'Refresh the limits' on the HUD" }
+      else {
         $br = $button.Current.BoundingRectangle
-        $cx = [int]($br.X + $br.Width / 2); $cy = [int]($br.Y + $br.Height / 2)
-        Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
-        [void][H]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 150
-        [H]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 100
-        $acked = Command 'render'; Start-Sleep -Milliseconds 200
-        [H]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 900
-        $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
-        "  {0} a redraw between the press on 'Refresh the limits' and its release: clicked={1} (redraw asked={2})" -f (Pass ($clicked -and $acked)), $clicked, $acked
-      } else { Unverified "a redraw between a press and its release: no 'Refresh the limits' on the HUD to press" }
+        $bx = [int]($br.X + $br.Width / 2); $by = [int]($br.Y + $br.Height / 2)
+        [void][H]::SetCursorPos($bx, $by); Start-Sleep -Milliseconds 500
+        $results = for ($n = 0; $n -lt 10; $n++) {
+          [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
+          Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
+          $before = Fg
+          $acked = Command 'render' 5
+          [H]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [H]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+          Start-Sleep -Milliseconds 900
+          $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
+          $after = Fg
+          [pscustomobject]@{ Ok = $clicked -and $acked -and $before -eq $after; Text = "#$n clicked=$clicked redraw asked=$acked before=$before after=$after" }
+        }
+        $bad = @($results | Where-Object { -not $_.Ok })
+        "  {0} a press on 'Refresh the limits' just after a redraw under the resting pointer, 10 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + (($bad | ForEach-Object Text) -join '; ') + ")" } else { "" })
+      }
     }
     [void][H]::SetCursorPos($saved.X, $saved.Y)
     # A click on a row opens the Limits page (the check records it).
