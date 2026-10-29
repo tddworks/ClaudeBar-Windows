@@ -13,7 +13,7 @@ param(
   [string]$Exe = (Join-Path $PSScriptRoot '..\out\win-x64\ClaudeBar.exe'),
   [string]$Shots = (Join-Path $env:TEMP 'claudebar-hud-shots'),
   [string[]]$Themes = @('light', 'dark'),
-  [string[]]$Tests = @('focus', 'measure', 'click', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots')
+  [string[]]$Tests = @('focus', 'measure', 'click', 'style', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots')
 )
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -289,6 +289,19 @@ foreach ($theme in $Themes) {
       } else { Unverified "a click on Claude's row: the point isn't on the HUD" }
     } else { "  {0} no row for Claude on the HUD" -f (Pass $false) }
     $other.Process.Kill()
+  }
+
+  if ($Tests -contains 'style') {
+    # Card, strip, card again (Settings -> HUD -> Style, or the footer's Collapse then a click):
+    # the card comes back at the size it had, its bars drawn again.
+    $card = Rect $check.Hud
+    [void](Command 'style:strip'); Start-Sleep -Milliseconds 800
+    $strip = Rect $check.Hud
+    [void](Command 'style:card'); Start-Sleep -Milliseconds 800
+    $again = Rect $check.Hud
+    $ok = ($strip.B - $strip.T) -lt ($card.B - $card.T) -and ($again.B - $again.T) -eq ($card.B - $card.T) -and ($again.R - $again.L) -eq ($card.R - $card.L)
+    " {0} card -> strip -> card: heights {1} -> {2} -> {3}, widths {4} -> {5}" -f (Pass $ok), ($card.B - $card.T), ($strip.B - $strip.T), ($again.B - $again.T), ($card.R - $card.L), ($again.R - $again.L)
+    Get-Content (Join-Path $dir 'crash.txt') -ErrorAction SilentlyContinue | Select-Object -First 6 | ForEach-Object { "    crash.txt: $_" }
   }
 
   if ($Tests -contains 'drag') {

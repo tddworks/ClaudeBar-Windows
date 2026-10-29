@@ -271,6 +271,7 @@ internal sealed class HudCheck
             }
             default:
                 if (command.StartsWith("corner:") && Enum.TryParse<Corner>(command["corner:".Length..], out var corner)) _hud.SetCorner(corner);
+                else if (command is "style:card" or "style:strip") _hud.SetStyle(command["style:".Length..]);
                 break;
         }
         File.WriteAllText(Path.Combine(Folder, $"ack-{command.Replace(':', '-')}.txt"),
