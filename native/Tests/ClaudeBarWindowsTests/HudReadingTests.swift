@@ -99,4 +99,92 @@ struct HudReadingTests {
         #expect(reading.worst == "critical")
         #expect(HudReading(snapshots: [], policy: .absolute).worst == "healthy")
     }
+
+    // MARK: - The headline: the one line that stops the person first (design, What it shows)
+
+    @Test func `should headline the worse status before the lower share`() {
+        // Out beats low and running hot.
+        let out = HudReading(snapshots: [snapshot("claude", [
+            quota(.weekly, left: 10, resetsIn: 0.9 * 7 * day, window: 7 * day),
+            quota(.session, left: 0, resetsIn: 1 * hour, window: 5 * hour),
+        ])], policy: .absolute).tools[0]
+        // Pace-aware: 45% left and running out is a warning, 40% left with room to spare is fine.
+        let paced = HudReading(snapshots: [snapshot("claude", [
+            quota(.session, left: 40, resetsIn: 0.5 * hour, window: 5 * hour),
+            quota(.weekly, left: 45, resetsIn: 0.8 * 7 * day, window: 7 * day),
+        ])], policy: .paceAware).tools[0]
+
+        #expect(out.lines.map(\.status) == ["critical", "depleted"])
+        #expect(out.headline == 1)
+        #expect(paced.lines.map(\.status) == ["healthy", "warning"])
+        #expect(paced.headline == 1)
+    }
+
+    @Test func `should headline a limit running hot before a lower one at the same status`() {
+        let tool = HudReading(snapshots: [snapshot("claude", [
+            // 45% used with 80% of the window gone: room to spare.
+            quota(.session, left: 55, resetsIn: 1 * hour, window: 5 * hour),
+            // 40% used with 20% of the week gone: running hot.
+            quota(.weekly, left: 60, resetsIn: 0.8 * 7 * day, window: 7 * day),
+        ])], policy: .absolute).tools[0]
+
+        #expect(tool.lines.map(\.status) == ["healthy", "healthy"])
+        #expect(tool.lines.map(\.runningHot) == [false, true])
+        #expect(tool.headline == 1)
+    }
+
+    @Test func `should say when a limit running hot runs out at its pace, and when the tool's numbers were read`() throws {
+        let reading = HudReading(snapshots: [snapshot("claude", [
+            quota(.session, left: 55, resetsIn: 1 * hour, window: 5 * hour),
+            // 40% used in 20% of the week: twice an even pace, so its 60% lasts 30% of the week.
+            quota(.weekly, left: 60, resetsIn: 0.8 * 7 * day, window: 7 * day),
+        ])], policy: .absolute)
+
+        let lines = reading.tools[0].lines
+        #expect(lines[0].runsOutAt == nil)
+        let runsOut = try #require(lines[1].runsOutAt)
+        #expect(abs(runsOut.timeIntervalSince(now.addingTimeInterval(0.3 * 7 * day))) < 60)
+        #expect(reading.tools[0].readAt == now)
+    }
+
+    @Test func `should headline the lowest share among healthy limits`() {
+        let tool = HudReading(snapshots: [snapshot("omp", [
+            quota(.timeLimit("Codex 7d"), left: 80, resetsIn: nil, window: nil, provider: "omp"),
+            quota(.timeLimit("Kimi 7d"), left: 55, resetsIn: nil, window: nil, provider: "omp"),
+            quota(.timeLimit("Claude 5h"), left: 70, resetsIn: nil, window: nil, provider: "omp"),
+        ])], policy: .absolute).tools[0]
+
+        #expect(tool.headline == 1)
+    }
+
+    @Test func `should headline the limit that resets soonest when the shares tie`() {
+        let tool = HudReading(snapshots: [snapshot("omp", [
+            quota(.timeLimit("Claude 5h"), left: 60, resetsIn: 3 * hour, window: nil, provider: "omp"),
+            quota(.timeLimit("Kimi 5h"), left: 60, resetsIn: 1 * hour, window: nil, provider: "omp"),
+            quota(.timeLimit("Codex 5h"), left: 60, resetsIn: nil, window: nil, provider: "omp"),
+        ])], policy: .absolute).tools[0]
+
+        #expect(tool.headline == 1)
+    }
+
+    @Test func `should count the other limits and those that need you, without the headline`() {
+        let tool = HudReading(snapshots: [snapshot("omp", [
+            quota(.timeLimit("Codex 7d"), left: 80, resetsIn: nil, window: nil, provider: "omp"),
+            quota(.timeLimit("Kimi 7d"), left: 40, resetsIn: nil, window: nil, provider: "omp"),
+            quota(.timeLimit("Claude 5h"), left: 10, resetsIn: nil, window: nil, provider: "omp"),
+            quota(.timeLimit("Claude 7d"), left: 90, resetsIn: nil, window: nil, provider: "omp"),
+        ])], policy: .absolute).tools[0]
+
+        #expect(tool.headline == 2)
+        #expect(tool.others == HudReading.Others(count: 3, attention: 1))
+    }
+
+    @Test func `should have no others for a tool with one limit`() {
+        let tool = HudReading(snapshots: [snapshot("claude", [
+            quota(.session, left: 12, resetsIn: 2 * hour, window: 5 * hour),
+        ])], policy: .absolute).tools[0]
+
+        #expect(tool.headline == 0)
+        #expect(tool.others == HudReading.Others(count: 0, attention: 0))
+    }
 }
