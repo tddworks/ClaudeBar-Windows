@@ -250,8 +250,10 @@ foreach ($theme in $Themes) {
     # The buttons show while the pointer is over the card: point at its footer first.
     $h = Rect $check.Hud
     $saved = New-Object H+POINT; [void][H]::GetCursorPos([ref]$saved)
-    [void][H]::SetCursorPos([int]($h.L + 20 * $check.Scale), [int]($h.B - 12 * $check.Scale)); Start-Sleep -Milliseconds 700
-    $refresh = Find-Named $root 'Refresh the limits'
+    [void][H]::SetCursorPos([int]($h.L + 20 * $check.Scale), [int]($h.B - 12 * $check.Scale))
+    # The footer's buttons show once the pointer is over the card: wait for them.
+    $refresh = $null
+    for ($i = 0; $i -lt 30 -and -not $refresh; $i++) { Start-Sleep -Milliseconds 100; $refresh = Find-Named $root 'Refresh the limits' }
     if (-not $refresh) { "  {0} no 'Refresh the limits' button on the HUD" -f (Pass $false) }
     else {
       $br = $refresh.Current.BoundingRectangle
@@ -260,20 +262,31 @@ foreach ($theme in $Themes) {
       $at = [H]::RootAt($cx, $cy)
       if ($at -ne $check.Hud) { Unverified ("mouse click on 'Refresh the limits': the window at ($cx,$cy) is {0} ""{1}"", not the HUD" -f $at, [H]::Title($at)) }
       else {
+        # Five times each: the hand-back raced WinUI's own activation, so one click could pass by luck.
+        $results = for ($n = 0; $n -lt 5; $n++) {
+          [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
+          Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
+          $before = Fg
+          Click-At $cx $cy; Start-Sleep -Milliseconds 900
+          $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
+          $after = Fg
+          [pscustomobject]@{ Ok = $clicked -and $before -eq $after; Text = "clicked=$clicked before=$before after=$after" }
+        }
+        $bad = @($results | Where-Object { -not $_.Ok })
+        "  {0} mouse click on 'Refresh the limits' ran it and handed the focus back, 5 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + $bad[0].Text + ")" } else { "" })
+      }
+      $results = for ($n = 0; $n -lt 5; $n++) {
+        [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
         Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
         $before = Fg
-        Click-At $cx $cy; Start-Sleep -Milliseconds 900
+        try { $refresh.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); $inv = 'ok' } catch { $inv = "failed: $_" }
+        Start-Sleep -Milliseconds 900
         $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
         $after = Fg
-        "  {0} mouse click on 'Refresh the limits' ran it and handed the focus back: clicked={1} before={2} after={3}" -f (Pass ($clicked -and $before -eq $after)), $clicked, $before, $after
+        [pscustomobject]@{ Ok = $clicked -and $before -eq $after; Text = "$inv clicked=$clicked before=$before after=$after" }
       }
-      Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
-      $before = Fg
-      try { $refresh.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); $inv = 'ok' } catch { $inv = "failed: $_" }
-      Start-Sleep -Milliseconds 900
-      $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
-      $after = Fg
-      "  {0} UIA Invoke on 'Refresh the limits': {1} clicked={2} before={3} after={4}" -f (Pass ($clicked -and $before -eq $after)), $inv, $clicked, $before, $after
+      $bad = @($results | Where-Object { -not $_.Ok })
+      "  {0} UIA Invoke on 'Refresh the limits', 5 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + $bad[0].Text + ")" } else { "" })
     }
     [void][H]::SetCursorPos($saved.X, $saved.Y)
     # A click on a row opens the Limits page (the check records it).
