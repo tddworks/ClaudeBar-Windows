@@ -2,9 +2,10 @@ using System.Runtime.InteropServices;
 
 namespace ClaudeBar;
 
-/// The Win32 calls the taskbar glance and the tray icon need, which WinUI
-/// doesn't wrap: window subclassing, DWM's iconic thumbnails, GDI to draw
-/// them, the notification area, a popup menu, and the jump list's COM objects.
+/// The Win32 calls the taskbar glance, the tray icon and the HUD need, which
+/// WinUI doesn't wrap: window subclassing, DWM's iconic thumbnails, GDI to draw
+/// them, the notification area, a popup menu, the jump list's COM objects, and
+/// the HUD's window styles and the foreground window.
 internal static class Win32
 {
     internal delegate IntPtr SubclassProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data);
@@ -89,6 +90,15 @@ internal static class Win32
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] internal static extern bool GetCursorPos(out POINT point);
     internal const uint MF_STRING = 0, MF_SEPARATOR = 0x800, TPM_RETURNCMD = 0x100, TPM_RIGHTBUTTON = 2, TPM_BOTTOMALIGN = 0x20;
+
+    // The HUD: the foreground window, and handing it back after a click.
+    internal delegate void WinEventProc(IntPtr hook, uint eventType, IntPtr window, int objectId, int childId, uint thread, uint time);
+    [DllImport("user32.dll")] internal static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc proc, uint process, uint thread, uint flags);
+    [DllImport("user32.dll")] internal static extern bool UnhookWinEvent(IntPtr hook);
+    [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll")] internal static extern bool IsWindow(IntPtr window);
+    internal const uint EVENT_SYSTEM_FOREGROUND = 0x0003, WINEVENT_OUTOFCONTEXT = 0;
 
     internal static uint ColorRef(Windows.UI.Color color) => (uint)(color.R | (color.G << 8) | (color.B << 16));
 
