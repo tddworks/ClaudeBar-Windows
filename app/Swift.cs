@@ -26,6 +26,12 @@ internal static unsafe partial class Native
     internal static partial void cbw_board(string period, string provider, nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cbw_leave(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cbw_export(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib)] internal static partial void cbw_request_device(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib)] internal static partial void cbw_wait_device(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial void cbw_join_device(string sharing, nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib)] internal static partial void cbw_decline_device(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib)] internal static partial void cbw_cancel_device(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
 }
 
 /// ClaudeBar's leaderboard, as Tasks. Each call replies once with JSON that
@@ -65,6 +71,16 @@ internal static unsafe class Swift
     }
     internal static Task<JsonObject> Leave() { var (task, context) = Begin(); Native.cbw_leave(context, &OnReply); return task; }
     internal static Task<JsonObject> Export() { var (task, context) = Begin(); Native.cbw_export(context, &OnReply); return task; }
+    internal static Task<JsonObject> RequestDevice() { var (task, context) = Begin(); Native.cbw_request_device(context, &OnReply); return task; }
+    internal static Task<JsonObject> WaitDevice() { var (task, context) = Begin(); Native.cbw_wait_device(context, &OnReply); return task; }
+    internal static Task<JsonObject> JoinDevice(IEnumerable<string> sharing)
+    {
+        var (task, context) = Begin();
+        Native.cbw_join_device(string.Join(",", sharing), context, &OnReply);
+        return task;
+    }
+    internal static Task<JsonObject> DeclineDevice() { var (task, context) = Begin(); Native.cbw_decline_device(context, &OnReply); return task; }
+    internal static Task<JsonObject> CancelDevice() { var (task, context) = Begin(); Native.cbw_cancel_device(context, &OnReply); return task; }
 
     private static (Task<JsonObject>, nint) Begin()
     {
