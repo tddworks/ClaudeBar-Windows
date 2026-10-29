@@ -282,8 +282,9 @@ foreach ($theme in $Themes) {
       $at = [H]::RootAt($cx, $cy)
       if ($at -ne $check.Hud) { Unverified ("mouse click on 'Refresh the limits': the window at ($cx,$cy) is {0} ""{1}"", not the HUD" -f $at, [H]::Title($at)) }
       else {
-        # Five times each: the hand-back raced WinUI's own activation, so one click could pass by luck.
-        $results = for ($n = 0; $n -lt 5; $n++) {
+        # Twenty times each: the hand-back raced WinUI's own activation, and a redraw (each
+        # read, each minute) could land under the pointer, so a few clicks could pass by luck.
+        $results = for ($n = 0; $n -lt 20; $n++) {
           [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
           Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
           $before = Fg
@@ -293,9 +294,9 @@ foreach ($theme in $Themes) {
           [pscustomobject]@{ Ok = $clicked -and $before -eq $after; Text = "clicked=$clicked before=$before after=$after" }
         }
         $bad = @($results | Where-Object { -not $_.Ok })
-        "  {0} mouse click on 'Refresh the limits' ran it and handed the focus back, 5 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + $bad[0].Text + ")" } else { "" })
+        "  {0} mouse click on 'Refresh the limits' ran it and handed the focus back, 20 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + $bad[0].Text + ")" } else { "" })
       }
-      $results = for ($n = 0; $n -lt 5; $n++) {
+      $results = for ($n = 0; $n -lt 20; $n++) {
         [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
         Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
         $before = Fg
@@ -309,7 +310,26 @@ foreach ($theme in $Themes) {
         [pscustomobject]@{ Ok = $clicked -and $before -eq $after; Text = "$inv clicked=$clicked before=$before after=$after" }
       }
       $bad = @($results | Where-Object { -not $_.Ok })
-      "  {0} UIA Invoke on 'Refresh the limits', 5 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + $bad[0].Text + ")" } else { "" })
+      "  {0} UIA Invoke on 'Refresh the limits', 20 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + $bad[0].Text + ")" } else { "" })
+      # A redraw (a read, the minute's tick) with the pointer resting on the card: its buttons stay.
+      [void][H]::SetCursorPos([int]($h.L + 20 * $check.Scale), [int]($h.B - 12 * $check.Scale)); Start-Sleep -Milliseconds 400
+      $was = [bool](Find-Named $root 'Refresh the limits')
+      [void](Command 'render'); Start-Sleep -Milliseconds 400
+      $kept = [bool](Find-Named $root 'Refresh the limits')
+      "  {0} a redraw with the pointer resting on the card keeps its buttons: before={1} after={2}" -f (Pass ($was -and $kept)), $was, $kept
+      # A redraw between a press on Refresh and its release: the click still runs it.
+      $button = Find-Named $root 'Refresh the limits'
+      if ($button -and $at -eq $check.Hud) {
+        $br = $button.Current.BoundingRectangle
+        $cx = [int]($br.X + $br.Width / 2); $cy = [int]($br.Y + $br.Height / 2)
+        Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
+        [void][H]::SetCursorPos($cx, $cy); Start-Sleep -Milliseconds 150
+        [H]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 100
+        $acked = Command 'render'; Start-Sleep -Milliseconds 200
+        [H]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 900
+        $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
+        "  {0} a redraw between the press on 'Refresh the limits' and its release: clicked={1} (redraw asked={2})" -f (Pass ($clicked -and $acked)), $clicked, $acked
+      } else { Unverified "a redraw between a press and its release: no 'Refresh the limits' on the HUD to press" }
     }
     [void][H]::SetCursorPos($saved.X, $saved.Y)
     # A click on a row opens the Limits page (the check records it).

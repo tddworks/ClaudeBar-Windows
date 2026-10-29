@@ -197,7 +197,7 @@ internal sealed class HudCheck
 
     /// The script's commands: full screen in the ways research.md measured,
     /// back to a window, the HUD at a corner or on the other screen, hidden and
-    /// shown again, a plain colour behind it for screenshots, and exit.
+    /// shown again, drawn again, a plain colour behind it for screenshots, and exit.
     private void Poll()
     {
         var file = Path.Combine(Folder, "cmd.txt");
@@ -251,6 +251,10 @@ internal sealed class HudCheck
                 // Hidden and shown again, as the switch and the shortcut do: it mustn't take the focus.
                 _hud.SetShown(false);
                 _hud.SetShown(true);
+                break;
+            case "render":
+                // Drawn again, as each read and the minute's tick draw it.
+                _hud.Render();
                 break;
             case "plain-light":
             case "plain-dark":
