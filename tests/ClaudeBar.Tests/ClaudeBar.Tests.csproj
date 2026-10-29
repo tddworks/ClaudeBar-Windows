@@ -15,5 +15,9 @@
     <!-- The app is a WinUI exe, which a plain test project can't reference: its
          pure files, with no WinUI in them, are compiled in here by link. -->
     <Compile Include="..\..\app\HudGeometry.cs" Link="HudGeometry.cs" />
+    <Compile Include="..\..\app\HudText.cs" Link="HudText.cs" />
+    <Compile Include="..\..\app\HudData.cs" Link="HudData.cs" />
+    <!-- The sample the HUD check shows, read as the C interface sends it. -->
+    <Content Include="..\hud-check.json" Link="hud-check.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

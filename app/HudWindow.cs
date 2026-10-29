@@ -31,6 +31,9 @@ internal sealed class HudWindow
     /// Asked to close (Alt+F4 after a click, or the system menu): the HUD hides instead.
     internal Action? CloseRequested;
 
+    /// Its theme changed: Windows' own, or high contrast.
+    internal Action? ThemeChanged;
+
     internal HudWindow(ForegroundTracker foreground)
     {
         _foreground = foreground;
@@ -79,6 +82,7 @@ internal sealed class HudWindow
         Win32.SetWindowSubclass(_hwnd, _subclass, (UIntPtr)1, UIntPtr.Zero);
         _watch.Tick += (_, _) => FollowFullScreen();
         _root.SizeChanged += (_, _) => UpdateDragRegions();
+        _root.ActualThemeChanged += (_, _) => ThemeChanged?.Invoke();
         // Esc after UI Automation or a click made it active: back to the person's window.
         _root.KeyDown += (_, e) =>
         {

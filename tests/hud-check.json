@@ -1,0 +1,142 @@
+{
+  "reading": {
+    "tools": [
+      {
+        "id": "claude",
+        "lines": [
+          {
+            "window": "5h",
+            "percentLeft": 62,
+            "resetsAt": 1791908040,
+            "windowSeconds": 18000,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 44.7,
+            "strip": true
+          },
+          {
+            "window": "7d",
+            "percentLeft": 41,
+            "resetsAt": 1792180800,
+            "windowSeconds": 604800,
+            "status": "warning",
+            "runningHot": true,
+            "tick": 46.4,
+            "strip": true
+          }
+        ],
+        "outUntil": null,
+        "runningHot": true
+      },
+      {
+        "id": "codex",
+        "lines": [
+          {
+            "window": "5h",
+            "percentLeft": 0,
+            "resetsAt": 1791903900,
+            "windowSeconds": 18000,
+            "status": "depleted",
+            "runningHot": false,
+            "tick": 21.7,
+            "strip": true
+          },
+          {
+            "window": "7d",
+            "percentLeft": 58,
+            "resetsAt": 1792335600,
+            "windowSeconds": 604800,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 72.0,
+            "strip": false
+          }
+        ],
+        "outUntil": 1791903900,
+        "runningHot": false
+      },
+      {
+        "id": "gemini",
+        "lines": [
+          {
+            "window": "1d",
+            "percentLeft": 12,
+            "resetsAt": 1791934800,
+            "windowSeconds": 86400,
+            "status": "critical",
+            "runningHot": true,
+            "tick": 40.3,
+            "strip": true
+          }
+        ],
+        "outUntil": null,
+        "runningHot": true
+      }
+    ],
+    "worst": "depleted"
+  },
+  "readAt": 1791900000,
+  "problems": [
+    {
+      "id": "copilot",
+      "kind": "failed",
+      "message": "GitHub didn't answer."
+    },
+    {
+      "id": "cursor",
+      "kind": "signedOut",
+      "message": "Sign in to Cursor; it shows here within a minute."
+    }
+  ],
+  "looks": [
+    {
+      "id": "claude",
+      "name": "Claude",
+      "light": "#E2674A",
+      "dark": "#FA8C73"
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "light": "#1C9E93",
+      "dark": "#59D9C7"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "light": "#1A73E8",
+      "dark": "#8AB4F8"
+    },
+    {
+      "id": "copilot",
+      "name": "Copilot",
+      "light": "#6E40C9",
+      "dark": "#B392F0"
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "light": "#5C5C5C",
+      "dark": "#C8C8C8"
+    }
+  ],
+  "state": {
+    "joined": false,
+    "providers": [
+      {
+        "id": "claude",
+        "name": "Claude",
+        "light": "#E2674A",
+        "dark": "#FA8C73",
+        "shared": false
+      },
+      {
+        "id": "codex",
+        "name": "Codex",
+        "light": "#1C9E93",
+        "dark": "#59D9C7",
+        "shared": false
+      }
+    ]
+  }
+}
