@@ -1,3 +1,4 @@
+import DataSources
 import Foundation
 import Providers
 import Quotas
@@ -40,12 +41,14 @@ public final class ClaudeBarSettings: MultiAccountSettingsRepository, @unchecked
     public func providerOrder() -> [String] { read("providers.order") ?? [] }
     public func cliPath(forProvider id: String) -> String? { read("providers.\(id).cliPath") }
 
-    /// A value as text; a list reads as `a, b`, as ClaudeBar reads it.
+    /// A value as text, as ClaudeBar reads it: an old card may have saved a
+    /// number, or a list (read as `a, b`); a switch isn't text.
     public func value(_ setting: String, forProvider id: String) -> String? {
         let key = "\(id).\(setting)"
         if let text: String = read(key) { return text }
-        let list: [String]? = read(key)
-        return list?.joined(separator: ", ")
+        if let list: [String] = read(key) { return list.joined(separator: ", ") }
+        if let number: NSNumber = read(key), !number.isBoolean { return number.stringValue }
+        return nil
     }
 
     public func hiddenQuotaKeys(forProvider id: String) -> Set<String> {
