@@ -23,6 +23,19 @@ public sealed class LaunchArgumentsTests
     }
 
     [TestMethod]
+    public void Should_read_the_quiet_limit_of_a_signed_in_account_as_NotificationInvoked_delivers_it()
+    {
+        // `NotificationInvoked`'s Argument on the PC for an omp account's Claude 7d,
+        // the account's name replaced: the running app gets it, not a second launch.
+        const string argument = "action=--quiet%3Domp%252FClaude%25207d%2520%25C2%25B7%2520someone0123";
+
+        var action = LaunchArguments.NotificationAction(argument);
+
+        Assert.AreEqual("--quiet=omp%2FClaude%207d%20%C2%B7%20someone0123", action);
+        Assert.AreEqual("omp/Claude 7d · someone0123", LaunchArguments.Quiet(action!));
+    }
+
+    [TestMethod]
     public void Should_read_a_plain_button()
     {
         var action = LaunchArguments.NotificationAction("action=--board");
