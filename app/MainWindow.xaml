@@ -97,7 +97,7 @@
                     <TextBlock Text="On a computer that's already on the leaderboard, open ClaudeBar's settings, go to Leaderboard, then Devices, choose Add a device and type this code."
                                Style="{StaticResource Secondary}" FontSize="13" TextWrapping="Wrap" />
                     <TextBlock x:Name="DeviceCodeText" FontFamily="Cascadia Mono, Consolas" FontSize="28" FontWeight="SemiBold"
-                               IsTextSelectionEnabled="True" CharacterSpacing="120" AutomationProperties.Name="Code" />
+                               IsTextSelectionEnabled="True" CharacterSpacing="120" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ProgressRing x:Name="DeviceBusy" IsActive="False" Width="16" Height="16" />
                         <TextBlock x:Name="DeviceStatus" Style="{StaticResource Secondary}" TextWrapping="Wrap" VerticalAlignment="Center" />
