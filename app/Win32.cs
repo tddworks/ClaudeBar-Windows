@@ -112,10 +112,48 @@ internal static class Win32
     internal const int QUNS_PRESENTATION_MODE = 4;
     internal const uint WM_EXITSIZEMOVE = 0x0232, WM_DPICHANGED = 0x02E0, WM_DISPLAYCHANGE = 0x007E, WM_SETTINGCHANGE = 0x001A;
 
+    // The taskbar button's dot (an icon made from a bitmap) and the HUD's shortcut.
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ICONINFO { [MarshalAs(UnmanagedType.Bool)] public bool IsIcon; public int HotspotX; public int HotspotY; public IntPtr Mask; public IntPtr Color; }
+    [DllImport("user32.dll")] internal static extern IntPtr CreateIconIndirect(ref ICONINFO info);
+    [DllImport("gdi32.dll")] internal static extern IntPtr CreateBitmap(int width, int height, uint planes, uint bitCount, IntPtr bits);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern uint RegisterWindowMessageW(string name);
+    [DllImport("user32.dll")] internal static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
+    [DllImport("user32.dll")] internal static extern bool UnregisterHotKey(IntPtr window, int id);
+    internal const uint WM_HOTKEY = 0x0312, MOD_ALT = 1, MOD_CONTROL = 2, MOD_SHIFT = 4, MOD_WIN = 8, MOD_NOREPEAT = 0x4000;
+
     internal static uint ColorRef(Windows.UI.Color color) => (uint)(color.R | (color.G << 8) | (color.B << 16));
 
     internal static int LowWord(IntPtr value) => (short)((long)value & 0xFFFF);
     internal static int HighWord(IntPtr value) => (short)(((long)value >> 16) & 0xFFFF);
+}
+
+// MARK: - The taskbar button's overlay icon
+
+[ComImport, Guid("EA1AFB91-9E28-4B86-90E9-9E9F8A5EEFAF"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface ITaskbarList3
+{
+    // ITaskbarList
+    void HrInit();
+    void AddTab(IntPtr window);
+    void DeleteTab(IntPtr window);
+    void ActivateTab(IntPtr window);
+    void SetActiveAlt(IntPtr window);
+    // ITaskbarList2
+    void MarkFullscreenWindow(IntPtr window, [MarshalAs(UnmanagedType.Bool)] bool fullscreen);
+    // ITaskbarList3
+    void SetProgressValue(IntPtr window, ulong completed, ulong total);
+    void SetProgressState(IntPtr window, int flags);
+    void RegisterTab(IntPtr tab, IntPtr window);
+    void UnregisterTab(IntPtr tab);
+    void SetTabOrder(IntPtr tab, IntPtr insertBefore);
+    void SetTabActive(IntPtr tab, IntPtr window, uint reserved);
+    void ThumbBarAddButtons(IntPtr window, uint count, IntPtr buttons);
+    void ThumbBarUpdateButtons(IntPtr window, uint count, IntPtr buttons);
+    void ThumbBarSetImageList(IntPtr window, IntPtr images);
+    void SetOverlayIcon(IntPtr window, IntPtr icon, [MarshalAs(UnmanagedType.LPWStr)] string? description);
+    void SetThumbnailTooltip(IntPtr window, [MarshalAs(UnmanagedType.LPWStr)] string? tip);
+    void SetThumbnailClip(IntPtr window, IntPtr clip);
 }
 
 // MARK: - The jump list's COM objects

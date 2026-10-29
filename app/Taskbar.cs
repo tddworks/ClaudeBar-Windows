@@ -20,6 +20,10 @@ internal sealed class Taskbar
     private Glance? _glance;
     private bool _dark;
     private Color _accent;
+    /// The taskbar button's dot: the worst status of every limit, and its sentence.
+    private (string Worst, string Sentence) _dot = ("healthy", "");
+    private ITaskbarList3? _list;
+    private static readonly uint TaskbarButtonCreated = Win32.RegisterWindowMessageW("TaskbarButtonCreated");
 
     /// Other messages to the window, for the tray icon: handled when it answers.
     internal Func<uint, IntPtr, IntPtr, bool>? OnMessage;
@@ -50,6 +54,76 @@ internal sealed class Taskbar
         }
     }
 
+    /// The worst status of every limit as a dot on the taskbar button (none,
+    /// amber or red), with the worst limit's sentence as its alt text (Task 10).
+    /// Windows shows it while the window is open or minimized, not with small
+    /// taskbar icons; it's set again when Explorer makes the button again.
+    internal void ShowWorst(string worst, string sentence)
+    {
+        _dot = (worst, sentence);
+        ApplyDot();
+    }
+
+    private void ApplyDot()
+    {
+        try
+        {
+            if (_list is null)
+            {
+                _list = (ITaskbarList3)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("56FDF344-FD6D-11D0-958A-006097C9A090"))!)!;
+                _list.HrInit();
+            }
+            var color = _dot.Worst switch
+            {
+                "warning" => Color.FromArgb(255, 0xFC, 0xE1, 0x00),
+                "critical" or "depleted" => Color.FromArgb(255, 0xE8, 0x11, 0x23),
+                _ => (Color?)null,
+            };
+            var icon = color is { } fill ? Dot(fill, (int)Math.Round(16 * Win32.GetDpiForWindow(_window) / 96.0)) : IntPtr.Zero;
+            _list.SetOverlayIcon(_window, icon, color is null ? null : _dot.Sentence);
+            if (icon != IntPtr.Zero) Win32.DestroyIcon(icon);
+        }
+        catch (Exception)
+        {
+            // The dot is a glance; the HUD and the window show every limit.
+        }
+    }
+
+    /// A filled circle `size` pixels across, edged so it reads on a light or a dark taskbar.
+    private static IntPtr Dot(Color fill, int size)
+    {
+        var info = new Win32.BITMAPINFOHEADER { Size = 40, Width = size, Height = -size, Planes = 1, BitCount = 32 };
+        var color = Win32.CreateDIBSection(IntPtr.Zero, ref info, 0, out var bits, IntPtr.Zero, 0);
+        if (color == IntPtr.Zero) return IntPtr.Zero;
+        var pixels = new int[size * size];
+        var centre = (size - 1) / 2.0;
+        var radius = size / 2.0 - 0.5;
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var distance = Math.Sqrt((x - centre) * (x - centre) + (y - centre) * (y - centre));
+                var cover = Math.Clamp(radius - distance + 0.5, 0, 1);
+                if (cover <= 0) continue;
+                // The outer pixel darkened: a one-pixel edge.
+                var edge = Math.Clamp(distance - (radius - 1.2), 0, 1) * 0.45;
+                var r = (byte)(fill.R * (1 - edge));
+                var g = (byte)(fill.G * (1 - edge));
+                var b = (byte)(fill.B * (1 - edge));
+                var a = (byte)(255 * cover);
+                // Premultiplied, as a 32-bit icon's colour bitmap is.
+                pixels[y * size + x] = (a << 24) | ((r * a / 255) << 16) | ((g * a / 255) << 8) | (b * a / 255);
+            }
+        }
+        Marshal.Copy(pixels, 0, bits, pixels.Length);
+        var mask = Win32.CreateBitmap(size, size, 1, 1, IntPtr.Zero);
+        var iconInfo = new Win32.ICONINFO { IsIcon = true, Mask = mask, Color = color };
+        var icon = Win32.CreateIconIndirect(ref iconInfo);
+        Win32.DeleteObject(mask);
+        Win32.DeleteObject(color);
+        return icon;
+    }
+
     internal void Clear()
     {
         _glance = null;
@@ -59,6 +133,12 @@ internal sealed class Taskbar
 
     private IntPtr Proc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data)
     {
+        if (message == TaskbarButtonCreated && TaskbarButtonCreated != 0)
+        {
+            // Explorer restarted, or the button was made again: the dot is gone with the old one.
+            _list = null;
+            ApplyDot();
+        }
         switch (message)
         {
             case Win32.WM_DWMSENDICONICTHUMBNAIL:
@@ -170,8 +250,8 @@ internal sealed class Taskbar
         return measure.Right - measure.Left;
     }
 
-    /// Right-click on the taskbar button: three tasks, run through this app's
-    /// one instance, which hands them to the open window or opens one.
+    /// Right-click on the taskbar button: its tasks, run through this app's one
+    /// instance, which hands them to the open window or opens one.
     internal static void SetJumpList()
     {
         try
@@ -181,8 +261,10 @@ internal sealed class Taskbar
             var arrayId = typeof(IObjectArray).GUID;
             list.BeginList(out _, ref arrayId, out _);
             var tasks = (IObjectCollection)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("2D3468C1-36A7-43B6-AC24-D3F02FD9607A"))!)!;
+            tasks.AddObject(Link(exe, "--hud", "Show the HUD"));
+            tasks.AddObject(Link(exe, "--refresh", "Refresh now"));
+            tasks.AddObject(Link(exe, "--board", "Leaderboard"));
             tasks.AddObject(Link(exe, "--upload", "Upload now"));
-            tasks.AddObject(Link(exe, "--board", "Open the board"));
             tasks.AddObject(Link(exe, "--settings", "Settings"));
             list.AddUserTasks((IObjectArray)tasks);
             list.CommitList();
