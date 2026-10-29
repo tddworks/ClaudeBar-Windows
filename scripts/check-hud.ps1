@@ -37,6 +37,13 @@ public static class H {
   [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int i);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string cls, string title);
+  // Every top-level window of a class. A notification's CoreWindow isn't among
+  // the UI Automation root's children, but FromHandle on it finds its buttons.
+  public static System.Collections.Generic.List<IntPtr> OfClass(string cls) {
+    var all = new System.Collections.Generic.List<IntPtr>(); var h = IntPtr.Zero;
+    while ((h = FindWindowExW(IntPtr.Zero, h, cls, null)) != IntPtr.Zero) all.Add(h);
+    return all; }
   [DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int state);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out RECT r, int size);
   // The window as drawn, without the invisible resize borders GetWindowRect includes.
@@ -335,16 +342,23 @@ foreach ($theme in $Themes) {
     # A crossing notification, through Windows and back: its *Quiet until reset* quiets that limit.
     [void](Command 'notify')
     $cond = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Quiet until reset')
-    $windows = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ClassNameProperty, 'Windows.UI.Core.CoreWindow')
     $button = $null
     for ($i = 0; $i -lt 16 -and -not $button; $i++) {
       Start-Sleep -Milliseconds 500
-      foreach ($w in [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, $windows)) {
-        $button = $w.FindFirst([Windows.Automation.TreeScope]::Descendants, $cond)
+      foreach ($w in [H]::OfClass('Windows.UI.Core.CoreWindow')) {
+        try { $button = [Windows.Automation.AutomationElement]::FromHandle($w).FindFirst([Windows.Automation.TreeScope]::Descendants, $cond) } catch { }
         if ($button) { break }
       }
     }
-    if (-not $button) { Unverified "'Quiet until reset' on the notification: no such button on screen (notifications off, or Do not disturb)" }
+    $sent = Get-Content (Join-Path $dir 'notify.txt') -ErrorAction SilentlyContinue
+    "  notification: $sent; notification state: " + (Quns)
+    # Windows took it, while accepting banners: the banner must be there. Turned
+    # off by the person, or Do not disturb: nothing to click. Else the app failed to send it.
+    if (-not $button) {
+      if ($sent -like '*Disabled*' -or (Quns) -ne 'ACCEPTS_NOTIFICATIONS') { Unverified "'Quiet until reset' on the notification: no banner ($sent; $(Quns))" }
+      elseif ($sent -like 'shown*') { "  {0} 'Quiet until reset' on the notification: Windows took it, but no banner with it is on screen" -f (Pass $false) }
+      else { "  {0} the notification wasn't sent: {1}" -f (Pass $false), $sent }
+    }
     else {
       Remove-Item (Join-Path $dir 'activated.txt') -ErrorAction SilentlyContinue
       try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { "  invoke failed: $_" }

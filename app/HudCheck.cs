@@ -117,12 +117,13 @@ internal sealed class HudCheck
     /// comes back through Windows, is read as `MainWindow.Open` reads it, and
     /// quiets that limit; activated.txt says what arrived and what was kept,
     /// notify.txt whether Windows took it.
-    private void Notify()
+    private async void Notify()
     {
         var failed = _notifying
             ? App.Notify("omp is at 31%", "It resets on Thursday.", ("Show the HUD", "--hud"), ("Quiet until reset", $"--quiet={Uri.EscapeDataString(QuietKey)}"))
             : "not registered for notifications (crash.txt)";
-        File.WriteAllText(Path.Combine(Folder, "notify.txt"), failed ?? "shown");
+        var kept = failed is null ? (await AppNotificationManager.Default.GetAllAsync()).Count : 0;
+        File.WriteAllText(Path.Combine(Folder, "notify.txt"), failed ?? $"shown, {kept} in the notification centre, notifications {AppNotificationManager.Default.Setting}");
     }
 
     private void Activated(string argument)
