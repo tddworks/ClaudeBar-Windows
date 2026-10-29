@@ -48,6 +48,10 @@ public static class H {
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out RECT r, int size);
   // The window as drawn, without the invisible resize borders GetWindowRect includes.
   public static RECT Frame(IntPtr h) { RECT r; if (DwmGetWindowAttribute(h, 9, out r, 16) != 0) GetWindowRect(h, out r); return r; }
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  // The content, inside the frame's border, in screen pixels.
+  public static RECT Client(IntPtr h) { RECT c; GetClientRect(h, out c); var o = new POINT(); ClientToScreen(h, ref o); return new RECT { L = o.X, T = o.Y, R = o.X + c.R, B = o.Y + c.B }; }
   // The usual way a test harness gets past the foreground lock: an Alt key event first.
   public static bool Front(IntPtr h) { keybd_event(0x12, 0, 0, UIntPtr.Zero); var ok = SetForegroundWindow(h); keybd_event(0x12, 0, 2, UIntPtr.Zero); return ok; }
   public static string Title(IntPtr h) { var s = new StringBuilder(256); GetWindowTextW(h, s, 256); return s.ToString(); }
@@ -56,19 +60,27 @@ public static class H {
   // WCAG contrast from a BGRA capture. The background is the median luminance
   // of a 2 px ring around the box; the text is the 98th percentile of contrast
   // among the box's pixels that differ from it, so a ClearType fringe doesn't decide.
+  // Only the HUD's content counts (cx, cy, cw, ch, in the capture): not the
+  // frame's border, nor what shows past its rounded corners (a square of
+  // `corner` px in each), which the last row's box reaches.
   static double Linear(byte c) { var v = c / 255.0; return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4); }
   static double Luminance(byte[] p, int i) { return 0.2126 * Linear(p[i + 2]) + 0.7152 * Linear(p[i + 1]) + 0.0722 * Linear(p[i]); }
   static double Ratio(double a, double b) { return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05); }
-  public static double TextContrast(byte[] p, int stride, int width, int height, int x, int y, int w, int h) {
+  static bool Content(int xx, int yy, int cx, int cy, int cw, int ch, int corner) {
+    if (xx < cx || yy < cy || xx >= cx + cw || yy >= cy + ch) return false;
+    var nearX = xx < cx + corner || xx >= cx + cw - corner; var nearY = yy < cy + corner || yy >= cy + ch - corner;
+    return !(nearX && nearY); }
+  public static double TextContrast(byte[] p, int stride, int x, int y, int w, int h, int cx, int cy, int cw, int ch, int corner) {
     var ring = new System.Collections.Generic.List<double>();
     for (int yy = y - 2; yy < y + h + 2; yy++) for (int xx = x - 2; xx < x + w + 2; xx++) {
       if (xx >= x && xx < x + w && yy >= y && yy < y + h) continue;
-      if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+      if (!Content(xx, yy, cx, cy, cw, ch, corner)) continue;
       ring.Add(Luminance(p, yy * stride + xx * 4)); }
     if (ring.Count == 0) return -1;
     ring.Sort(); var background = ring[ring.Count / 2];
     var inside = new System.Collections.Generic.List<double>();
-    for (int yy = Math.Max(0, y); yy < Math.Min(height, y + h); yy++) for (int xx = Math.Max(0, x); xx < Math.Min(width, x + w); xx++) {
+    for (int yy = y; yy < y + h; yy++) for (int xx = x; xx < x + w; xx++) {
+      if (!Content(xx, yy, cx, cy, cw, ch, corner)) continue;
       var r = Ratio(Luminance(p, yy * stride + xx * 4), background); if (r > 1.05) inside.Add(r); }
     if (inside.Count == 0) return 1;
     inside.Sort(); return inside[(int)(0.98 * (inside.Count - 1))];
@@ -171,6 +183,8 @@ function Contrast($check, $name) {
   [Runtime.InteropServices.Marshal]::Copy($data.Scan0, $bytes, 0, $bytes.Length)
   $bmp.UnlockBits($data)
   $root = [Windows.Automation.AutomationElement]::FromHandle($check.Hud)
+  # The content in the capture, and the rounded corner's size (8 effective px, DWMWCP_ROUND).
+  $c = [H]::Client($check.Hud); $cx = $c.L - $h.L + 4; $cy = $c.T - $h.T + 4; $corner = [int][math]::Ceiling(8 * $check.Scale)
   $types = New-Object Windows.Automation.OrCondition(
     (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text)),
     (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Hyperlink)))
@@ -178,7 +192,7 @@ function Contrast($check, $name) {
     $r = $e.Current.BoundingRectangle
     if ($r.IsEmpty -or $r.Width -lt 2 -or $r.Height -lt 2 -or -not $e.Current.Name) { continue }
     $x = [int]$r.X - $h.L + 4; $y = [int]$r.Y - $h.T + 4
-    $ratio = [H]::TextContrast($bytes, $data.Stride, $bmp.Width, $bmp.Height, $x, $y, [int]$r.Width, [int]$r.Height)
+    $ratio = [H]::TextContrast($bytes, $data.Stride, $x, $y, [int]$r.Width, [int]$r.Height, $cx, $cy, $c.R - $c.L, $c.B - $c.T, $corner)
     [pscustomobject]@{ Name = $e.Current.Name; Ratio = $ratio }
   }
   $bmp.Dispose()
