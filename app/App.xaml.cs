@@ -7,15 +7,24 @@ namespace ClaudeBar;
 
 public partial class App : Application
 {
+    private readonly string[] _arguments;
     private MainWindow? _window;
+    /// The HUD's check, kept alive while it runs.
+    internal HudCheck? Check { get; private set; }
 
-    public App()
+    public App(string[] arguments)
     {
+        _arguments = arguments;
         InitializeComponent();
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        if (_arguments.Contains("--hud-check"))
+        {
+            Check = new HudCheck(_arguments);
+            return;
+        }
         // A notification clicked, or a second launch handed over (Program.Main): the open window takes it.
         AppNotificationManager.Default.NotificationInvoked += (_, invoked) => _window?.DispatcherQueue.TryEnqueue(() => _window.Open(invoked.Argument));
         try { AppNotificationManager.Default.Register(); }
@@ -38,17 +47,17 @@ public partial class App : Application
         _ => "",
     };
 
-    /// A Windows notification, with *Open the board*; few of them (design-concept/leaderboard).
-    internal static void Notify(string title, string body)
+    /// A Windows notification; few of them (design-concept/leaderboard, and the
+    /// HUD's crossings). Its buttons run launch arguments through the open
+    /// window (`MainWindow.Open`); *Open the board* when none are given.
+    internal static void Notify(string title, string body, params (string Label, string Arguments)[] buttons)
     {
         try
         {
-            var notification = new AppNotificationBuilder()
-                .AddText(title)
-                .AddText(body)
-                .AddButton(new AppNotificationButton("Open the board").AddArgument("action", "--board"))
-                .BuildNotification();
-            AppNotificationManager.Default.Show(notification);
+            var builder = new AppNotificationBuilder().AddText(title).AddText(body);
+            foreach (var (label, arguments) in buttons.Length > 0 ? buttons : new[] { ("Open the board", "--board") })
+                builder.AddButton(new AppNotificationButton(label).AddArgument("action", arguments));
+            AppNotificationManager.Default.Show(builder.BuildNotification());
         }
         catch (Exception) { /* The window says it too. */ }
     }
