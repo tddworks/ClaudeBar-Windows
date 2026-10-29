@@ -165,20 +165,16 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
 
 // MARK: - Adding this PC to a member (ClaudeBar design §2a)
 
-/// The one request this PC is making to be added to a member, with the key it
-/// asked with. Only in this process's memory: nothing is kept until the person
-/// agrees to the member it was approved for (`cbw_join_device`).
-@MainActor private var deviceRequest: DeviceRequest?
+/// The one request this PC is making to be added to a member.
+@MainActor private let deviceRequests = DeviceRequests()
 
 /// *Already a member? Add this PC*: asks the server for a code to type on a
-/// device the member has, replacing any earlier request. `{code, state}` or
-/// `{error, state}`.
+/// device the member has, replacing any earlier request. `{code, state}`;
+/// `{cancelled: true, state}` when cancelled or replaced while the server
+/// answered; `{error, state}`.
 @c public func cbw_request_device(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     run(context, callback) { membership in
-        deviceRequest?.stopWaiting()
-        deviceRequest = nil
-        let request = try await membership.requestToJoin()
-        deviceRequest = request
+        guard let request = try await deviceRequests.request(through: membership) else { return ["cancelled": true] }
         return ["code": request.code.description]
     }
 }
@@ -188,14 +184,13 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
 /// `cbw_cancel_device`; `{expired: true, error, state}` when the code ran out.
 @c public func cbw_wait_device(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     run(context, callback) { _ in
-        guard let request = deviceRequest else { throw LeaderboardError.notJoined }
+        guard let request = deviceRequests.current else { throw LeaderboardError.notJoined }
         do {
             return ["member": try await request.waitForApproval().value]
         } catch is CancellationError {
             return ["cancelled": true]
         } catch LeaderboardError.codeExpired {
-            // A newer request may have replaced this one meanwhile: only this one ends.
-            if deviceRequest === request { deviceRequest = nil }
+            deviceRequests.end(request)
             return ["expired": true, "error": LeaderboardError.codeExpired.errorDescription ?? "The code expired."]
         }
     }
@@ -208,9 +203,9 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
                                _ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     let providers = Set(string(sharing).split(separator: ",").map(String.init))
     run(context, callback) { membership in
-        guard let request = deviceRequest else { throw LeaderboardError.notJoined }
+        guard let request = deviceRequests.current else { throw LeaderboardError.notJoined }
         try membership.join(through: request, sharing: providers)
-        deviceRequest = nil
+        deviceRequests.end(request)
         let uploader = client.uploader(for: membership)
         await uploader.uploadNow()
         return ["uploaded": uploader.lastError == nil]
@@ -221,9 +216,9 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
 /// keeps nothing. `{state}` or `{error, state}`.
 @c public func cbw_decline_device(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     run(context, callback) { _ in
-        guard let request = deviceRequest else { throw LeaderboardError.notJoined }
+        guard let request = deviceRequests.current else { throw LeaderboardError.notJoined }
         try await request.decline()
-        deviceRequest = nil
+        deviceRequests.end(request)
         return [:]
     }
 }
@@ -232,8 +227,7 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
 /// server. The pending `cbw_wait_device` replies `{cancelled: true}`. `{state}`.
 @c public func cbw_cancel_device(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     run(context, callback) { _ in
-        deviceRequest?.stopWaiting()
-        deviceRequest = nil
+        deviceRequests.cancel()
         return [:]
     }
 }

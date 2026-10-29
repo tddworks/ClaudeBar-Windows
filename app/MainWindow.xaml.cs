@@ -923,7 +923,8 @@ public sealed partial class MainWindow : Window
             if (ask != _deviceAsk) return;
             if (reply["code"]?.GetValue<string>() is not { } code)
             {
-                DeviceStatus.Text = reply["error"]?.GetValue<string>() ?? "The leaderboard didn't give a code.";
+                DeviceStatus.Text = reply["error"]?.GetValue<string>()
+                    ?? (reply["cancelled"] is not null ? "That code was cancelled. Ask for a new one." : "The leaderboard didn't give a code.");
                 NewCodeButton.Visibility = Visibility.Visible;
                 return;
             }
