@@ -43,18 +43,20 @@ internal sealed record HudData(
     /// Nothing to show: no tool signed in.
     internal bool IsEmpty => Tools.Count == 0 && Problems.Count == 0;
 
-    /// The problems shown on their own: a tool that still has numbers shows with them.
-    internal IEnumerable<Problem> Alone => Problems.Where(problem => Tools.All(tool => tool.Id != problem.Id));
+    /// The problems shown on their own: a tool that still has numbers shows
+    /// with them; one with no limit line to draw (balances only) has none.
+    internal IEnumerable<Problem> Alone => Problems.Where(problem => Tools.All(tool => tool.Lines.Count == 0 || tool.Id != problem.Id));
 
     /// Why a tool's numbers aren't live: signed out, or its last read failed,
     /// while the numbers it had are still here.
     internal Problem? Stale(string id) =>
-        Tools.Any(tool => tool.Id == id) ? Problems.FirstOrDefault(problem => problem.Id == id && problem.Kind is "signedOut" or "failed") : null;
+        Tools.Any(tool => tool.Id == id && tool.Lines.Count > 0) ? Problems.FirstOrDefault(problem => problem.Id == id && problem.Kind is "signedOut" or "failed") : null;
 
     /// What the HUD shows (design, What it shows): a row for each tool that
     /// needs the person, in their order (its headline not healthy or running
     /// hot, or its numbers not live), then a row for each tool without
-    /// numbers; every other tool goes into one quiet row.
+    /// numbers, then one for each tool whose limits have no share to draw
+    /// (`Headline` null); every other tool goes into one quiet row.
     internal HudSummary Summary()
     {
         var rows = new List<HudSummary.Row>();
@@ -67,6 +69,8 @@ internal sealed record HudData(
             else fine.Add(tool);
         }
         rows.AddRange(Alone.Select(problem => new HudSummary.Row(null, null, problem)));
+        rows.AddRange(Tools.Where(tool => tool.Lines.Count == 0 && Problems.All(problem => problem.Id != tool.Id))
+            .Select(tool => new HudSummary.Row(tool, null, null)));
         var lowest = fine.OrderBy(tool => tool.HeadlineLine.PercentLeft).FirstOrDefault();
         var quiet = lowest is null ? null
             : new HudSummary.Quiet(fine.Select(tool => tool.Id).ToList(), lowest.Id, lowest.HeadlineLine.PercentLeft, rows.Count == 0);
@@ -149,7 +153,8 @@ internal sealed record HudData(
 internal sealed record HudSummary(IReadOnlyList<HudSummary.Row> Rows, HudSummary.Quiet? Fine)
 {
     /// A tool with numbers (its headline, and why they aren't live, if they
-    /// aren't), or a tool without (`Tool` null: its problem).
+    /// aren't), a tool without (`Tool` null: its problem), or a tool whose
+    /// limits have no share to draw (`Headline` and `Problem` null).
     internal sealed record Row(HudData.Tool? Tool, HudData.Line? Headline, HudData.Problem? Problem);
 
     internal sealed record Quiet(IReadOnlyList<string> Ids, string LowestId, int LowestPercent, bool All);

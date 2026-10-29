@@ -44,8 +44,11 @@ public sealed partial class MainWindow
             LimitsList.Children.Add(new Border { Style = (Style)Root.Resources["Card"], Padding = new Thickness(16, 12, 16, 12), Child = empty });
             return;
         }
-        foreach (var tool in data.Tools) LimitsList.Children.Add(LimitsCard(data, tool.Id, tool, data.Stale(tool.Id)));
+        // In the HUD's order: the tools with numbers, the ones without, then those with no share to draw.
+        foreach (var tool in data.Tools.Where(tool => tool.Lines.Count > 0)) LimitsList.Children.Add(LimitsCard(data, tool.Id, tool, data.Stale(tool.Id)));
         foreach (var problem in data.Alone) LimitsList.Children.Add(LimitsCard(data, problem.Id, null, problem));
+        foreach (var tool in data.Tools.Where(tool => tool.Lines.Count == 0 && data.Problems.All(problem => problem.Id != tool.Id)))
+            LimitsList.Children.Add(LimitsCard(data, tool.Id, tool, null));
     }
 
     private Border LimitsCard(HudData data, string id, HudData.Tool? tool, HudData.Problem? problem)
@@ -72,6 +75,8 @@ public sealed partial class MainWindow
             header.Children.Add(new TextBlock { Text = words, FontSize = 12, Foreground = Resource(brush), VerticalAlignment = VerticalAlignment.Center });
         card.Children.Add(header);
         foreach (var line in tool?.Lines ?? Array.Empty<HudData.Line>()) card.Children.Add(LimitsRow(look, line, now, culture, stale: problem is not null));
+        if (tool is { Lines.Count: 0 } && problem is null)
+            card.Children.Add(new TextBlock { Text = "No limit with a share left to show.", Style = (Style)Root.Resources["Secondary"] });
         if (problem is { Kind: "signedOut" or "failed" })
         {
             var note = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };

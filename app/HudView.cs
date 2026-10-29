@@ -97,7 +97,9 @@ internal sealed class HudView
             var summary = data.Summary();
             Measure(data, summary);
             foreach (var row in summary.Rows)
-                body.Children.Add(Clickable(row.Tool is null ? DownRow(data.LookOf(row.Problem!.Id), row.Problem, input.Dark) : ToolRow(data, row, input)));
+                body.Children.Add(Clickable(row.Tool is null ? DownRow(data.LookOf(row.Problem!.Id), row.Problem, input.Dark)
+                    : row.Headline is null ? NoLimitsRow(data.LookOf(row.Tool.Id), input.Dark)
+                    : ToolRow(data, row, input)));
             if (summary.Fine is { } fine) body.Children.Add(Clickable(QuietRow(data, fine)));
         }
         else
@@ -238,6 +240,15 @@ internal sealed class HudView
         Place(row, Text(words, Tail("HudSecondary")), 3, span: 4);
         AutomationProperties.SetName(row, problem.Message == "" ? $"{look.Name}: {words.TrimEnd('…')}" : $"{look.Name}: {words.TrimEnd('…')}. {problem.Message}");
         if (problem.Message != "") ToolTipService.SetToolTip(row, problem.Message);
+        return row;
+    }
+
+    /// A tool whose limits have no share to draw (balances only): `○ Amp  no limits to show`.
+    private HudRow NoLimitsRow(HudData.Look look, bool dark)
+    {
+        var row = Row(look, dark, hollow: true, look.Name, "HudStrongSecondary");
+        Place(row, Text("no limits to show", Tail("HudSecondary")), 3, span: 4);
+        AutomationProperties.SetName(row, $"{look.Name}: no limits to show");
         return row;
     }
 
@@ -503,7 +514,7 @@ internal sealed class HudView
         {
             var summary = data.Summary();
             // The worst: the first live row at the reading's worst status, else the first live row.
-            var live = summary.Rows.Where(r => r.Tool is not null && r.Problem is null).ToList();
+            var live = summary.Rows.Where(r => r.Tool is not null && r.Headline is not null && r.Problem is null).ToList();
             var lead = live.FirstOrDefault(r => r.Headline!.Status == data.Worst) ?? live.FirstOrDefault();
             if (lead is not null)
             {
@@ -567,6 +578,12 @@ internal sealed class HudView
                 var words = problem.Kind switch { "signedOut" => "signed out", "reading" => "reading", _ => "couldn't read" };
                 dots.Children.Add(StatusDot("HudDotDown", $"{name}: {words}"));
                 others.Add($"{name} {words}");
+            }
+            foreach (var bare in summary.Rows.Where(r => r.Tool is not null && r.Headline is null))
+            {
+                var name = data.LookOf(bare.Tool!.Id).Name;
+                dots.Children.Add(StatusDot("HudDotDown", $"{name}: no limits to show"));
+                others.Add($"{name} no limits to show");
             }
             if (dots.Children.Count > 0) parts.Children.Add(dots);
             if (others.Count > 0) sentences.Add(string.Join(", ", others));
