@@ -91,9 +91,32 @@ public static class H {
     if (inside.Count == 0) return 1;
     inside.Sort(); return inside[(int)(0.98 * (inside.Count - 1))];
   }
+
+  // Every window that took the foreground, from a thread of its own (a WinEvent hook needs a
+  // message loop): a console popping up on this PC mid-click says nothing about the HUD.
+  delegate void WinEventProc(IntPtr hook, uint ev, IntPtr h, int obj, int child, uint thread, uint time);
+  [DllImport("user32.dll")] static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc proc, uint process, uint thread, uint flags);
+  [StructLayout(LayoutKind.Sequential)] struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam, lParam; public uint time; public POINT pt; public uint extra; }
+  [DllImport("user32.dll")] static extern int GetMessageW(out MSG m, IntPtr h, uint min, uint max);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  static WinEventProc watcher;
+  static readonly System.Collections.Generic.List<Tuple<long, uint, string>> seen = new System.Collections.Generic.List<Tuple<long, uint, string>>();
+  public static void WatchForeground() {
+    if (watcher != null) return;
+    watcher = (hook, ev, h, obj, child, thread, time) => { uint pid; GetWindowThreadProcessId(h, out pid); var what = Title(h) + " (" + ClassOf(h) + ")"; lock (seen) seen.Add(Tuple.Create(DateTime.UtcNow.Ticks, pid, what)); };
+    var t = new System.Threading.Thread(() => { SetWinEventHook(3, 3, IntPtr.Zero, watcher, 0, 0, 0); MSG m; while (GetMessageW(out m, IntPtr.Zero, 0, 0) > 0) { } });
+    t.IsBackground = true; t.Start();
+  }
+  // The windows of processes other than `a` and `b` that took the foreground since `ticks` (UTC).
+  public static string OthersSince(long ticks, int a, int b) {
+    var found = new System.Collections.Generic.List<string>();
+    lock (seen) foreach (var s in seen) if (s.Item1 >= ticks && s.Item2 != (uint)a && s.Item2 != (uint)b && !found.Contains(s.Item3)) found.Add(s.Item3);
+    return string.Join(", ", found.ToArray());
+  }
 }
 "@
 [void][H]::SetProcessDpiAwarenessContext([IntPtr](-4))
+[H]::WatchForeground()
 $dir = Join-Path $env:TEMP 'claudebar-hud-check'
 New-Item -ItemType Directory -Force -Path $Shots | Out-Null
 $Exe = (Resolve-Path $Exe).Path
@@ -199,6 +222,36 @@ function Click-At($x, $y) {
   Start-Sleep -Milliseconds 120
   [void][H]::SetCursorPos($saved.X, $saved.Y)
 }
+# `count` presses on Refresh made by `press` (it returns a note), each with another app in
+# front: each must run Refresh and leave that app in front. A press during which a window of
+# a third process took the foreground (a console popping up on this PC) says nothing about
+# the HUD, which gives the foreground back to the last window it saw: it's made again, up
+# to 3 times, and named. Returns "<failed count>|<what failed>|<what was made again>".
+function Presses($count, $other, $check, [scriptblock]$press) {
+  $bad = @(); $again = @()
+  for ($n = 0; $n -lt $count; $n++) {
+    for ($try = 0; $try -lt 4; $try++) {
+      $since = [DateTime]::UtcNow.Ticks
+      [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
+      Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
+      $before = Fg
+      $note = & $press
+      Start-Sleep -Milliseconds 900
+      $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
+      $after = Fg
+      $ok = $clicked -and $before -eq $after
+      $third = [H]::OthersSince($since, $other.Process.Id, $check.Process.Id)
+      if (-not $ok -and $third -and $try -lt 3) { $again += "#$n (the foreground went to $third)"; continue }
+      if (-not $ok) { $bad += "#$n $note clicked=$clicked before=$before after=$after" + $(if ($third) { " foreground also went to $third" } else { '' }) }
+      break
+    }
+  }
+  '{0}|{1}|{2}' -f $bad.Count, ($bad -join '; '), ($again -join '; ')
+}
+function Report-Presses($what, $count, $result) {
+  $failed, $text, $again = $result -split '\|', 3
+  "  {0} {1}, {2} times: {3} failed{4}{5}" -f (Pass ($failed -eq '0')), $what, $count, $failed, $(if ($text) { " ($text)" } else { '' }), $(if ($again) { "; made again: $again" } else { '' })
+}
 # Every text run on the HUD, against the HUD around it (design, acceptance check 10).
 # Each row reads as one sentence, its texts left out of UI Automation's control
 # view, so the runs come from the raw view: a TextBlock or a link each, not the row.
@@ -289,33 +342,17 @@ foreach ($theme in $Themes) {
       else {
         # Twenty times each: the hand-back raced WinUI's own activation, and a redraw (each
         # read, each minute) could land under the pointer, so a few clicks could pass by luck.
-        $results = for ($n = 0; $n -lt 20; $n++) {
-          [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
-          Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
-          $before = Fg
-          Click-At $cx $cy; Start-Sleep -Milliseconds 900
-          $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
-          $after = Fg
-          [pscustomobject]@{ Ok = $clicked -and $before -eq $after; Text = "#$n at $script:at clicked=$clicked under=$script:under before=$before after=$after" }
-        }
-        $bad = @($results | Where-Object { -not $_.Ok })
-        "  {0} mouse click on 'Refresh the limits' ran it and handed the focus back, 20 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + (($bad | ForEach-Object Text) -join '; ') + ")" } else { "" })
+        Report-Presses "mouse click on 'Refresh the limits' ran it and handed the focus back" 20 (Presses 20 $other $check {
+          Click-At $cx $cy
+          "at $script:at under=$script:under"
+        })
       }
-      $results = for ($n = 0; $n -lt 20; $n++) {
-        [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
-        Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
-        $before = Fg
+      Report-Presses "UIA Invoke on 'Refresh the limits'" 20 (Presses 20 $other $check {
         # A refresh draws the card again: the button found before it is gone, so find it each time.
         $button = $null
         for ($i = 0; $i -lt 30 -and -not $button; $i++) { $button = Find-Named $root 'Refresh the limits'; if (-not $button) { Start-Sleep -Milliseconds 100 } }
-        try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); $inv = 'ok' } catch { $inv = "failed: $_" }
-        Start-Sleep -Milliseconds 900
-        $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
-        $after = Fg
-        [pscustomobject]@{ Ok = $clicked -and $before -eq $after; Text = "$inv clicked=$clicked before=$before after=$after" }
-      }
-      $bad = @($results | Where-Object { -not $_.Ok })
-      "  {0} UIA Invoke on 'Refresh the limits', 20 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + $bad[0].Text + ")" } else { "" })
+        try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); 'invoked' } catch { "invoke failed: $_" }
+      })
       # A redraw (each read, the minute's tick) with the pointer resting on Refresh, and a
       # press at once, before XAML tells the new card the pointer is over it: the click runs.
       $button = Find-Named $root 'Refresh the limits'
@@ -324,19 +361,13 @@ foreach ($theme in $Themes) {
         $br = $button.Current.BoundingRectangle
         $bx = [int]($br.X + $br.Width / 2); $by = [int]($br.Y + $br.Height / 2)
         [void][H]::SetCursorPos($bx, $by); Start-Sleep -Milliseconds 500
-        $results = for ($n = 0; $n -lt 10; $n++) {
-          [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
-          Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
-          $before = Fg
-          $acked = Command 'render' 5
+        $script:unasked = 0
+        Report-Presses "a press on 'Refresh the limits' just after a redraw under the resting pointer" 10 (Presses 10 $other $check {
+          if (-not (Command 'render' 5)) { $script:unasked++ }
           [H]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [H]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
-          Start-Sleep -Milliseconds 900
-          $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
-          $after = Fg
-          [pscustomobject]@{ Ok = $clicked -and $acked -and $before -eq $after; Text = "#$n clicked=$clicked redraw asked=$acked before=$before after=$after" }
-        }
-        $bad = @($results | Where-Object { -not $_.Ok })
-        "  {0} a press on 'Refresh the limits' just after a redraw under the resting pointer, 10 times: {1} failed{2}" -f (Pass ($bad.Count -eq 0)), $bad.Count, $(if ($bad) { " (" + (($bad | ForEach-Object Text) -join '; ') + ")" } else { "" })
+          'after a redraw'
+        })
+        if ($script:unasked) { Unverified "a press just after a redraw: the check didn't redraw $script:unasked times" }
       }
     }
     [void][H]::SetCursorPos($saved.X, $saved.Y)
