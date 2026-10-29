@@ -35,6 +35,9 @@ public static class H {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
   [DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int state);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attribute, out RECT r, int size);
+  // The window as drawn, without the invisible resize borders GetWindowRect includes.
+  public static RECT Frame(IntPtr h) { RECT r; if (DwmGetWindowAttribute(h, 9, out r, 16) != 0) GetWindowRect(h, out r); return r; }
   // The usual way a test harness gets past the foreground lock: an Alt key event first.
   public static bool Front(IntPtr h) { keybd_event(0x12, 0, 0, UIntPtr.Zero); var ok = SetForegroundWindow(h); keybd_event(0x12, 0, 2, UIntPtr.Zero); return ok; }
   public static string Title(IntPtr h) { var s = new StringBuilder(256); GetWindowTextW(h, s, 256); return s.ToString(); }
@@ -68,7 +71,7 @@ New-Item -ItemType Directory -Force -Path $Shots | Out-Null
 $Exe = (Resolve-Path $Exe).Path
 $quns = @{ 1 = 'NOT_PRESENT'; 2 = 'BUSY'; 3 = 'RUNNING_D3D_FULL_SCREEN'; 4 = 'PRESENTATION_MODE'; 5 = 'ACCEPTS_NOTIFICATIONS'; 6 = 'QUIET_TIME'; 7 = 'APP' }
 function Quns { $s = 0; [void][H]::SHQueryUserNotificationState([ref]$s); $quns[$s] }
-function Rect($h) { $r = New-Object H+RECT; [void][H]::GetWindowRect($h, [ref]$r); $r }
+function Rect($h) { [H]::Frame($h) }
 function Fg { $f = [H]::GetForegroundWindow(); '{0} "{1}"' -f $f, [H]::Title($f) }
 $script:failures = 0
 function Pass($ok) { if ($ok) { 'PASS' } else { $script:failures++; 'FAIL' } }
@@ -111,8 +114,9 @@ function Other-App {
   $form = 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = ''Other app''; $f.StartPosition = ''Manual''; $f.Location = New-Object Drawing.Point 200, 200; $f.Size = New-Object Drawing.Size 420, 260; [Windows.Forms.Application]::Run($f)'
   $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden
   $other = [IntPtr]::Zero
-  for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::FindWindowW($null, 'Other app') }
+  for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::FindWindowW([NullString]::Value, 'Other app') }
   [void][H]::Front($other); Start-Sleep -Milliseconds 800
+  if ([H]::GetForegroundWindow() -ne $other) { Write-Host "  (the other app didn't come to the front: $(Fg))" }
   [pscustomobject]@{ Process = $p; Window = $other }
 }
 function Start-Check($theme, $style, $extra) {
@@ -122,8 +126,14 @@ function Start-Check($theme, $style, $extra) {
   Remove-Item (Join-Path $dir 'ready.json') -ErrorAction SilentlyContinue
   $p = Start-Process $Exe -ArgumentList $arguments -PassThru
   $ready = Join-Path $dir 'ready.json'
-  for ($i = 0; $i -lt 200 -and -not (Test-Path $ready); $i++) { Start-Sleep -Milliseconds 100 }
-  if (-not (Test-Path $ready)) { "  no ready.json; exited=$($p.HasExited)"; return $null }
+  for ($i = 0; $i -lt 600 -and -not (Test-Path $ready) -and -not $p.HasExited; $i++) { Start-Sleep -Milliseconds 100 }
+  if (-not (Test-Path $ready)) {
+    Write-Host ("  FAIL the check didn't start ({0}): exited={1}" -f ($arguments -join ' '), $p.HasExited)
+    Get-Content (Join-Path $dir 'crash.txt') -ErrorAction SilentlyContinue | Select-Object -First 15 | ForEach-Object { Write-Host "    $_" }
+    $script:failures++
+    if (-not $p.HasExited) { $p.Kill() }
+    return $null
+  }
   Start-Sleep -Milliseconds 800
   $r = Get-Content $ready | ConvertFrom-Json
   [pscustomobject]@{ Process = $p; Behind = [IntPtr][long]$r.behind; Hud = [IntPtr][long]$r.hud; Scale = $r.dpi / 96.0; Ready = $r }
@@ -203,10 +213,14 @@ foreach ($theme in $Themes) {
     "  UIA tree of the HUD:"
     $all = $root.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
     foreach ($e in $all) { if ($e.Current.Name) { "    {0} | {1}" -f $e.Current.ControlType.ProgrammaticName, $e.Current.Name } }
-    $try = Find-Named $root 'Try reading * again'
-    if (-not $try) { "  FAIL no 'Try reading ... again' link on the HUD" }
+    # The buttons show while the pointer is over the card: point at its footer first.
+    $h = Rect $check.Hud
+    $saved = New-Object H+POINT; [void][H]::GetCursorPos([ref]$saved)
+    [void][H]::SetCursorPos([int]($h.L + 20 * $check.Scale), [int]($h.B - 12 * $check.Scale)); Start-Sleep -Milliseconds 700
+    $refresh = Find-Named $root 'Refresh the limits'
+    if (-not $refresh) { "  FAIL no 'Refresh the limits' button on the HUD" }
     else {
-      $br = $try.Current.BoundingRectangle
+      $br = $refresh.Current.BoundingRectangle
       $cx = [int]($br.X + $br.Width / 2); $cy = [int]($br.Y + $br.Height / 2)
       # Click only where the HUD itself is: never on someone's window.
       $at = [H]::RootAt($cx, $cy)
@@ -217,15 +231,29 @@ foreach ($theme in $Themes) {
         Click-At $cx $cy; Start-Sleep -Milliseconds 900
         $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
         $after = Fg
-        "  {0} mouse click on '{1}' ran it and handed the focus back: clicked={2} before={3} after={4}" -f (Pass ($clicked -and $before -eq $after)), $try.Current.Name, $clicked, $before, $after
+        "  {0} mouse click on 'Refresh the limits' ran it and handed the focus back: clicked={1} before={2} after={3}" -f (Pass ($clicked -and $before -eq $after)), $clicked, $before, $after
       }
       Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
       $before = Fg
-      try { $try.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); $inv = 'ok' } catch { $inv = "failed: $_" }
+      try { $refresh.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); $inv = 'ok' } catch { $inv = "failed: $_" }
       Start-Sleep -Milliseconds 900
       $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
-      "  {0} UIA Invoke: {1} clicked={2} before={3} after={4}" -f (Pass ($clicked)), $inv, $clicked, $before, (Fg)
+      $after = Fg
+      "  {0} UIA Invoke on 'Refresh the limits': {1} clicked={2} before={3} after={4}" -f (Pass ($clicked -and $before -eq $after)), $inv, $clicked, $before, $after
     }
+    [void][H]::SetCursorPos($saved.X, $saved.Y)
+    # A click on a row opens the Limits page (the check records it).
+    $row = Find-Named $root 'Claude*'
+    if ($row) {
+      $br = $row.Current.BoundingRectangle
+      $cx = [int]($br.X + 12 * $check.Scale); $cy = [int]($br.Y + $br.Height / 2)
+      if ([H]::RootAt($cx, $cy) -eq $check.Hud) {
+        Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
+        Click-At $cx $cy; Start-Sleep -Milliseconds 700
+        $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'limits'
+        "  {0} a click on Claude's row asks for the Limits page: clicked={1}" -f (Pass $clicked), $clicked
+      } else { "  row click skipped: the point isn't on the HUD" }
+    } else { "  FAIL no row for Claude on the HUD" ; $script:failures++ }
     $other.Process.Kill()
   }
 
@@ -327,6 +355,14 @@ foreach ($theme in $Themes) {
   }
 
   if ($Tests -contains 'shots') {
+    $check = Start-Check $theme $null @('--sample', 'fine')
+    if ($check) {
+      [void](Command "plain-$theme"); [void][H]::Front($check.Behind); Start-Sleep -Milliseconds 1500
+      $s = [int](16 * $check.Scale)
+      (Grab (Rect $check.Hud) "fine-$theme" $s).Dispose()
+      "  screenshot: " + (Join-Path $Shots "fine-$theme.png")
+      Stop-Check $check
+    }
     $check = Start-Check $theme 'strip'
     if ($check) {
       [void](Command "plain-$theme"); [void][H]::Front($check.Behind); Start-Sleep -Milliseconds 1500

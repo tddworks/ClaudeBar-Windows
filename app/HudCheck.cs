@@ -13,8 +13,9 @@ using Path = System.IO.Path;
 namespace ClaudeBar;
 
 /// A test entry point, like the hourly upload's: `ClaudeBar.exe --hud-check
-/// [--theme light|dark] [--style strip] [--calibrate]` opens the real HUD on
-/// the sample reading in tests/hud-check.json (built into the exe), with the
+/// [--theme light|dark] [--style strip] [--sample fine] [--calibrate]` opens
+/// the real HUD on the sample reading in tests/hud-check.json, or every tool
+/// fine in tests/hud-check-fine.json (built into the exe), with the
 /// spike's red | blue over stripes window behind it, for scripts/check-hud.ps1
 /// and the screenshots. It reads no limits, opens no membership, keeps its
 /// settings in its own folder, and isn't offered in the Start menu or the
@@ -34,14 +35,18 @@ internal sealed class HudCheck
     {
         Directory.CreateDirectory(Folder);
         foreach (var file in Directory.GetFiles(Folder)) File.Delete(file);
+        // What went wrong, for the script to print: a crash otherwise leaves only an Application Error event.
+        Application.Current.UnhandledException += (_, e) => File.AppendAllText(Path.Combine(Folder, "crash.txt"), e.Exception + "\n");
         Preferences.UseFile(Path.Combine(Folder, "app.json"));
         if (Value(arguments, "--style") == "strip") Preferences.HudStyle = "strip";
 
         var queue = DispatcherQueue.GetForCurrentThread();
+        _sample = Value(arguments, "--sample") == "fine" ? "hud-check-fine.json" : "hud-check.json";
         _hud = new Hud(queue, Sample)
         {
             OpenWindow = () => Clicked("open"),
             OpenSettings = () => Clicked("settings"),
+            OpenLimits = () => Clicked("limits"),
             ChooseTools = () => Clicked("choose-tools"),
             Quit = () => Application.Current.Exit(),
             Theme = Value(arguments, "--theme") switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default },
@@ -58,12 +63,14 @@ internal sealed class HudCheck
         queue.TryEnqueue(DispatcherQueuePriority.Low, () => queue.TryEnqueue(DispatcherQueuePriority.Low, WriteReady));
     }
 
-    /// The sample, read now: its dates moved by the time since it was taken.
+    /// The sample (`--sample fine`: every tool fine), read now: its dates moved by the time since it was taken.
     /// A refresh is a click's action: it's recorded.
+    private static string _sample = "hud-check.json";
+
     private static Task<JsonObject> Sample(bool refresh)
     {
         if (refresh) Clicked("refresh");
-        using var stream = typeof(HudCheck).Assembly.GetManifestResourceStream("hud-check.json")!;
+        using var stream = typeof(HudCheck).Assembly.GetManifestResourceStream(_sample)!;
         var reply = (JsonObject)JsonNode.Parse(stream)!;
         var readAt = reply["readAt"]!.GetValue<double>();
         var shift = DateTimeOffset.Now.ToUnixTimeSeconds() - readAt;
@@ -79,7 +86,7 @@ internal sealed class HudCheck
             case JsonObject obj:
                 foreach (var key in obj.Select(pair => pair.Key).ToList())
                 {
-                    if (key is "readAt" or "resetsAt" or "outUntil" && obj[key] is JsonValue value)
+                    if (key is "readAt" or "resetsAt" or "outUntil" or "runsOutAt" && obj[key] is JsonValue value)
                         obj[key] = value.GetValue<double>() + seconds;
                     else Shift(obj[key], seconds);
                 }
