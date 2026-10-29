@@ -871,6 +871,7 @@ public sealed partial class MainWindow : Window
         if (_addingDevice && member is null) return;
         _joining = true;
         UpdateJoin();
+        SetDeviceActions(false);
         JoinBusy.IsActive = true;
         await Guarded(async () =>
         {
@@ -896,6 +897,7 @@ public sealed partial class MainWindow : Window
         });
         _joining = false;
         JoinBusy.IsActive = false;
+        SetDeviceActions(true);
         UpdateJoin();
     }
 
@@ -945,10 +947,13 @@ public sealed partial class MainWindow : Window
         if (ask == _deviceAsk) DeviceBusy.IsActive = false;
     }
 
-    /// *That's not me*: this PC removes itself from the member it was approved for.
+    /// *That's not me*: this PC removes itself from the member it was approved
+    /// for. Joining waits meanwhile, as this waits while joining.
     private async void OnDeclineDevice(object sender, RoutedEventArgs e)
     {
-        DeclineDeviceButton.IsEnabled = false;
+        _joining = true;
+        UpdateJoin();
+        SetDeviceActions(false);
         await Guarded(async () =>
         {
             var reply = await Swift.DeclineDevice();
@@ -960,7 +965,18 @@ public sealed partial class MainWindow : Window
             ForgetDeviceRequest();
             Tell("This PC removed itself from that membership and kept nothing.", InfoBarSeverity.Success);
         });
-        DeclineDeviceButton.IsEnabled = true;
+        _joining = false;
+        SetDeviceActions(true);
+        UpdateJoin();
+    }
+
+    /// The device panel's buttons, off while a join or a decline is under way,
+    /// so the other can't start against a request that one is ending.
+    private void SetDeviceActions(bool enabled)
+    {
+        DeclineDeviceButton.IsEnabled = enabled;
+        CancelDeviceButton.IsEnabled = enabled;
+        NewCodeButton.IsEnabled = enabled;
     }
 
     /// *Cancel*: stops waiting and forgets the code, back to joining.

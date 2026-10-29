@@ -194,7 +194,8 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
         } catch is CancellationError {
             return ["cancelled": true]
         } catch LeaderboardError.codeExpired {
-            deviceRequest = nil
+            // A newer request may have replaced this one meanwhile: only this one ends.
+            if deviceRequest === request { deviceRequest = nil }
             return ["expired": true, "error": LeaderboardError.codeExpired.errorDescription ?? "The code expired."]
         }
     }
@@ -220,7 +221,7 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
 /// keeps nothing. `{state}` or `{error, state}`.
 @c public func cbw_decline_device(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
     run(context, callback) { _ in
-        guard let request = deviceRequest else { return [:] }
+        guard let request = deviceRequest else { throw LeaderboardError.notJoined }
         try await request.decline()
         deviceRequest = nil
         return [:]
