@@ -100,6 +100,18 @@ internal static class Win32
     [DllImport("user32.dll")] internal static extern bool IsWindow(IntPtr window);
     internal const uint EVENT_SYSTEM_FOREGROUND = 0x0003, WINEVENT_OUTOFCONTEXT = 0;
 
+    // The HUD's window: its styles, where the foreground window is, and whether it's full screen.
+    [DllImport("user32.dll")] internal static extern IntPtr GetWindowLongPtrW(IntPtr window, int index);
+    [DllImport("user32.dll")] internal static extern IntPtr SetWindowLongPtrW(IntPtr window, int index, IntPtr value);
+    [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr window, out RECT rect);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern int GetClassNameW(IntPtr window, System.Text.StringBuilder name, int size);
+    [DllImport("shell32.dll")] internal static extern int SHQueryUserNotificationState(out int state);
+    internal const int GWL_EXSTYLE = -20;
+    internal const long WS_EX_NOACTIVATE = 0x08000000L, WS_EX_TOOLWINDOW = 0x00000080L;
+    internal const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2;
+    internal const int QUNS_PRESENTATION_MODE = 4;
+    internal const uint WM_EXITSIZEMOVE = 0x0232, WM_DPICHANGED = 0x02E0, WM_DISPLAYCHANGE = 0x007E, WM_SETTINGCHANGE = 0x001A;
+
     internal static uint ColorRef(Windows.UI.Color color) => (uint)(color.R | (color.G << 8) | (color.B << 16));
 
     internal static int LowWord(IntPtr value) => (short)((long)value & 0xFFFF);

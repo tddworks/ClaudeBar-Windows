@@ -17,25 +17,66 @@ namespace ClaudeBar;
 /// package keeps in settings.json): `%LOCALAPPDATA%\ClaudeBar\app.json`.
 internal static class Preferences
 {
-    private static string File => System.IO.Path.Combine(
+    private static string _file = System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClaudeBar", "app.json");
+
+    /// Keeps them in `file` instead: the HUD's check (`--hud-check`) never
+    /// touches the person's own.
+    internal static void UseFile(string file) => _file = file;
 
     /// The tray icon, an option, off by default (design-concept/leaderboard).
     internal static bool TrayIcon
     {
         get => Read()?["trayIcon"]?.GetValue<bool>() == true;
-        set
-        {
-            var contents = Read() ?? new JsonObject();
-            contents["trayIcon"] = value;
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(File)!);
-            System.IO.File.WriteAllText(File, contents.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        }
+        set => Write("trayIcon", value);
+    }
+
+    /// The HUD, on by default (docs/plans/2026-10-13-hud-design.md).
+    internal static bool Hud
+    {
+        get => Read()?["hud"]?.GetValue<bool>() != false;
+        set => Write("hud", value);
+    }
+
+    /// `card` or `strip`.
+    internal static string HudStyle
+    {
+        get => Read()?["hudStyle"]?.GetValue<string>() == "strip" ? "strip" : "card";
+        set => Write("hudStyle", value);
+    }
+
+    /// The corner of its screen the HUD snaps to, bottom-right by default.
+    internal static Corner HudCorner
+    {
+        get => Enum.TryParse<Corner>(Read()?["hudCorner"]?.GetValue<string>(), out var corner) ? corner : Corner.BottomRight;
+        set => Write("hudCorner", value.ToString());
+    }
+
+    /// The display the HUD was snapped to (`DisplayId.Value`); the primary until then.
+    internal static ulong? HudScreen
+    {
+        get => Read()?["hudScreen"]?.GetValue<ulong>();
+        set => Write("hudScreen", value);
+    }
+
+    /// Always on top, by default.
+    internal static bool HudOnTop
+    {
+        get => Read()?["hudOnTop"]?.GetValue<bool>() != false;
+        set => Write("hudOnTop", value);
+    }
+
+    private static void Write(string key, JsonNode? value)
+    {
+        var contents = Read() ?? new JsonObject();
+        contents[key] = value;
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_file)!);
+        System.IO.File.WriteAllText(_file, contents.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private static JsonObject? Read()
     {
-        try { return JsonNode.Parse(System.IO.File.ReadAllText(File)) as JsonObject; }
+        try { return JsonNode.Parse(System.IO.File.ReadAllText(_file)) as JsonObject; }
         catch (Exception) { return null; }
     }
 }
