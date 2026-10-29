@@ -4,7 +4,10 @@
 # ClaudeBar that may be running, and measures from the screen what it does.
 # It moves the mouse, clicks the HUD and brings windows to the front, so run
 # it on a PC nobody is using. Windows PowerShell 5.1 or PowerShell 7.
-# It prints PASS or FAIL per check and exits 1 on any FAIL.
+# It prints PASS or FAIL per check, and UNVERIFIED for a check it couldn't
+# make (a skipped click, a group with nothing to measure): those never count
+# as a pass. It exits 1 on any FAIL, 2 when nothing failed but something went
+# unverified, and 0 only when every check ran and passed.
 #   .\scripts\check-hud.ps1 [-Exe out\win-x64\ClaudeBar.exe] [-Shots dir] [-Themes light,dark]
 param(
   [string]$Exe = (Join-Path $PSScriptRoot '..\out\win-x64\ClaudeBar.exe'),
@@ -75,6 +78,8 @@ function Rect($h) { [H]::Frame($h) }
 function Fg { $f = [H]::GetForegroundWindow(); '{0} "{1}"' -f $f, [H]::Title($f) }
 $script:failures = 0
 function Pass($ok) { if ($ok) { 'PASS' } else { $script:failures++; 'FAIL' } }
+$script:unverified = 0
+function Unverified($what) { $script:unverified++; "  UNVERIFIED $what" }
 function Command($c) {
   $ack = Join-Path $dir ("ack-{0}.txt" -f $c.Replace(':', '-'))
   Remove-Item $ack -ErrorAction SilentlyContinue
@@ -116,7 +121,8 @@ function Other-App {
   $other = [IntPtr]::Zero
   for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::FindWindowW([NullString]::Value, 'Other app') }
   [void][H]::Front($other); Start-Sleep -Milliseconds 800
-  if ([H]::GetForegroundWindow() -ne $other) { Write-Host "  (the other app didn't come to the front: $(Fg))" }
+  # Without it in front, the focus checks after this compare nothing: unverified, not passed.
+  if ([H]::GetForegroundWindow() -ne $other) { Write-Host (Unverified "focus handed back to another process: the other app didn't come to the front ($(Fg))") }
   [pscustomobject]@{ Process = $p; Window = $other }
 }
 function Start-Check($theme, $style, $extra) {
@@ -218,13 +224,13 @@ foreach ($theme in $Themes) {
     $saved = New-Object H+POINT; [void][H]::GetCursorPos([ref]$saved)
     [void][H]::SetCursorPos([int]($h.L + 20 * $check.Scale), [int]($h.B - 12 * $check.Scale)); Start-Sleep -Milliseconds 700
     $refresh = Find-Named $root 'Refresh the limits'
-    if (-not $refresh) { "  FAIL no 'Refresh the limits' button on the HUD" }
+    if (-not $refresh) { "  {0} no 'Refresh the limits' button on the HUD" -f (Pass $false) }
     else {
       $br = $refresh.Current.BoundingRectangle
       $cx = [int]($br.X + $br.Width / 2); $cy = [int]($br.Y + $br.Height / 2)
       # Click only where the HUD itself is: never on someone's window.
       $at = [H]::RootAt($cx, $cy)
-      if ($at -ne $check.Hud) { "  mouse click skipped: the window at ($cx,$cy) is {0} ""{1}"", not the HUD" -f $at, [H]::Title($at) }
+      if ($at -ne $check.Hud) { Unverified ("mouse click on 'Refresh the limits': the window at ($cx,$cy) is {0} ""{1}"", not the HUD" -f $at, [H]::Title($at)) }
       else {
         Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
         $before = Fg
@@ -252,8 +258,8 @@ foreach ($theme in $Themes) {
         Click-At $cx $cy; Start-Sleep -Milliseconds 700
         $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'limits'
         "  {0} a click on Claude's row asks for the Limits page: clicked={1}" -f (Pass $clicked), $clicked
-      } else { "  row click skipped: the point isn't on the HUD" }
-    } else { "  FAIL no row for Claude on the HUD" ; $script:failures++ }
+      } else { Unverified "a click on Claude's row: the point isn't on the HUD" }
+    } else { "  {0} no row for Claude on the HUD" -f (Pass $false) }
     $other.Process.Kill()
   }
 
@@ -263,7 +269,7 @@ foreach ($theme in $Themes) {
     $h = Rect $check.Hud
     $gx = [int](($h.L + $h.R) / 2); $gy = $h.T + [int](5 * $check.Scale)
     $work = [System.Windows.Forms.Screen]::FromHandle($check.Hud).WorkingArea
-    if ([H]::RootAt($gx, $gy) -ne $check.Hud) { "  drag skipped: the HUD's top edge isn't the HUD at ($gx,$gy)" }
+    if ([H]::RootAt($gx, $gy) -ne $check.Hud) { Unverified "drag: the HUD's top edge isn't the HUD at ($gx,$gy)" }
     else {
       $before = Fg
       $saved = New-Object H+POINT; [void][H]::GetCursorPos([ref]$saved)
@@ -299,7 +305,7 @@ foreach ($theme in $Themes) {
       $buttons = $tray.FindAll([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Button)))
       $named = @($buttons | Where-Object { $_.Current.Name -match 'ClaudeBar HUD' } | ForEach-Object { '"' + $_.Current.Name + '"' })
       "  {0} no taskbar button of its own: {1}" -f (Pass ($named.Count -eq 0)), ($(if ($named.Count) { $named -join ', ' } else { 'none' }))
-    } else { "  taskbar: Shell_TrayWnd not found" }
+    } else { Unverified "no taskbar button of its own: Shell_TrayWnd not found" }
   }
 
   if ($Tests -contains 'fullscreen') {
@@ -316,6 +322,7 @@ foreach ($theme in $Themes) {
     }
   }
 
+  if ($Tests -contains 'screens' -and [System.Windows.Forms.Screen]::AllScreens.Count -lt 2) { Unverified "full screen on the other screen: this PC has one screen" }
   if ($Tests -contains 'screens' -and [System.Windows.Forms.Screen]::AllScreens.Count -gt 1) {
     # Full screen on the other screen leaves the HUD alone.
     [void](Command 'fullscreen-other-screen'); [void][H]::Front($check.Behind); Start-Sleep -Seconds 2
@@ -337,7 +344,7 @@ foreach ($theme in $Themes) {
         if ($button) { break }
       }
     }
-    if (-not $button) { "  notification: no 'Quiet until reset' button on screen (notifications off, or Do not disturb); not checked" }
+    if (-not $button) { Unverified "'Quiet until reset' on the notification: no such button on screen (notifications off, or Do not disturb)" }
     else {
       Remove-Item (Join-Path $dir 'activated.txt') -ErrorAction SilentlyContinue
       try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { "  invoke failed: $_" }
@@ -354,7 +361,8 @@ foreach ($theme in $Themes) {
     [void][H]::Front($check.Behind); Start-Sleep -Milliseconds 1500
     $runs = @(Contrast $check "$theme-contrast")
     $low = @($runs | Where-Object { $_.Ratio -lt 4.5 })
-    "  {0} text contrast, {1} runs: lowest {2:N2}:1" -f (Pass ($runs.Count -gt 0 -and $low.Count -eq 0)), $runs.Count, (($runs | Measure-Object Ratio -Minimum).Minimum)
+    if ($runs.Count -eq 0) { Unverified "text contrast: no text runs found on the HUD" }
+    else { "  {0} text contrast, {1} runs: lowest {2:N2}:1" -f (Pass ($low.Count -eq 0)), $runs.Count, (($runs | Measure-Object Ratio -Minimum).Minimum) }
     foreach ($run in $low) { "    FAIL {0:N2}:1 ""{1}""" -f $run.Ratio, $run.Name }
   }
 
@@ -374,7 +382,8 @@ foreach ($theme in $Themes) {
       $runs = @(Contrast $check 'calibrate')
       $lowest = $runs | Sort-Object Ratio | Select-Object -First 1
       $caught = $lowest -and $lowest.Ratio -lt 4.5
-      "  {0} calibration, one label in TextFillColorTertiaryBrush: lowest {1:N2}:1 ""{2}"" (about 3.3:1 expected)" -f (Pass $caught), $lowest.Ratio, $lowest.Name
+      if ($runs.Count -eq 0) { Unverified "calibration: no text runs found on the HUD" }
+      else { "  {0} calibration, one label in TextFillColorTertiaryBrush: lowest {1:N2}:1 ""{2}"" (about 3.3:1 expected)" -f (Pass $caught), $lowest.Ratio, $lowest.Name }
       Stop-Check $check
     }
   }
@@ -398,5 +407,6 @@ foreach ($theme in $Themes) {
     }
   }
 }
-"== {0} failed" -f $script:failures
+"== {0} failed, {1} unverified" -f $script:failures, $script:unverified
 if ($script:failures -gt 0) { exit 1 }
+if ($script:unverified -gt 0) { exit 2 }
