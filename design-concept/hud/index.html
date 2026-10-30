@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ClaudeBar for Windows · HUD · mockup</title>
+<style>
+  /* Fluent tokens, as WinUI 3 names them. Status colours are WinUI's own
+     SystemFillColorCaution / Critical brushes; healthy bars use the accent,
+     as a ProgressBar does. */
+  .dark {
+    --acrylic: rgba(38,38,40,0.80);
+    /* The HUD: Mica kept active, as measured on the PC (research.md): opaque, tinted by the wallpaper. */
+    --hud: #1b2224;
+    --mica: radial-gradient(120% 80% at 0% 0%, #26262c 0%, #202020 55%), #202020;
+    --card: rgba(255,255,255,0.055);
+    --stroke: rgba(255,255,255,0.08);
+    --stroke-strong: rgba(255,255,255,0.14);
+    --divider: rgba(255,255,255,0.0837);
+    --text: #ffffff;
+    --text-2: rgba(255,255,255,0.786);
+    --text-3: rgba(255,255,255,0.544);
+    --text-4: rgba(255,255,255,0.362);
+    --accent: #60cdff;
+    --on-accent: #000000;
+    --caution: #fce100;
+    --critical: #ff99a4;
+    --track: rgba(255,255,255,0.10);
+    --tick: rgba(255,255,255,0.62);
+    --subtle: rgba(255,255,255,0.06);
+    --control: rgba(255,255,255,0.0605);
+    --control-stroke: rgba(255,255,255,0.093);
+    --claude: #fa8c73; --codex: #59d9c7; --gemini: #8ab4f8;
+    --shadow: 0 8px 16px rgba(0,0,0,0.30), 0 0 1px rgba(0,0,0,0.5);
+    color: var(--text);
+  }
+  .light {
+    --acrylic: rgba(246,246,246,0.82);
+    --hud: #eef1f4;
+    --mica: radial-gradient(120% 80% at 0% 0%, #eef0f6 0%, #f3f3f3 55%), #f3f3f3;
+    --card: rgba(255,255,255,0.72);
+    --stroke: rgba(0,0,0,0.0578);
+    --stroke-strong: rgba(0,0,0,0.12);
+    --divider: rgba(0,0,0,0.0803);
+    --text: #1a1a1a;
+    --text-2: rgba(0,0,0,0.62);
+    --text-3: rgba(0,0,0,0.45);
+    --text-4: rgba(0,0,0,0.30);
+    --accent: #005fb8;
+    --on-accent: #ffffff;
+    --caution: #9d5d00;
+    --critical: #c42b1c;
+    --track: rgba(0,0,0,0.09);
+    --tick: rgba(0,0,0,0.50);
+    --subtle: rgba(0,0,0,0.037);
+    --control: rgba(255,255,255,0.7);
+    --control-stroke: rgba(0,0,0,0.08);
+    --claude: #e2674a; --codex: #1c9e93; --gemini: #1a73e8;
+    --shadow: 0 8px 16px rgba(0,0,0,0.14), 0 0 1px rgba(0,0,0,0.25);
+    color: var(--text);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 56px 80px;
+    background: #ece9e4;
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 14px; line-height: 20px; color: #1b1a19;
+    -webkit-font-smoothing: antialiased;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  h1 { font: 600 40px/48px "Segoe UI Variable Display", "Segoe UI", system-ui; margin: 0 0 6px; letter-spacing: -0.5px; }
+  .lede { max-width: 900px; color: #514f4c; font-size: 15px; line-height: 23px; margin: 0 0 40px; }
+  .section-label { font: 600 12px/16px "Segoe UI Variable Small", "Segoe UI", system-ui; letter-spacing: 1.2px; text-transform: uppercase; color: #7a7672; margin: 0 0 14px; }
+  .row { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 56px; }
+  .shot { display: flex; flex-direction: column; gap: 10px; }
+  .shot > .caption { font-size: 13px; color: #5d5a56; max-width: 340px; line-height: 19px; }
+  .shot > .caption.wide { max-width: 760px; }
+  .shot > .caption b { color: #1b1a19; }
+  .ico { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ---------- The HUD ---------- */
+  /* A borderless, always-on-top window: Mica kept active (opaque), 8 px
+     corners like every Windows 11 window, 320 effective pixels wide. */
+  .hud {
+    width: 320px; border-radius: 8px; position: relative;
+    background: var(--hud);
+    border: 1px solid var(--stroke-strong); box-shadow: var(--shadow);
+    padding: 12px 14px 0;
+  }
+  .hud .tools { position: absolute; top: 6px; right: 6px; display: none; gap: 2px; }
+  .hud.hover .tools { display: flex; }
+  .hud.hover { outline: 0; }
+  .tools span { width: 28px; height: 28px; border-radius: 4px; display: grid; place-items: center; color: var(--text-2); }
+  .tools span.on { color: var(--accent); }
+  .tools span:hover, .tools span.hl { background: var(--subtle); }
+
+  .prov { padding: 2px 0 12px; }
+  .prov + .prov { padding-top: 2px; }
+  .pname { display: flex; align-items: center; gap: 8px; height: 22px; }
+  .pname b { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; }
+  /* Every word on the HUD that carries information is secondary or stronger: tertiary text is under 4.5:1 on light Mica. */
+  .pname .flag { margin-left: auto; font-size: 12px; line-height: 16px; color: var(--text-2); }
+  .hud.hover .prov:first-of-type .flag { visibility: hidden; }
+  .flag.warn { color: var(--caution); }
+  .flag.crit { color: var(--critical); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c); }
+  .win { display: grid; grid-template-columns: 22px 1fr 44px 62px; column-gap: 8px; align-items: center; height: 22px; padding-left: 16px; }
+  .win .wl { font-size: 12px; line-height: 16px; color: var(--text-2); }
+  .bar { height: 4px; border-radius: 2px; background: var(--track); position: relative; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--accent); }
+  .bar .tick { position: absolute; top: -3px; width: 2px; height: 10px; border-radius: 1px; background: var(--tick); margin-left: -1px; }
+  .w-warn .bar i { background: var(--caution); }
+  .w-crit .bar i { background: var(--critical); }
+  .win .pct { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; text-align: right; font-variant-numeric: tabular-nums; }
+  .w-warn .pct { color: var(--caution); }
+  .w-crit .pct { color: var(--critical); }
+  .win .rst { font-size: 12px; line-height: 16px; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .w-crit .rst.back { color: var(--text-2); }
+  .note { padding-left: 16px; font-size: 12px; line-height: 16px; color: var(--text-2); margin-top: 2px; }
+  .note code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color: var(--text); background: var(--subtle); padding: 1px 4px; border-radius: 3px; }
+  .note a, .foot a { color: var(--accent); text-decoration: none; }
+
+  .foot { display: flex; align-items: center; gap: 6px; height: 36px; margin: 0 -14px; padding: 0 14px; border-top: 1px solid var(--divider); font-size: 12px; line-height: 16px; color: var(--text-2); }
+  .foot .num b { font-weight: 600; color: var(--text-2); }
+  .foot .age { margin-left: auto; }
+  .foot .off { color: var(--caution); display: inline-flex; align-items: center; gap: 5px; }
+  /* Offline: the numbers turn secondary, the bars fade; the footer says how old they are. */
+  .stale .win .pct { color: var(--text-2); font-weight: 400; }
+  .stale .win .bar { opacity: 0.45; }
+
+  .skel { height: 10px; border-radius: 5px; background: var(--subtle); }
+
+  .empty { padding: 4px 0 14px; }
+  .empty b { display: block; font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; margin-bottom: 4px; }
+  .empty p { margin: 0 0 12px; font-size: 12px; line-height: 16px; color: var(--text-2); }
+  .btn { height: 32px; padding: 0 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; background: var(--control); border: 1px solid var(--control-stroke); color: var(--text); }
+  .btn.accent { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
+  .btn.small { height: 28px; font-size: 12px; padding: 0 10px; }
+
+  /* ---------- The strip: the same HUD, one line high ---------- */
+  .strip {
+    height: 36px; display: inline-flex; align-items: center; border-radius: 8px; padding: 0 4px;
+    background: var(--hud);
+    border: 1px solid var(--stroke-strong); box-shadow: var(--shadow);
+  }
+  .strip .it { display: flex; align-items: center; gap: 7px; padding: 0 10px; height: 20px; }
+  .strip .it + .it { border-left: 1px solid var(--divider); }
+  .strip .it + .it.more { border-left: 0; padding-left: 4px; }
+  .strip .n { font-size: 12px; color: var(--text-2); }
+  .strip .p { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; font-variant-numeric: tabular-nums; }
+  .strip .r { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .strip .warn .p { color: var(--caution); }
+  .strip .crit .p { color: var(--critical); }
+  .strip .w { font-size: 12px; color: var(--text-2); }
+
+  /* ---------- Desktop scene ---------- */
+  .desk { width: 1280px; height: 720px; position: relative; overflow: hidden; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+    background:
+      radial-gradient(60% 70% at 70% 40%, #1d3550 0%, rgba(29,53,80,0) 70%),
+      radial-gradient(50% 60% at 30% 70%, #182638 0%, rgba(24,38,56,0) 70%),
+      #0d1219; }
+  .desk.lightdesk { background: radial-gradient(60% 70% at 70% 40%, #cfe0f2 0%, rgba(207,224,242,0) 70%), radial-gradient(50% 60% at 30% 70%, #dfe7f1 0%, rgba(223,231,241,0) 70%), #e9eef4; }
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; display: flex; align-items: center; justify-content: center; gap: 4px;
+    background: rgba(28,28,30,0.86); border-top: 1px solid rgba(255,255,255,0.06); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
+  .lightdesk .taskbar { background: rgba(238,238,240,0.86); border-top-color: rgba(0,0,0,0.06); }
+  .tb { width: 40px; height: 40px; border-radius: 4px; display: grid; place-items: center; position: relative; }
+  .tb.hl { background: rgba(255,255,255,0.08); }
+  .lightdesk .tb.hl { background: rgba(0,0,0,0.05); }
+  .tb .appi { width: 24px; height: 24px; border-radius: 5px; }
+  .tb .run { position: absolute; bottom: 2px; left: 50%; width: 6px; height: 3px; margin-left: -3px; border-radius: 2px; background: rgba(255,255,255,0.45); }
+  .tb .run.active { width: 16px; margin-left: -8px; background: #60cdff; }
+  .lightdesk .tb .run { background: rgba(0,0,0,0.35); }
+  .tb .badge { position: absolute; right: 5px; bottom: 7px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #1c1c1e; }
+  .tray { position: absolute; right: 12px; top: 0; bottom: 0; display: flex; align-items: center; gap: 14px; color: rgba(255,255,255,0.9); font-size: 12px; }
+  .lightdesk .tray { color: rgba(0,0,0,0.85); }
+  .tray .clock { text-align: right; line-height: 16px; }
+
+  .appwin { position: absolute; border-radius: 8px; overflow: hidden; background: #1e1e1e; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 16px 40px rgba(0,0,0,0.45); }
+  .appwin .tbar { height: 32px; display: flex; align-items: center; gap: 10px; padding-left: 12px; background: #1f1f1f; color: rgba(255,255,255,0.7); font-size: 12px; }
+  .appwin .tbar .caps { margin-left: auto; display: flex; height: 100%; }
+  .appwin .tbar .caps span { width: 46px; display: grid; place-items: center; color: rgba(255,255,255,0.6); }
+  .ed { display: grid; grid-template-columns: 48px 210px 1fr; height: calc(100% - 32px); }
+  .ed .act { background: #181818; display: flex; flex-direction: column; align-items: center; gap: 18px; padding-top: 14px; }
+  .ed .act i { width: 20px; height: 20px; border-radius: 4px; background: rgba(255,255,255,0.14); }
+  .ed .tree { background: #181818; border-left: 1px solid rgba(255,255,255,0.05); padding: 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .ed .main { display: grid; grid-template-rows: 1fr 210px; min-width: 0; }
+  .ed .code { padding: 18px 22px; display: flex; flex-direction: column; gap: 9px; }
+  .ed .term { border-top: 1px solid rgba(255,255,255,0.08); background: #181818; padding: 14px 22px; display: flex; flex-direction: column; gap: 9px; }
+  .ln { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.12); }
+  .ln.k { background: rgba(197,134,192,0.45); }
+  .ln.s { background: rgba(206,145,120,0.42); }
+  .ln.f { background: rgba(220,220,170,0.38); }
+  .ln.c { background: rgba(106,153,85,0.40); }
+  .ln.t { background: rgba(156,220,254,0.36); }
+  .ln.prompt { background: rgba(250,140,115,0.55); }
+  .status { position: absolute; left: 0; right: 0; bottom: 0; height: 22px; background: #181818; border-top: 1px solid rgba(255,255,255,0.06); }
+
+  .placed { position: absolute; }
+  .pad { padding: 24px; border-radius: 6px; display: inline-block; }
+  .pad.dark { background: radial-gradient(80% 90% at 70% 30%, #1d3550 0%, rgba(29,53,80,0) 75%), #0d1219; }
+
+  /* ---------- Taskbar thumbnail, jump list, toast ---------- */
+  .thumb { width: 260px; border-radius: 8px; padding: 10px 12px 12px; background: var(--acrylic); border: 1px solid var(--stroke-strong); box-shadow: var(--shadow);
+    -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
+  .thumb .title { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); margin-bottom: 8px; }
+  .thumb .title img { width: 16px; height: 16px; }
+  .thumb .face { border-radius: 4px; background: var(--subtle); padding: 10px 10px 8px; }
+  .thumb .face .win { padding-left: 0; grid-template-columns: 58px 1fr 40px; }
+  .thumb .face .win .wl { color: var(--text-2); }
+  .jump { width: 256px; border-radius: 8px; padding: 6px 4px; background: var(--acrylic); border: 1px solid var(--stroke-strong); box-shadow: var(--shadow);
+    -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); font-size: 14px; }
+  .jump .h { font-size: 12px; color: var(--text-3); padding: 6px 12px 4px; }
+  .jump .i { display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 12px; border-radius: 4px; }
+  .jump .i.hl { background: var(--subtle); }
+  .jump .sep { height: 1px; background: var(--divider); margin: 6px 0; }
+  .toast { width: 364px; border-radius: 8px; background: var(--acrylic); border: 1px solid var(--stroke-strong); box-shadow: var(--shadow); padding: 12px 14px 14px;
+    -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
+  .toast .app { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); margin-bottom: 10px; }
+  .toast .app img { width: 16px; height: 16px; }
+  .toast .app .x { margin-left: auto; color: var(--text-3); }
+  .toast b { display: block; font-weight: 600; }
+  .toast p { margin: 2px 0 12px; color: var(--text-2); }
+  .toast .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .toast .acts .btn { justify-content: center; }
+
+  /* ---------- The window ---------- */
+  .window { width: 760px; height: 560px; border-radius: 8px; overflow: hidden; background: var(--mica); border: 1px solid var(--stroke-strong); box-shadow: 0 8px 32px rgba(0,0,0,0.3); display: flex; flex-direction: column; }
+  .light .window, .window.light { box-shadow: 0 8px 32px rgba(0,0,0,0.14); }
+  .titlebar { height: 32px; display: flex; align-items: center; padding-left: 14px; gap: 10px; flex: none; font-size: 12px; color: var(--text-2); }
+  .titlebar img { width: 16px; height: 16px; }
+  .caption-buttons { margin-left: auto; display: flex; height: 100%; }
+  .caption-buttons span { width: 46px; display: grid; place-items: center; color: var(--text-2); }
+  .shell { flex: 1; display: grid; grid-template-columns: 196px 1fr; min-height: 0; }
+  .nav { padding: 4px 4px; display: flex; flex-direction: column; gap: 2px; }
+  .nav .ni { height: 36px; border-radius: 4px; display: flex; align-items: center; gap: 12px; padding: 0 12px; position: relative; color: var(--text); }
+  .nav .ni.on { background: var(--subtle); }
+  .nav .ni.on::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--accent); }
+  .nav .spacer { flex: 1; }
+  .content { background: var(--subtle); border-top-left-radius: 8px; border-top: 1px solid var(--stroke); border-left: 1px solid var(--stroke); padding: 20px 28px; overflow: hidden; }
+  .content h2 { font: 600 28px/36px "Segoe UI Variable Display", "Segoe UI", system-ui; margin: 0; }
+  .content .sub { font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 6px; margin: 2px 0 18px; }
+  .content .sub a { color: var(--accent); text-decoration: none; }
+  .pcard { background: var(--card); border: 1px solid var(--stroke); border-radius: 8px; padding: 14px 16px 6px; margin-bottom: 12px; }
+  .pcard .ph { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .pcard .ph b { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; }
+  .pcard .ph .acct { font-size: 12px; color: var(--text-2); }
+  .pcard .ph .lnk { margin-left: auto; font-size: 12px; color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
+  .q { display: grid; grid-template-columns: 116px 1fr 48px 132px; column-gap: 14px; align-items: center; min-height: 40px; border-top: 1px solid var(--divider); }
+  .q:first-of-type { border-top: 0; }
+  .q .qn { font-size: 14px; }
+  .q .qn small { display: block; font-size: 12px; line-height: 14px; color: var(--text-2); }
+  .q .bar { height: 6px; border-radius: 3px; }
+  .q .bar .tick { top: -3px; height: 12px; }
+  .q .pct { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; text-align: right; font-variant-numeric: tabular-nums; }
+  .q .meta { font-size: 12px; line-height: 16px; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
+  .q .meta .hot { color: var(--caution); }
+  .q.w-warn .pct { color: var(--caution); }
+
+  /* ---------- Settings ---------- */
+  .set-row { display: grid; grid-template-columns: 24px 1fr auto; column-gap: 14px; align-items: center; min-height: 64px; padding: 10px 16px; background: var(--card); border: 1px solid var(--stroke); border-radius: 6px; margin-bottom: 4px; }
+  .set-row .t { font-size: 14px; }
+  .set-row .d { font-size: 12px; line-height: 16px; color: var(--text-2); }
+  .toggle { width: 40px; height: 20px; border-radius: 10px; background: var(--accent); position: relative; flex: none; }
+  .toggle::after { content: ""; position: absolute; right: 4px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--on-accent); }
+  .toggle.off { background: transparent; border: 1px solid var(--text-3); }
+  .toggle.off::after { left: 4px; right: auto; top: 3px; background: var(--text-2); }
+  .tlabel { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text); }
+  .seg { display: inline-flex; border-radius: 4px; border: 1px solid var(--control-stroke); background: var(--control); overflow: hidden; }
+  .seg span { padding: 5px 12px; font-size: 13px; }
+  .seg span.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .corners { width: 76px; height: 48px; border-radius: 4px; border: 1px solid var(--control-stroke); background: var(--control); position: relative; }
+  .corners i { position: absolute; width: 16px; height: 10px; border-radius: 2px; border: 1px solid var(--text-3); }
+  .corners i.on { background: var(--accent); border-color: var(--accent); }
+  .group-title { font: 600 14px/20px "Segoe UI Variable Text", "Segoe UI", system-ui; margin: 18px 2px 8px; }
+
+  .rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 40px; max-width: 1180px; }
+  .rules div { font-size: 14px; line-height: 21px; color: #3b3936; }
+  .rules b { display: block; color: #1b1a19; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="pin" viewBox="0 0 16 16"><path d="M9.8 1.8 14.2 6.2M11.3 2.9 7.6 5.6 4.5 5.1 3.2 6.4 9.6 12.8 10.9 11.5 10.4 8.4 13.1 4.7M6.4 9.6 2 14"/></symbol>
+  <symbol id="open" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6h12"/></symbol>
+  <symbol id="strip" viewBox="0 0 16 16"><rect x="2" y="9" width="12" height="4" rx="1.5"/><path d="M5 4.5h6M8 2.5v4"/></symbol>
+  <symbol id="more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r=".6"/><circle cx="8" cy="8" r=".6"/><circle cx="12.5" cy="8" r=".6"/></symbol>
+  <symbol id="refresh" viewBox="0 0 16 16"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8M13.5 2.5v3h-3"/></symbol>
+  <symbol id="offline" viewBox="0 0 16 16"><path d="M2 2l12 12M5.2 8.9A4 4 0 0 1 8 7.9M2.6 6.3A7.6 7.6 0 0 1 6 4.6M10.6 5A7.6 7.6 0 0 1 13.4 6.3M7.2 11.6a1.2 1.2 0 0 1 1.6 0"/></symbol>
+  <symbol id="now" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></symbol>
+  <symbol id="today" viewBox="0 0 16 16"><path d="M2.5 13.5h11M4.5 11V7.5M8 11V4M11.5 11V8.5"/></symbol>
+  <symbol id="trophy" viewBox="0 0 16 16"><path d="M5 2.5h6v3.5a3 3 0 0 1-6 0zM5 3.5H2.5v1a2.5 2.5 0 0 0 2.6 2.5M11 3.5h2.5v1a2.5 2.5 0 0 1-2.6 2.5M8 9v3M5.5 13.5h5"/></symbol>
+  <symbol id="gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M1.8 8h1.6M12.6 8h1.6M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></symbol>
+  <symbol id="ext" viewBox="0 0 16 16"><path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/></symbol>
+  <symbol id="hud" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M4.5 6h4M4.5 8.5h7M4.5 11h5"/></symbol>
+  <symbol id="bell" viewBox="0 0 16 16"><path d="M4 11.5V7.5a4 4 0 0 1 8 0v4l1 1.5H3zM6.5 14.2a1.6 1.6 0 0 0 3 0"/></symbol>
+  <symbol id="keyb" viewBox="0 0 16 16"><rect x="1.5" y="4" width="13" height="8" rx="1.5"/><path d="M4 6.5h.5M6.5 6.5H7M9 6.5h.5M11.5 6.5h.5M5 9.5h6"/></symbol>
+  <symbol id="screen" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="9" rx="1"/><path d="M5.5 14h5M8 11.5V14"/></symbol>
+  <symbol id="layers" viewBox="0 0 16 16"><path d="M8 2 14 5 8 8 2 5zM2 8l6 3 6-3M2 11l6 3 6-3"/></symbol>
+  <symbol id="list" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.5M2.5 8h.5M2.5 12h.5"/></symbol>
+  <symbol id="win" viewBox="0 0 16 16"><path d="M2 2h5.5v5.5H2zM8.5 2H14v5.5H8.5zM2 8.5h5.5V14H2zM8.5 8.5H14V14H8.5z" style="fill:currentColor;stroke:none"/></symbol>
+  <symbol id="search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4 14 14"/></symbol>
+  <symbol id="folder" viewBox="0 0 16 16"><path d="M1.5 4.5a1 1 0 0 1 1-1h3.5l1.5 1.5h6a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="term" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M4.5 6.5 6.5 8.5 4.5 10.5M8 10.5h3.5"/></symbol>
+  <symbol id="code" viewBox="0 0 16 16"><path d="M10.5 2.5 13.5 5v6l-3 2.5L3 7.5 1.5 9 3 10.5 10.5 4.5"/></symbol>
+  <symbol id="wifi" viewBox="0 0 16 16"><path d="M1.5 6a9.5 9.5 0 0 1 13 0M3.8 8.5a6.2 6.2 0 0 1 8.4 0M6 11a3 3 0 0 1 4 0"/></symbol>
+  <symbol id="vol" viewBox="0 0 16 16"><path d="M2.5 6h2.5L8.5 3v10L5 10H2.5zM11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></symbol>
+  <symbol id="batt" viewBox="0 0 16 16"><rect x="1.5" y="4.5" width="11.5" height="7" rx="1.5"/><path d="M14.5 7v2"/><rect x="3" y="6" width="7" height="4" rx=".5" style="fill:currentColor;stroke:none"/></symbol>
+  <symbol id="up" viewBox="0 0 16 16"><path d="M4 10l4-4 4 4"/></symbol>
+  <symbol id="close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  <symbol id="min" viewBox="0 0 16 16"><path d="M3 8h10"/></symbol>
+  <symbol id="max" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1"/></symbol>
+  <symbol id="drag" viewBox="0 0 16 16"><circle cx="6" cy="4" r=".6"/><circle cx="10" cy="4" r=".6"/><circle cx="6" cy="8" r=".6"/><circle cx="10" cy="8" r=".6"/><circle cx="6" cy="12" r=".6"/><circle cx="10" cy="12" r=".6"/></symbol>
+  <symbol id="check" viewBox="0 0 16 16"><path d="M3 8.5 6.5 12 13 4.5"/></symbol>
+</svg>
+
+<h1>ClaudeBar for Windows · HUD</h1>
+<p class="lede">A small window you leave on screen while you code. It answers one question, <i>can I keep going, and until when</i>, for each AI tool signed in on this PC: how much of each limit is left and when it resets. It keeps out of the way: it never takes focus to show anything and gives it straight back when you click it, hides for full-screen apps and presentations, and shows colour only when something needs you. The main window keeps the detail and the Leaderboard, and everything the HUD offers, for the keyboard and Narrator; notifications, and the taskbar button while the window is open, work with the HUD off. Sample data, made up.</p>
+
+<!-- ============ 1 · On the desktop ============ -->
+<p class="section-label">1 · On the desktop</p>
+<div class="row">
+  <div class="shot">
+    <div class="desk dark">
+      <div class="appwin" style="left:0; top:0; width:888px; height:672px;">
+        <div class="tbar"><svg class="ico" style="width:14px;height:14px;color:#3aa0f3"><use href="#code"/></svg>harbor · main.rs<div class="caps"><span><svg class="ico"><use href="#min"/></svg></span><span><svg class="ico"><use href="#max"/></svg></span><span><svg class="ico"><use href="#close"/></svg></span></div></div>
+        <div class="ed">
+          <div class="act"><i></i><i></i><i></i><i></i></div>
+          <div class="tree"><div class="ln" style="width:60%"></div><div class="ln" style="width:72%;margin-left:12px"></div><div class="ln" style="width:58%;margin-left:12px"></div><div class="ln t" style="width:64%;margin-left:24px"></div><div class="ln" style="width:52%;margin-left:24px"></div><div class="ln" style="width:70%;margin-left:12px"></div><div class="ln" style="width:44%"></div><div class="ln" style="width:66%"></div></div>
+          <div class="main">
+            <div class="code">
+              <div class="ln k" style="width:22%"></div><div class="ln" style="width:48%;margin-left:24px"></div><div class="ln f" style="width:38%;margin-left:24px"></div><div class="ln s" style="width:56%;margin-left:48px"></div><div class="ln t" style="width:41%;margin-left:48px"></div><div class="ln" style="width:12%;margin-left:24px"></div><div class="ln c" style="width:52%;margin-left:24px"></div><div class="ln k" style="width:30%;margin-left:24px"></div><div class="ln f" style="width:46%;margin-left:48px"></div><div class="ln s" style="width:62%;margin-left:72px"></div><div class="ln" style="width:20%;margin-left:48px"></div><div class="ln t" style="width:36%;margin-left:24px"></div><div class="ln" style="width:8%"></div><div class="ln k" style="width:28%"></div><div class="ln f" style="width:44%;margin-left:24px"></div><div class="ln" style="width:33%;margin-left:24px"></div>
+            </div>
+            <div class="term"><div class="ln prompt" style="width:18%"></div><div class="ln" style="width:58%"></div><div class="ln" style="width:44%"></div><div class="ln c" style="width:30%"></div><div class="ln" style="width:62%"></div><div class="ln t" style="width:24%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HUD, card, bottom-right above the taskbar -->
+      <div class="placed" style="right:12px; bottom:60px;">
+        <div class="hud dark">
+          <div class="tools"><span class="on"><svg class="ico"><use href="#pin"/></svg></span><span><svg class="ico"><use href="#strip"/></svg></span><span><svg class="ico"><use href="#open"/></svg></span></div>
+          <div class="prov">
+            <div class="pname"><i class="dot" style="--c:var(--claude)"></i><b>Claude</b><span class="flag warn">Running hot</span></div>
+            <div class="win"><span class="wl">5h</span><span class="bar"><i style="width:62%"></i><b class="tick" style="left:44%"></b></span><span class="pct">62%</span><span class="rst">2h 14m</span></div>
+            <div class="win w-warn"><span class="wl">7d</span><span class="bar"><i style="width:41%"></i><b class="tick" style="left:46%"></b></span><span class="pct">41%</span><span class="rst">3d 6h</span></div>
+          </div>
+          <div class="prov">
+            <div class="pname"><i class="dot" style="--c:var(--codex)"></i><b>Codex</b></div>
+            <div class="win"><span class="wl">5h</span><span class="bar"><i style="width:88%"></i><b class="tick" style="left:81%"></b></span><span class="pct">88%</span><span class="rst">4h 02m</span></div>
+            <div class="win"><span class="wl">7d</span><span class="bar"><i style="width:78%"></i><b class="tick" style="left:72%"></b></span><span class="pct">78%</span><span class="rst">5d 1h</span></div>
+          </div>
+          <div class="prov">
+            <div class="pname"><i class="dot" style="--c:var(--gemini)"></i><b>Gemini</b></div>
+            <div class="win"><span class="wl">1d</span><span class="bar"><i style="width:93%"></i><b class="tick" style="left:40%"></b></span><span class="pct">93%</span><span class="rst">9h 40m</span></div>
+          </div>
+          <div class="foot"><span class="num">Today <b>3.4M</b> tokens · <b>#18</b> this week</span><span class="age">1m ago</span></div>
+        </div>
+      </div>
+
+      <div class="taskbar">
+        <span class="tb"><svg class="ico" style="width:22px;height:22px;color:#60cdff"><use href="#win"/></svg></span>
+        <span class="tb"><svg class="ico" style="width:20px;height:20px;color:#fff"><use href="#search"/></svg></span>
+        <span class="tb"><svg class="ico" style="width:22px;height:22px;color:#f2c14e"><use href="#folder"/></svg><i class="run"></i></span>
+        <span class="tb hl"><svg class="ico" style="width:22px;height:22px;color:#3aa0f3"><use href="#code"/></svg><i class="run active"></i></span>
+        <span class="tb"><svg class="ico" style="width:22px;height:22px;color:#cccccc"><use href="#term"/></svg><i class="run"></i></span>
+        <span class="tb"><img class="appi" src="ClaudeBar-48.png" alt=""><i class="badge" style="background:#fce100"></i><i class="run"></i></span>
+        <div class="tray"><svg class="ico"><use href="#up"/></svg><svg class="ico"><use href="#wifi"/></svg><svg class="ico"><use href="#vol"/></svg><svg class="ico"><use href="#batt"/></svg><div class="clock num">14:05<br>2026-10-13</div></div>
+      </div>
+    </div>
+    <div class="caption wide"><b>The card, beside your editor.</b> Bottom-right above the taskbar by default; drag it anywhere and it snaps to the nearest corner. Each tool gets one line and one bar per limit: the <i>window</i> (5h, 7d, 1d), how much is <i>left</i>, and the time until it resets. The tick on a bar is where you'd be if you used the limit evenly; a bar ending left of its tick is burning fast, and the tool says <i>Running hot</i>. Colour appears only for a limit under 50% (amber) or 20% (red). While ClaudeBar's window is open or minimized, its taskbar button carries the same colour as a dot. Hovering the card shows its three buttons; nothing else changes size.</div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="shot">
+    <div class="desk dark">
+      <div class="appwin" style="left:0; top:0; right:0; height:672px; border-radius:0;">
+        <div class="tbar"><svg class="ico" style="width:14px;height:14px;color:#3aa0f3"><use href="#code"/></svg>harbor · main.rs<div class="caps"><span><svg class="ico"><use href="#min"/></svg></span><span><svg class="ico"><use href="#max"/></svg></span><span><svg class="ico"><use href="#close"/></svg></span></div></div>
+        <div class="ed" style="grid-template-columns:48px 240px 1fr;">
+          <div class="act"><i></i><i></i><i></i><i></i></div>
+          <div class="tree"><div class="ln" style="width:60%"></div><div class="ln" style="width:72%;margin-left:12px"></div><div class="ln" style="width:58%;margin-left:12px"></div><div class="ln t" style="width:64%;margin-left:24px"></div><div class="ln" style="width:52%;margin-left:24px"></div><div class="ln" style="width:70%;margin-left:12px"></div></div>
+          <div class="main" style="grid-template-rows:1fr 250px;">
+            <div class="code">
+              <div class="ln k" style="width:18%"></div><div class="ln" style="width:38%;margin-left:24px"></div><div class="ln f" style="width:30%;margin-left:24px"></div><div class="ln s" style="width:44%;margin-left:48px"></div><div class="ln t" style="width:33%;margin-left:48px"></div><div class="ln" style="width:10%;margin-left:24px"></div><div class="ln c" style="width:40%;margin-left:24px"></div><div class="ln k" style="width:24%;margin-left:24px"></div><div class="ln f" style="width:36%;margin-left:48px"></div><div class="ln s" style="width:48%;margin-left:72px"></div><div class="ln" style="width:16%;margin-left:48px"></div><div class="ln t" style="width:28%;margin-left:24px"></div>
+            </div>
+            <div class="term"><div class="ln prompt" style="width:12%"></div><div class="ln" style="width:42%"></div><div class="ln" style="width:30%"></div><div class="ln c" style="width:22%"></div><div class="ln" style="width:46%"></div><div class="ln t" style="width:18%"></div><div class="ln" style="width:38%"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="placed" style="right:12px; bottom:58px;">
+        <div class="strip dark">
+          <div class="it"><i class="dot" style="--c:var(--claude)"></i><span class="n">Claude</span><span class="p">62%</span><span class="r">2h 14m</span></div>
+          <div class="it warn more"><span class="w">7d</span><span class="p">41%</span><span class="r">3d 6h</span></div>
+          <div class="it"><i class="dot" style="--c:var(--codex)"></i><span class="n">Codex</span><span class="p">88%</span><span class="r">4h 02m</span></div>
+          <div class="it"><i class="dot" style="--c:var(--gemini)"></i><span class="n">Gemini</span><span class="p">93%</span><span class="r">9h 40m</span></div>
+        </div>
+      </div>
+      <div class="taskbar">
+        <span class="tb"><svg class="ico" style="width:22px;height:22px;color:#60cdff"><use href="#win"/></svg></span>
+        <span class="tb"><svg class="ico" style="width:20px;height:20px;color:#fff"><use href="#search"/></svg></span>
+        <span class="tb"><svg class="ico" style="width:22px;height:22px;color:#f2c14e"><use href="#folder"/></svg><i class="run"></i></span>
+        <span class="tb hl"><svg class="ico" style="width:22px;height:22px;color:#3aa0f3"><use href="#code"/></svg><i class="run active"></i></span>
+        <span class="tb"><svg class="ico" style="width:22px;height:22px;color:#cccccc"><use href="#term"/></svg><i class="run"></i></span>
+        <span class="tb"><img class="appi" src="ClaudeBar-48.png" alt=""><i class="badge" style="background:#fce100"></i><i class="run"></i></span>
+        <div class="tray"><svg class="ico"><use href="#up"/></svg><svg class="ico"><use href="#wifi"/></svg><svg class="ico"><use href="#vol"/></svg><svg class="ico"><use href="#batt"/></svg><div class="clock num">14:05<br>2026-10-13</div></div>
+      </div>
+    </div>
+    <div class="caption wide"><b>The strip, over a maximized editor.</b> The same HUD one line high, for a full screen of code: each tool's shortest limit, plus any other limit that needs you (here Claude's week, in amber, beside Claude). Click it to open the card; it collapses again when the pointer leaves. It covers 36 pixels of the editor's bottom edge, where the status bar sits.</div>
+  </div>
+</div>
+
+<!-- ============ 2 · The card's states ============ -->
+<p class="section-label">2 · Every state the card can be in (dark)</p>
+<div class="row">
+  <div class="shot">
+    <div class="pad dark"><div class="hud dark hover">
+      <div class="tools"><span class="on hl"><svg class="ico"><use href="#pin"/></svg></span><span><svg class="ico"><use href="#strip"/></svg></span><span><svg class="ico"><use href="#open"/></svg></span></div>
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--claude)"></i><b>Claude</b><span class="flag">&nbsp;</span></div>
+        <div class="win"><span class="wl">5h</span><span class="bar"><i style="width:62%"></i><b class="tick" style="left:44%"></b></span><span class="pct">62%</span><span class="rst">2h 14m</span></div>
+        <div class="win"><span class="wl">7d</span><span class="bar"><i style="width:71%"></i><b class="tick" style="left:46%"></b></span><span class="pct">71%</span><span class="rst">3d 6h</span></div>
+      </div>
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--codex)"></i><b>Codex</b></div>
+        <div class="win"><span class="wl">5h</span><span class="bar"><i style="width:88%"></i><b class="tick" style="left:81%"></b></span><span class="pct">88%</span><span class="rst">4h 02m</span></div>
+        <div class="win"><span class="wl">7d</span><span class="bar"><i style="width:78%"></i><b class="tick" style="left:72%"></b></span><span class="pct">78%</span><span class="rst">5d 1h</span></div>
+      </div>
+      <div class="foot"><span class="num">Today <b>3.4M</b> tokens · <b>#18</b> this week</span><span class="age">1m ago</span></div>
+    </div></div>
+    <div class="caption"><b>All fine, pointer over it.</b> No colour but the accent. The buttons: keep on top (on), collapse to the strip, open ClaudeBar. Right-click has Refresh, Hide the HUD and Settings. Each one is in the window too, where the keyboard and Narrator reach it.</div>
+  </div>
+
+  <div class="shot">
+    <div class="pad dark"><div class="hud dark">
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--claude)"></i><b>Claude</b><span class="flag crit">Out until 14:30</span></div>
+        <div class="win w-crit"><span class="wl">5h</span><span class="bar"><i style="width:0%"></i></span><span class="pct">0%</span><span class="rst back">back 14:30</span></div>
+        <div class="win w-warn"><span class="wl">7d</span><span class="bar"><i style="width:38%"></i><b class="tick" style="left:46%"></b></span><span class="pct">38%</span><span class="rst">3d 6h</span></div>
+      </div>
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--codex)"></i><b>Codex</b><span class="flag warn">Running hot</span></div>
+        <div class="win w-crit"><span class="wl">5h</span><span class="bar"><i style="width:12%"></i><b class="tick" style="left:47%"></b></span><span class="pct">12%</span><span class="rst">2h 20m</span></div>
+        <div class="win"><span class="wl">7d</span><span class="bar"><i style="width:58%"></i><b class="tick" style="left:72%"></b></span><span class="pct">58%</span><span class="rst">5d 1h</span></div>
+      </div>
+      <div class="foot"><span class="num">Today <b>5.1M</b> tokens · <b>#12</b> this week</span><span class="age">just now</span></div>
+    </div></div>
+    <div class="caption"><b>Out, and running low.</b> A limit at 0% says when it's <i>back</i>, as a clock time, because that's when you can start again. Under 20% is red. The notification fires once when a limit crosses 20%, once at 0%, and once when it's back.</div>
+  </div>
+
+  <div class="shot">
+    <div class="pad dark"><div class="hud dark stale">
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--claude)"></i><b>Claude</b></div>
+        <div class="win"><span class="wl">5h</span><span class="bar"><i style="width:62%"></i><b class="tick" style="left:44%"></b></span><span class="pct">62%</span><span class="rst">2h 14m</span></div>
+        <div class="win"><span class="wl">7d</span><span class="bar"><i style="width:71%"></i><b class="tick" style="left:46%"></b></span><span class="pct">71%</span><span class="rst">3d 6h</span></div>
+      </div>
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--codex)"></i><b>Codex</b></div>
+        <div class="win"><span class="wl">5h</span><span class="bar"><i style="width:88%"></i><b class="tick" style="left:81%"></b></span><span class="pct">88%</span><span class="rst">4h 02m</span></div>
+        <div class="win"><span class="wl">7d</span><span class="bar"><i style="width:78%"></i><b class="tick" style="left:72%"></b></span><span class="pct">78%</span><span class="rst">5d 1h</span></div>
+      </div>
+      <div class="foot"><span class="off"><svg class="ico" style="width:14px;height:14px"><use href="#offline"/></svg>Offline · as of 13:41</span><span class="age"><a href="#">Retry</a></span></div>
+    </div></div>
+    <div class="caption"><b>Offline.</b> The last numbers stay, faded, with the time they were read. Countdowns keep running, since a reset time doesn't need the network. Nothing is guessed.</div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="shot">
+    <div class="pad dark"><div class="hud dark">
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--claude)"></i><b>Claude</b></div>
+        <div class="win"><span class="wl">5h</span><span class="bar"><i style="width:62%"></i><b class="tick" style="left:44%"></b></span><span class="pct">62%</span><span class="rst">2h 14m</span></div>
+        <div class="win"><span class="wl">7d</span><span class="bar"><i style="width:71%"></i><b class="tick" style="left:46%"></b></span><span class="pct">71%</span><span class="rst">3d 6h</span></div>
+      </div>
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--codex)"></i><b>Codex</b><span class="flag">Signed out</span></div>
+        <div class="note">Run <code>codex login</code> in a terminal; it shows here within a minute.</div>
+      </div>
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--gemini)"></i><b>Gemini</b><span class="flag">Couldn't read</span></div>
+        <div class="note">Google didn't answer. <a href="#">Try again</a></div>
+      </div>
+      <div class="foot"><span class="num">Today <b>1.2M</b> tokens</span><span class="age">1m ago</span></div>
+    </div></div>
+    <div class="caption"><b>A tool that needs you.</b> Signed out says what to type. A failed read says who failed and offers a retry; the other tools are unaffected. Not joined to the Leaderboard, so no rank.</div>
+  </div>
+
+  <div class="shot">
+    <div class="pad dark"><div class="hud dark">
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--claude)"></i><b>Claude</b></div>
+        <div class="win"><span class="wl">5h</span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
+        <div class="win"><span class="wl">7d</span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
+      </div>
+      <div class="prov">
+        <div class="pname"><i class="dot" style="--c:var(--codex)"></i><b>Codex</b></div>
+        <div class="win"><span class="wl">5h</span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
+      </div>
+      <div class="foot"><span>Reading limits…</span></div>
+    </div></div>
+    <div class="caption"><b>First read after start.</b> The rows ClaudeBar will fill, at their final size, so nothing jumps when the numbers arrive.</div>
+  </div>
+
+  <div class="shot">
+    <div class="pad dark"><div class="hud dark">
+      <div class="empty">
+        <b>No AI tools signed in here yet</b>
+        <p>The HUD shows the limits of Claude Code, Codex, Gemini CLI and the other tools ClaudeBar knows, once one is signed in on this PC.</p>
+        <span class="btn small">Choose tools</span>
+      </div>
+    </div></div>
+    <div class="caption"><b>Nothing found.</b> One sentence and one button. It doesn't stay on screen: after this, the HUD waits until a tool appears.</div>
+  </div>
+</div>
+
+<!-- ============ 3 · Light theme, and the strip ============ -->
+<p class="section-label">3 · Light theme, and the strip</p>
+<div class="row">
+  <div class="shot">
+    <div class="desk lightdesk" style="width:420px; height:330px;">
+      <div class="placed" style="left:50px; top:30px;">
+        <div class="hud light">
+          <div class="prov">
+            <div class="pname"><i class="dot" style="--c:var(--claude)"></i><b>Claude</b><span class="flag warn">Running hot</span></div>
+            <div class="win"><span class="wl">5h</span><span class="bar"><i style="width:62%"></i><b class="tick" style="left:44%"></b></span><span class="pct">62%</span><span class="rst">2h 14m</span></div>
+            <div class="win w-warn"><span class="wl">7d</span><span class="bar"><i style="width:41%"></i><b class="tick" style="left:46%"></b></span><span class="pct">41%</span><span class="rst">3d 6h</span></div>
+          </div>
+          <div class="prov">
+            <div class="pname"><i class="dot" style="--c:var(--codex)"></i><b>Codex</b></div>
+            <div class="win w-crit"><span class="wl">5h</span><span class="bar"><i style="width:12%"></i><b class="tick" style="left:47%"></b></span><span class="pct">12%</span><span class="rst">2h 20m</span></div>
+            <div class="win"><span class="wl">7d</span><span class="bar"><i style="width:78%"></i><b class="tick" style="left:72%"></b></span><span class="pct">78%</span><span class="rst">5d 1h</span></div>
+          </div>
+          <div class="foot"><span class="num">Today <b>3.4M</b> tokens · <b>#18</b> this week</span><span class="age">1m ago</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>Light.</b> Follows Windows' app mode and accent colour. High contrast swaps every colour for the system's own, and the words (<i>Running hot</i>, <i>Out until</i>) carry the meaning without it.</div>
+  </div>
+
+  <div class="shot" style="gap:16px;">
+    <div class="desk dark" style="width:560px; height:64px; display:flex; align-items:center; justify-content:center;">
+      <div class="strip dark">
+        <div class="it"><i class="dot" style="--c:var(--claude)"></i><span class="n">Claude</span><span class="p">62%</span><span class="r">2h 14m</span></div>
+        <div class="it"><i class="dot" style="--c:var(--codex)"></i><span class="n">Codex</span><span class="p">88%</span><span class="r">4h 02m</span></div>
+        <div class="it"><i class="dot" style="--c:var(--gemini)"></i><span class="n">Gemini</span><span class="p">93%</span><span class="r">9h 40m</span></div>
+      </div>
+    </div>
+    <div class="desk dark" style="width:560px; height:64px; display:flex; align-items:center; justify-content:center;">
+      <div class="strip dark">
+        <div class="it crit"><i class="dot" style="--c:var(--claude)"></i><span class="n">Claude</span><span class="p">0%</span><span class="r">back 14:30</span></div>
+        <div class="it crit"><i class="dot" style="--c:var(--codex)"></i><span class="n">Codex</span><span class="p">12%</span><span class="r">2h 20m</span></div>
+        <div class="it"><i class="dot" style="--c:var(--gemini)"></i><span class="n">Gemini</span><span class="p">93%</span><span class="r">9h 40m</span></div>
+      </div>
+    </div>
+    <div class="desk lightdesk" style="width:560px; height:64px; display:flex; align-items:center; justify-content:center;">
+      <div class="strip light">
+        <div class="it"><i class="dot" style="--c:var(--claude)"></i><span class="n">Claude</span><span class="p">62%</span><span class="r">2h 14m</span></div>
+        <div class="it warn more"><span class="w">7d</span><span class="p">41%</span><span class="r">3d 6h</span></div>
+        <div class="it"><i class="dot" style="--c:var(--codex)"></i><span class="n">Codex</span><span class="p">88%</span><span class="r">4h 02m</span></div>
+      </div>
+    </div>
+    <div class="caption" style="max-width:560px;"><b>The strip.</b> Each tool's shortest limit (the 5-hour session, or a day), or at 0% when it's back. A tool's other limit joins, beside it, only while it needs you. A signed-out tool shows its name and <i>Signed out</i>.</div>
+  </div>
+</div>
+
+<!-- ============ 4 · Taskbar and notifications ============ -->
+<p class="section-label">4 · With the HUD off: the taskbar button and notifications</p>
+<div class="row">
+  <div class="shot">
+    <div class="desk dark" style="width:340px; height:330px;">
+      <div class="placed" style="left:40px; top:24px;">
+        <div class="thumb dark">
+          <div class="title"><img src="ClaudeBar-48.png" alt="">ClaudeBar</div>
+          <div class="face">
+            <div class="win w-warn"><span class="wl">Claude 7d</span><span class="bar"><i style="width:41%"></i><b class="tick" style="left:46%"></b></span><span class="pct">41%</span></div>
+            <div class="win"><span class="wl">Claude 5h</span><span class="bar"><i style="width:62%"></i><b class="tick" style="left:44%"></b></span><span class="pct">62%</span></div>
+            <div class="win"><span class="wl">Codex 7d</span><span class="bar"><i style="width:78%"></i><b class="tick" style="left:72%"></b></span><span class="pct">78%</span></div>
+            <div style="font-size:12px; color:var(--text-2); margin-top:6px;" class="num">Today 3.4M tokens · #18 this week</div>
+          </div>
+        </div>
+      </div>
+      <div class="taskbar" style="justify-content:flex-start; padding-left:120px;">
+        <span class="tb hl"><img class="appi" src="ClaudeBar-48.png" alt=""><i class="badge" style="background:#fce100"></i><i class="run"></i></span>
+      </div>
+    </div>
+    <div class="caption"><b>Hover the button.</b> The app draws its own preview: the three limits closest to running out, then today and your place. The dot on the button is the worst status: none when all is fine, amber, or red. It's an overlay icon, so it shows while the window is open or minimized; with the window closed, only a packaged build can mark the pinned button, with a badge glyph.</div>
+  </div>
+
+  <div class="shot">
+    <div class="desk dark" style="width:300px; height:330px;">
+      <div class="placed" style="left:22px; top:20px;">
+        <div class="jump dark">
+          <div class="h">Tasks</div>
+          <div class="i hl"><svg class="ico"><use href="#hud"/></svg>Show the HUD</div>
+          <div class="i"><svg class="ico"><use href="#refresh"/></svg>Refresh now</div>
+          <div class="i"><svg class="ico"><use href="#trophy"/></svg>Leaderboard</div>
+          <div class="sep"></div>
+          <div class="i"><img src="ClaudeBar-48.png" alt="" style="width:16px;height:16px">ClaudeBar</div>
+          <div class="i"><svg class="ico"><use href="#close"/></svg>Close window</div>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>Right-click the button.</b> Works with the app closed, like any jump list.</div>
+  </div>
+
+  <div class="shot">
+    <div class="desk dark" style="width:420px; height:200px;">
+      <div class="placed" style="left:28px; top:28px;">
+        <div class="toast dark">
+          <div class="app"><img src="ClaudeBar-48.png" alt="">ClaudeBar<span class="x"><svg class="ico" style="width:12px;height:12px"><use href="#close"/></svg></span></div>
+          <b>Claude's 5-hour limit is at 15%</b>
+          <p>It resets at 14:30. Codex has 88% left.</p>
+          <div class="acts"><span class="btn">Show the HUD</span><span class="btn">Quiet until reset</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption"><b>A notification, rarely.</b> At 20%, at 0% and when it's back, per limit, never twice for the same crossing. Do not disturb and Focus send it to the notification centre, as Windows decides.</div>
+  </div>
+</div>
+
+<!-- ============ 5 · The window ============ -->
+<p class="section-label">5 · The window: the detail behind the HUD</p>
+<div class="row">
+  <div class="shot">
+    <div class="window dark">
+      <div class="titlebar"><img src="ClaudeBar-48.png" alt="">ClaudeBar<div class="caption-buttons"><span><svg class="ico"><use href="#min"/></svg></span><span><svg class="ico"><use href="#max"/></svg></span><span><svg class="ico"><use href="#close"/></svg></span></div></div>
+      <div class="shell">
+        <div class="nav">
+          <div class="ni on"><svg class="ico"><use href="#now"/></svg>Limits</div>
+          <div class="ni"><svg class="ico"><use href="#today"/></svg>Usage</div>
+          <div class="ni"><svg class="ico"><use href="#trophy"/></svg>Leaderboard</div>
+          <div class="spacer"></div>
+          <div class="ni"><svg class="ico"><use href="#gear"/></svg>Settings</div>
+        </div>
+        <div class="content">
+          <h2>Limits</h2>
+          <div class="sub num">Read 1m ago · <a href="#">Refresh</a></div>
+          <div class="pcard">
+            <div class="ph"><i class="dot" style="--c:var(--claude)"></i><b>Claude</b><span class="acct">Max · work account</span><span class="lnk">Usage page<svg class="ico" style="width:12px;height:12px"><use href="#ext"/></svg></span></div>
+            <div class="q"><span class="qn">Session<small>5 hours</small></span><span class="bar"><i style="width:62%"></i><b class="tick" style="left:44%"></b></span><span class="pct">62%</span><span class="meta">resets in 2h 14m<br>at 16:19</span></div>
+            <div class="q w-warn"><span class="qn">Week<small>all models</small></span><span class="bar"><i style="width:41%"></i><b class="tick" style="left:46%"></b></span><span class="pct">41%</span><span class="meta"><span class="hot">Running hot</span> · 3d 6h<br>Thu 20:00</span></div>
+            <div class="q"><span class="qn">Week<small>Opus</small></span><span class="bar"><i style="width:80%"></i><b class="tick" style="left:46%"></b></span><span class="pct">80%</span><span class="meta">resets in 3d 6h<br>Thu 20:00</span></div>
+          </div>
+          <div class="pcard">
+            <div class="ph"><i class="dot" style="--c:var(--codex)"></i><b>Codex</b><span class="acct">Plus</span><span class="lnk">Usage page<svg class="ico" style="width:12px;height:12px"><use href="#ext"/></svg></span></div>
+            <div class="q"><span class="qn">Session<small>5 hours</small></span><span class="bar"><i style="width:88%"></i><b class="tick" style="left:81%"></b></span><span class="pct">88%</span><span class="meta">resets in 4h 02m<br>at 18:07</span></div>
+            <div class="q"><span class="qn">Week</span><span class="bar"><i style="width:78%"></i><b class="tick" style="left:72%"></b></span><span class="pct">78%</span><span class="meta">resets in 5d 1h<br>Sat 15:00</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption wide"><b>Limits</b> is the HUD with room: every limit with its full name, the reset as a clock time, the account and a link to the tool's own usage page. <b>Usage</b> is today's tokens and cost from the local logs; <b>Leaderboard</b> is the board the app has today. A NavigationView on the left, Mica behind, as Windows' own apps do.</div>
+  </div>
+</div>
+
+<!-- ============ 6 · Settings ============ -->
+<p class="section-label">6 · Settings → HUD</p>
+<div class="row">
+  <div class="shot">
+    <div class="window light" style="height:600px;">
+      <div class="titlebar"><img src="ClaudeBar-48.png" alt="">ClaudeBar<div class="caption-buttons"><span><svg class="ico"><use href="#min"/></svg></span><span><svg class="ico"><use href="#max"/></svg></span><span><svg class="ico"><use href="#close"/></svg></span></div></div>
+      <div class="shell">
+        <div class="nav">
+          <div class="ni"><svg class="ico"><use href="#now"/></svg>Limits</div>
+          <div class="ni"><svg class="ico"><use href="#today"/></svg>Usage</div>
+          <div class="ni"><svg class="ico"><use href="#trophy"/></svg>Leaderboard</div>
+          <div class="spacer"></div>
+          <div class="ni on"><svg class="ico"><use href="#gear"/></svg>Settings</div>
+        </div>
+        <div class="content">
+          <h2>HUD</h2>
+          <div class="sub">Settings › HUD</div>
+          <div class="set-row"><svg class="ico" style="width:20px;height:20px"><use href="#hud"/></svg><div><div class="t">Show the HUD</div><div class="d">A small window with your limits that stays on screen</div></div><span class="tlabel">On<i class="toggle"></i></span></div>
+          <div class="set-row"><svg class="ico" style="width:20px;height:20px"><use href="#layers"/></svg><div><div class="t">Style</div><div class="d">The strip is one line; click it for the card</div></div><span class="seg"><span class="on">Card</span><span>Strip</span></span></div>
+          <div class="set-row"><svg class="ico" style="width:20px;height:20px"><use href="#screen"/></svg><div><div class="t">Corner</div><div class="d">Or drag the HUD; it snaps to the nearest corner of that screen</div></div><span class="corners"><i style="left:5px;top:5px"></i><i style="right:5px;top:5px"></i><i style="left:5px;bottom:5px"></i><i class="on" style="right:5px;bottom:5px"></i></span></div>
+          <div class="set-row"><svg class="ico" style="width:20px;height:20px"><use href="#pin"/></svg><div><div class="t">Keep it on top</div><div class="d">Hidden while a full-screen app, game or presentation runs</div></div><span class="tlabel">On<i class="toggle"></i></span></div>
+          <div class="set-row"><svg class="ico" style="width:20px;height:20px"><use href="#list"/></svg><div><div class="t">Tools on the HUD</div><div class="d">Claude, Codex, Gemini</div></div><span class="btn small">Choose</span></div>
+          <div class="set-row"><svg class="ico" style="width:20px;height:20px"><use href="#keyb"/></svg><div><div class="t">Shortcut to show or hide it</div><div class="d">None set</div></div><span class="btn small">Set</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="caption wide"><b>Six settings, no more.</b> The HUD starts on, in the card style, bottom-right, after the first time limits are read; <i>Show the HUD</i> turns it off, and so does <i>Hide the HUD</i> on its right-click menu. Starting with Windows is offered once, after that first reading, and stays off until you say yes (Settings → General).</div>
+  </div>
+</div>
+
+<!-- ============ Rules ============ -->
+<p class="section-label">Rules</p>
+<div class="rules">
+  <div><b>One question per glance.</b> Can I keep going, and until when. Each limit is a window name, a bar, the share left and the time to reset, in that order, in the same columns for every tool.</div>
+  <div><b>Colour means trouble.</b> Healthy bars use the Windows accent, like any progress bar. Amber under 50%, red under 20% and at 0%, WinUI's own caution and critical colours. Tool colours are only the 8 px dots that tell tools apart.</div>
+  <div><b>Words for what colour can't say.</b> <i>Running hot</i> (ahead of an even pace), <i>Out until 14:30</i>, <i>Signed out</i>, <i>Couldn't read</i>, the same words the Mac app uses. They work in high contrast and for people who don't see the colour.</div>
+  <div><b>Windows' own type ramp, readable in both themes.</b> Segoe UI Variable: 14 semibold for tools and numbers, 12 for the rest. Numbers are tabular so columns don't shimmer when a minute passes. Every piece of text is at least WinUI's secondary text colour, 4.5:1 or more against the HUD in light and dark; tertiary isn't used, as it measures 3.3:1 on light Mica.</div>
+  <div><b>It doesn't take your focus.</b> A tool window (no Alt+Tab, no taskbar button of its own) that never activates to show anything. A click on one of its buttons does the thing, then hands the foreground straight back to the window you were in. Its material (Acrylic kept active, Mica, or the system's solid colour) is still open; research.md has the measurements and Microsoft's guidance. Hidden while a full-screen window covers its screen, or during a presentation.</div>
+  <div><b>Every action has a keyboard path.</b> Narrator and the keyboard don't navigate into a window that never activates, so the window has every reading and every action the HUD has: Refresh and Try again on Limits, the HUD's buttons in Settings → HUD, and a shortcut. The HUD's text is full sentences for UI Automation, for anyone who points at it.</div>
+  <div><b>Nothing moves unless a value does.</b> No entrance animation; a bar eases to its new length when a reading changes. The countdown ticks once a minute.</div>
+  <div><b>Honest about age.</b> The footer always says when the numbers were read; offline keeps the last reading, faded, with its time.</div>
+  <div><b>Quiet.</b> One notification per crossing (20%, 0%, back), none for anything else. The HUD itself never pops up or flashes.</div>
+</div>
+
+</body>
+</html>

@@ -307,3 +307,22 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
         return [:]
     }
 }
+
+// MARK: - The HUD
+
+/// ClaudeBar's monitor over this PC's providers, made on the first HUD call.
+@MainActor private let hud = HudMonitor()
+
+/// What the HUD shows, from the snapshots the monitor holds now; the first
+/// call starts its background refresh. `{reading: HudReading, readAt,
+/// problems: [{id, kind, message}], looks: [{id, name, light, dark}], state}`,
+/// dates in seconds since 1970; `readAt` is null before any numbers.
+@c public func cbw_hud_reading(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    run(context, callback) { _ in try hud.answer().json() }
+}
+
+/// *Refresh*: refreshes every tool in the lineup, then replies as
+/// `cbw_hud_reading` does.
+@c public func cbw_hud_refresh(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    run(context, callback) { _ in try await hud.refresh().json() }
+}

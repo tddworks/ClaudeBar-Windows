@@ -44,7 +44,7 @@ public final class ProviderTokenLogs: TokenLogs {
     public var providers: [Provider] { logins.map(\.provider) }
 
     /// A definition's colour as `#RRGGBB`; grey for one without a colour.
-    private static func hex(_ rgb: ProviderLook.RGB?) -> String {
+    static func hex(_ rgb: ProviderLook.RGB?) -> String {
         guard let rgb else { return "#8A8A8A" }
         func byte(_ value: Double) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
         return "#" + [rgb.red, rgb.green, rgb.blue].map { String(byte($0), radix: 16).uppercased() }

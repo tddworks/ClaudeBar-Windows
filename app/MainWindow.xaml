@@ -62,11 +62,68 @@
                     <Button x:Name="KeepKeyButton" Content="Keep the key here" Click="OnKeepKeyHere" />
                 </InfoBar.ActionButton>
             </InfoBar>
+            <!-- Starting at sign-in is offered once, after the first reading, and off until accepted (design). -->
+            <InfoBar x:Name="StartupBar" Margin="20,4,20,8" IsOpen="False" IsClosable="True" Severity="Informational"
+                     Title="Start ClaudeBar when you sign in?"
+                     Message="The HUD and your limits are there from the start. You can turn it off in Settings."
+                     Closed="OnStartupBarClosed">
+                <InfoBar.ActionButton>
+                    <Button Content="Start with Windows" Click="OnAcceptStartup" />
+                </InfoBar.ActionButton>
+            </InfoBar>
             <InfoBar x:Name="Notice" Margin="20,4,20,8" IsOpen="False" IsClosable="True" />
         </StackPanel>
 
+        <!-- The window's pages (the HUD's mockup, section 5): Limits, Usage, Leaderboard and Settings. -->
+        <NavigationView x:Name="Nav" Grid.Row="2" PaneDisplayMode="Left" IsBackButtonVisible="Collapsed" IsPaneToggleButtonVisible="False"
+                        OpenPaneLength="172" IsSettingsVisible="True" IsTitleBarAutoPaddingEnabled="False" SelectionChanged="OnNavigate">
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="LimitsItem" Content="Limits" Tag="limits">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE916;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="UsageItem" Content="Usage" Tag="usage">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D2;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="LeaderboardItem" Content="Leaderboard" Tag="leaderboard">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE728;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+        <Grid>
+
+        <!-- Limits: every reading the HUD has, with full names, and its actions; the keyboard and Narrator path to them -->
+        <ScrollViewer x:Name="LimitsPage" Visibility="Collapsed">
+            <StackPanel Padding="24,14,24,24" Spacing="12">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Limits" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock x:Name="LimitsSubtitle" Style="{StaticResource Secondary}" VerticalAlignment="Center" TextWrapping="NoWrap" />
+                        <HyperlinkButton x:Name="LimitsRefresh" Content="Refresh" Click="OnRefreshLimits" Padding="6,2" />
+                        <ProgressRing x:Name="LimitsBusy" IsActive="False" Width="14" Height="14" />
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel x:Name="LimitsList" Spacing="12" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Usage: today's tokens on this PC, from the tools' local logs -->
+        <ScrollViewer x:Name="UsagePage" Visibility="Collapsed">
+            <StackPanel Padding="24,14,24,24" Spacing="12">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Usage" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="UsageSubtitle" Text="Tokens on this PC, from each tool's local logs" Style="{StaticResource Secondary}" />
+                </StackPanel>
+                <Border Style="{StaticResource Card}" Padding="16,12">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Today" Style="{StaticResource Secondary}" />
+                        <TextBlock x:Name="UsageToday" FontSize="28" FontWeight="SemiBold" FontFamily="Segoe UI Variable Display" Text="Counting…" />
+                    </StackPanel>
+                </Border>
+                <StackPanel x:Name="UsageList" Spacing="4" />
+            </StackPanel>
+        </ScrollViewer>
+
         <!-- 1 · Join -->
-        <ScrollViewer x:Name="JoinPage" Grid.Row="2" Visibility="Collapsed">
+        <ScrollViewer x:Name="JoinPage" Visibility="Collapsed">
             <StackPanel Padding="24,6,24,24" Spacing="0">
                 <Grid ColumnSpacing="12" Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
@@ -138,7 +195,7 @@
         </ScrollViewer>
 
         <!-- 2 · Board -->
-        <Grid x:Name="BoardPage" Grid.Row="2" Visibility="Collapsed">
+        <Grid x:Name="BoardPage" Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -269,19 +326,189 @@
         </Grid>
 
         <!-- 3 · Settings -->
-        <Grid x:Name="SettingsPage" Grid.Row="2" Visibility="Collapsed">
+        <Grid x:Name="SettingsPage" Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <StackPanel Orientation="Horizontal" Spacing="6" Padding="14,2,24,10">
-                <Button Style="{StaticResource IconButton}" Click="OnCloseSettings" ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
-                    <FontIcon Glyph="&#xE72B;" FontSize="16" />
-                </Button>
-                <TextBlock Text="Settings" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center" />
-            </StackPanel>
+            <TextBlock Text="Settings" Style="{StaticResource SubtitleTextBlockStyle}" Margin="24,14,24,10" />
             <ScrollViewer Grid.Row="1">
                 <StackPanel Padding="24,0,24,24" Spacing="2">
+                    <TextBlock Text="General" Style="{StaticResource GroupTitle}" Margin="2,0,0,8" />
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE7E8;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Start with Windows" />
+                                <TextBlock Text="Open ClaudeBar when you sign in, with the HUD. Windows also lists it in Settings, Apps, Startup." Style="{StaticResource Secondary}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="StartupSwitch" Grid.Column="2" OnContent="On" OffContent="Off" MinWidth="0"
+                                          Toggled="OnStartupToggled" AutomationProperties.Name="Start with Windows" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE7C4;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Icon in the system tray" />
+                                <TextBlock Text="Click it for your place. Closing the window keeps ClaudeBar there. Windows puts new icons under ^; drag it onto the taskbar to keep it in view."
+                                           Style="{StaticResource Tertiary}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="TraySwitch" Grid.Column="2" OnContent="On" OffContent="Off" MinWidth="0"
+                                          Toggled="OnTrayToggled" AutomationProperties.Name="Icon in the system tray" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE718;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="On the taskbar" />
+                                <TextBlock Text="A dot on ClaudeBar's button shows the worst limit: amber, or red. Hover the button for your place; right-click it to show the HUD or upload. To keep it there, right-click it and choose Pin to taskbar."
+                                           Style="{StaticResource Tertiary}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Settings › HUD (the HUD's mockup, section 6): six settings, no more -->
+                    <TextBlock Text="HUD" Style="{StaticResource GroupTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE7F4;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Show the HUD" />
+                                <TextBlock Text="A small window with your limits that stays on screen" Style="{StaticResource Secondary}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="HudSwitch" Grid.Column="2" OnContent="On" OffContent="Off" MinWidth="0"
+                                          Toggled="OnHudToggled" AutomationProperties.Name="Show the HUD" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE8A9;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Style" />
+                                <TextBlock Text="The strip is one line; click it for the card" Style="{StaticResource Secondary}" />
+                            </StackPanel>
+                            <ComboBox x:Name="HudStyleBox" Grid.Column="2" VerticalAlignment="Center" MinWidth="120"
+                                      SelectionChanged="OnHudStyleChanged" AutomationProperties.Name="HUD style">
+                                <ComboBoxItem Content="Card" Tag="card" />
+                                <ComboBoxItem Content="Strip" Tag="strip" />
+                            </ComboBox>
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE7F8;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Corner" />
+                                <TextBlock Text="Or drag the HUD; it snaps to the nearest corner of that screen" Style="{StaticResource Secondary}" />
+                            </StackPanel>
+                            <ComboBox x:Name="HudCornerBox" Grid.Column="2" VerticalAlignment="Center" MinWidth="120"
+                                      SelectionChanged="OnHudCornerChanged" AutomationProperties.Name="HUD corner">
+                                <ComboBoxItem Content="Top left" Tag="TopLeft" />
+                                <ComboBoxItem Content="Top right" Tag="TopRight" />
+                                <ComboBoxItem Content="Bottom left" Tag="BottomLeft" />
+                                <ComboBoxItem Content="Bottom right" Tag="BottomRight" />
+                            </ComboBox>
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE718;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Keep it on top" />
+                                <TextBlock Text="Hidden while a full-screen app, game or presentation runs" Style="{StaticResource Secondary}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="HudOnTopSwitch" Grid.Column="2" OnContent="On" OffContent="Off" MinWidth="0"
+                                          Toggled="OnHudOnTopToggled" AutomationProperties.Name="Keep the HUD on top" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE8FD;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Tools on the HUD" />
+                                <TextBlock x:Name="HudToolsText" Style="{StaticResource Secondary}" />
+                            </StackPanel>
+                            <Button x:Name="HudToolsButton" Grid.Column="2" Content="Choose" VerticalAlignment="Center"
+                                    Click="OnChooseTools" AutomationProperties.Name="Choose the tools on the HUD" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE765;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Shortcut to show or hide it" />
+                                <TextBlock x:Name="HudShortcutText" Style="{StaticResource Secondary}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Button x:Name="HudShortcutClear" Content="Clear" Click="OnClearShortcut" AutomationProperties.Name="Clear the HUD's shortcut" />
+                                <Button Content="Set" Click="OnSetShortcut" AutomationProperties.Name="Set the HUD's shortcut" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="Leaderboard" Style="{StaticResource GroupTitle}" />
+                    <Border x:Name="NotJoinedSettings" Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE728;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Not on the leaderboard" />
+                                <TextBlock Text="Join to see where you rank. Only daily token counts leave this PC." Style="{StaticResource Secondary}" />
+                            </StackPanel>
+                            <Button Grid.Column="2" Content="Open the leaderboard" Click="OnOpenLeaderboard" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <StackPanel x:Name="LeaderboardSettings" Spacing="2">
                     <Border Style="{StaticResource Card}" Padding="16,14">
                         <StackPanel Orientation="Horizontal" Spacing="14">
                             <Grid Width="48" Height="48">
@@ -348,39 +575,6 @@
                         </Grid>
                     </Border>
 
-                    <TextBlock Text="Where it shows" Style="{StaticResource GroupTitle}" />
-                    <Border Style="{StaticResource Card}">
-                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE718;" FontSize="18" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="On the taskbar" />
-                                <TextBlock Text="Hover ClaudeBar's taskbar button for your place; right-click it to upload. To keep it there, right-click it and choose Pin to taskbar."
-                                           Style="{StaticResource Tertiary}" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                    <Border Style="{StaticResource Card}">
-                        <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE7C4;" FontSize="18" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="Icon in the system tray" />
-                                <TextBlock Text="Click it for your place. Closing the window keeps ClaudeBar there. Windows puts new icons under ^; drag it onto the taskbar to keep it in view."
-                                           Style="{StaticResource Tertiary}" />
-                            </StackPanel>
-                            <ToggleSwitch x:Name="TraySwitch" Grid.Column="2" OnContent="On" OffContent="Off" MinWidth="0"
-                                          Toggled="OnTrayToggled" AutomationProperties.Name="Icon in the system tray" />
-                        </Grid>
-                    </Border>
-
                     <TextBlock Text="Your data" Style="{StaticResource GroupTitle}" />
                     <Border Style="{StaticResource Card}">
                         <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">
@@ -414,9 +608,13 @@
                         </Grid>
                     </Border>
 
+                    </StackPanel>
+
                     <TextBlock x:Name="VersionText" Style="{StaticResource Tertiary}" HorizontalAlignment="Center" Margin="0,18,0,0" />
                 </StackPanel>
             </ScrollViewer>
         </Grid>
+        </Grid>
+        </NavigationView>
     </Grid>
 </Window>

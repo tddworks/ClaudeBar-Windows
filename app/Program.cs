@@ -15,6 +15,16 @@ public static partial class Program
     private static int Main(string[] args)
     {
         WinRT.ComWrappersSupport.InitializeComWrappers();
+        // The HUD's check (HudCheck.cs) runs beside the real ClaudeBar: it opens no membership.
+        if (args.Contains("--hud-check"))
+        {
+            Application.Start(parameters =>
+            {
+                SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
+                _ = new App(args);
+            });
+            return 0;
+        }
         var main = AppInstance.FindOrRegisterForKey("ClaudeBar.window");
         if (!main.IsCurrent)
         {
@@ -24,7 +34,7 @@ public static partial class Program
         Application.Start(parameters =>
         {
             SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-            _ = new App();
+            _ = new App(args);
         });
         return 0;
     }

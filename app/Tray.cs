@@ -17,25 +17,132 @@ namespace ClaudeBar;
 /// package keeps in settings.json): `%LOCALAPPDATA%\ClaudeBar\app.json`.
 internal static class Preferences
 {
-    private static string File => System.IO.Path.Combine(
+    private static string _file = System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClaudeBar", "app.json");
+
+    /// Keeps them in `file` instead: the HUD's check (`--hud-check`) never
+    /// touches the person's own.
+    internal static void UseFile(string file) => _file = file;
 
     /// The tray icon, an option, off by default (design-concept/leaderboard).
     internal static bool TrayIcon
     {
         get => Read()?["trayIcon"]?.GetValue<bool>() == true;
+        set => Write("trayIcon", value);
+    }
+
+    /// The HUD, on by default (docs/plans/2026-10-13-hud-design.md).
+    internal static bool Hud
+    {
+        get => Read()?["hud"]?.GetValue<bool>() != false;
+        set => Write("hud", value);
+    }
+
+    /// `card` or `strip`.
+    internal static string HudStyle
+    {
+        get => Read()?["hudStyle"]?.GetValue<string>() == "strip" ? "strip" : "card";
+        set => Write("hudStyle", value);
+    }
+
+    /// The corner of its screen the HUD snaps to, bottom-right by default.
+    internal static Corner HudCorner
+    {
+        get => Enum.TryParse<Corner>(Read()?["hudCorner"]?.GetValue<string>(), out var corner) ? corner : Corner.BottomRight;
+        set => Write("hudCorner", value.ToString());
+    }
+
+    /// The display the HUD was snapped to (`DisplayId.Value`); the primary until then.
+    internal static ulong? HudScreen
+    {
+        get => Read()?["hudScreen"]?.GetValue<ulong>();
+        set => Write("hudScreen", value);
+    }
+
+    /// Always on top, by default.
+    internal static bool HudOnTop
+    {
+        get => Read()?["hudOnTop"]?.GetValue<bool>() != false;
+        set => Write("hudOnTop", value);
+    }
+
+    /// The tools the person took off the HUD; the window still shows them.
+    internal static IReadOnlySet<string> HudHiddenTools
+    {
+        get => (Read()?["hudHiddenTools"] as JsonArray ?? new JsonArray()).Select(id => id?.GetValue<string>() ?? "").ToHashSet();
+        set => Write("hudHiddenTools", new JsonArray(value.Order().Select(id => (JsonNode?)id).ToArray()));
+    }
+
+    /// The tools and windows of the last reading, so the HUD draws their rows
+    /// while it reads for the first time after a start.
+    internal static IReadOnlyList<(HudData.Look Look, IReadOnlyList<string> Windows)> HudPending
+    {
+        get => (Read()?["hudPending"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(tool => (
+            new HudData.Look(tool["id"]?.GetValue<string>() ?? "", tool["name"]?.GetValue<string>() ?? "",
+                             tool["light"]?.GetValue<string>() ?? "#8A8A8A", tool["dark"]?.GetValue<string>() ?? "#8A8A8A"),
+            (IReadOnlyList<string>)(tool["windows"] as JsonArray ?? new JsonArray()).Select(window => window?.GetValue<string>() ?? "").ToList())).ToList();
+        set => Write("hudPending", new JsonArray(value.Select(tool => (JsonNode?)new JsonObject
+        {
+            ["id"] = tool.Look.Id, ["name"] = tool.Look.Name, ["light"] = tool.Look.Light, ["dark"] = tool.Look.Dark,
+            ["windows"] = new JsonArray(tool.Windows.Select(window => (JsonNode?)window).ToArray()),
+        }).ToArray()));
+    }
+
+    /// Where each limit was at the last reading, for the notifications (HudCrossings).
+    internal static IReadOnlyDictionary<string, KeptLine> HudLines
+    {
+        get => (Read()?["hudLines"] as JsonObject ?? new JsonObject()).Where(pair => pair.Value is JsonObject).ToDictionary(pair => pair.Key, pair => new KeptLine(
+            pair.Value!["status"]?.GetValue<string>() ?? "healthy",
+            Date(pair.Value["resetsAt"]),
+            (pair.Value["notified"] as JsonArray ?? new JsonArray()).Select(c => Enum.TryParse<Crossing>(c?.GetValue<string>(), out var crossing) ? crossing : (Crossing?)null)
+                .OfType<Crossing>().ToList(),
+            Date(pair.Value["quietUntil"])));
         set
         {
-            var contents = Read() ?? new JsonObject();
-            contents["trayIcon"] = value;
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(File)!);
-            System.IO.File.WriteAllText(File, contents.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            var lines = new JsonObject();
+            foreach (var (key, line) in value)
+            {
+                lines[key] = new JsonObject
+                {
+                    ["status"] = line.Status,
+                    ["resetsAt"] = line.ResetsAt?.ToUnixTimeSeconds(),
+                    ["notified"] = new JsonArray(line.Notified.Select(crossing => (JsonNode?)crossing.ToString()).ToArray()),
+                    ["quietUntil"] = line.QuietUntil?.ToUnixTimeSeconds(),
+                };
+            }
+            Write("hudLines", lines);
         }
+    }
+
+    /// The shortcut that shows or hides the HUD: `RegisterHotKey`'s modifiers and virtual key; none by default.
+    internal static (uint Modifiers, uint Key)? HudShortcut
+    {
+        get => Read()?["hudShortcut"] is JsonObject shortcut && shortcut["key"]?.GetValue<uint>() is uint key and > 0
+            ? (shortcut["modifiers"]?.GetValue<uint>() ?? 0, key) : null;
+        set => Write("hudShortcut", value is { } shortcut ? new JsonObject { ["modifiers"] = shortcut.Modifiers, ["key"] = shortcut.Key } : null);
+    }
+
+    /// Whether starting with Windows was offered, after the first reading; it's offered once.
+    internal static bool StartupOffered
+    {
+        get => Read()?["startupOffered"]?.GetValue<bool>() == true;
+        set => Write("startupOffered", value);
+    }
+
+    private static DateTimeOffset? Date(JsonNode? node) =>
+        node?.GetValue<long>() is long seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
+
+    private static void Write(string key, JsonNode? value)
+    {
+        var contents = Read() ?? new JsonObject();
+        contents[key] = value;
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_file)!);
+        System.IO.File.WriteAllText(_file, contents.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private static JsonObject? Read()
     {
-        try { return JsonNode.Parse(System.IO.File.ReadAllText(File)) as JsonObject; }
+        try { return JsonNode.Parse(System.IO.File.ReadAllText(_file)) as JsonObject; }
         catch (Exception) { return null; }
     }
 }

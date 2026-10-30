@@ -27,7 +27,7 @@
     <!-- WinUI and what it pulls in, not the Microsoft.WindowsAppSDK metapackage (46 MB of AI/ML parts); as the UI spike chose. -->
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.3.9" />
     <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.9" />
-    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.5.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.5.1" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.MSIX" Version="1.7.260930100" />
   </ItemGroup>
 
@@ -35,5 +35,24 @@
     <!-- ClaudeBarNative.dll, claudebar-upload.exe, the Swift runtime and ClaudeBar's resource bundles, staged by build.ps1. -->
     <Content Include="..\native-out\$(RuntimeIdentifier)\**\*" LinkBase="." CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The sample readings the HUD check shows (HudCheck.cs). -->
+    <EmbeddedResource Include="..\tests\hud-check.json" LogicalName="hud-check.json" />
+    <EmbeddedResource Include="..\tests\hud-check-fine.json" LogicalName="hud-check-fine.json" />
   </ItemGroup>
+
+  <!-- AppNotificationManager.Register() needs Microsoft.WindowsAppRuntime.Insights.Resource.dll,
+       which only the Runtime package's MSIX carries: a self-contained publish leaves it out, and
+       Register throws 0x8007007E, so no notification's button comes back to the app
+       (microsoft/WindowsAppSDK#6774, open on 2.5.1). Taken from that MSIX, the same version. -->
+  <Target Name="AddNotificationResources" BeforeTargets="AssignTargetPaths" Condition="'$(RuntimeIdentifier)' != ''">
+    <PropertyGroup>
+      <RuntimeMsix>$(PkgMicrosoft_WindowsAppSDK_Runtime)\tools\MSIX\win10-$(RuntimeIdentifier.Replace('win-', ''))\Microsoft.WindowsAppRuntime.2.msix</RuntimeMsix>
+      <RuntimeResources>$(IntermediateOutputPath)runtime-resources\</RuntimeResources>
+    </PropertyGroup>
+    <Unzip SourceFiles="$(RuntimeMsix)" DestinationFolder="$(RuntimeResources)" Include="Microsoft.WindowsAppRuntime.Insights.Resource.dll" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <Content Include="$(RuntimeResources)Microsoft.WindowsAppRuntime.Insights.Resource.dll" Link="Microsoft.WindowsAppRuntime.Insights.Resource.dll"
+               CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>
