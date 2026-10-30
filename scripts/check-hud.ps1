@@ -473,16 +473,23 @@ foreach ($theme in $Themes) {
         "  {0} a click on Claude's row asks for the Limits page: clicked={1}" -f (Pass $clicked), $clicked
       } else { Unverified "a click on Claude's row: the point isn't on the HUD" }
     } else { "  {0} no row for Claude on the HUD" -f (Pass $false) }
-    # A right-click on the card opens its menu; Esc closes it.
+    # A right-click on the card opens its menu; Esc closes it. The other app goes back in
+    # front first: a window that came up meanwhile (a chat, a console) may cover it.
+    [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
     $h = Rect $check.Hud
     Mouse-Click ([int]($h.L + 8 * $check.Scale)) ([int](($h.T + $h.B) / 2)) 8 0x10; Start-Sleep -Milliseconds 800
     $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
     "  {0} a right-click on the card opens its menu: 'Hide the HUD' shown={1}" -f (Pass ([bool]$menu)), [bool]$menu
-    # Closed as a person does, a click elsewhere (Esc goes to the window in front, not the HUD).
+    # Closed as a person does, a click elsewhere (Esc goes to the window in front, not the HUD),
+    # only on the other app: never on whatever window is there instead.
     $o = Rect $other.Window
-    Mouse-Click ([int](($o.L + $o.R) / 2)) ([int](($o.T + $o.B) / 2)); Start-Sleep -Milliseconds 600
-    $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
-    "  {0} a click elsewhere closes the menu: closed={1}" -f (Pass (-not $menu)), (-not $menu)
+    $ox = [int](($o.L + $o.R) / 2); $oy = [int](($o.T + $o.B) / 2)
+    if ([H]::RootAt($ox, $oy) -ne $other.Window) { Unverified "a click elsewhere closes the menu: the other app isn't at ($ox,$oy) ($([H]::Title([H]::RootAt($ox, $oy))) is)" }
+    else {
+      Mouse-Click $ox $oy; Start-Sleep -Milliseconds 600
+      $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
+      "  {0} a click elsewhere closes the menu: closed={1}" -f (Pass (-not $menu)), (-not $menu)
+    }
     [void][H]::SetCursorPos($saved.X, $saved.Y)
     $other.Process.Kill()
   }
