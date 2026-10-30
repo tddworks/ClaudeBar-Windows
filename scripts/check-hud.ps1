@@ -626,7 +626,7 @@ foreach ($theme in $Themes) {
       for ($i = 0; $i -lt 50 -and -not (Test-Path (Join-Path $dir 'activated.txt')); $i++) { Start-Sleep -Milliseconds 100 }
       $got = Get-Content (Join-Path $dir 'activated.txt') -ErrorAction SilentlyContinue
       $got | ForEach-Object { "    $_" }
-      $quiet = ($got -match '^quiet=omp/Kimi 7d$').Count -eq 1 -and -not ($got -match '^quietUntil=(none|no such limit)$')
+      $quiet = ($got -match '^quiet=omp/time:Kimi 7d$').Count -eq 1 -and -not ($got -match '^quietUntil=(none|no such limit)$')
       "  {0} 'Quiet until reset' on the notification quiets omp's Kimi 7d" -f (Pass $quiet)
     }
   }

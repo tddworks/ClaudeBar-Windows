@@ -113,9 +113,9 @@ internal sealed class HudCheck
     }
 
     private readonly bool _notifying;
-    private const string QuietKey = "omp/Kimi 7d";
+    private const string QuietKey = "omp/time:Kimi 7d";
 
-    /// The crossing notification for `omp/Kimi 7d`, sent as the app sends it
+    /// The crossing notification for omp's Kimi 7d limit (`omp/time:Kimi 7d`), sent as the app sends it
     /// (`App.Notify`, `MainWindow.OnCrossed`). Its *Quiet until reset* button
     /// comes back through Windows, is read as `MainWindow.Open` reads it, and
     /// quiets that limit; activated.txt says what arrived and what was kept,

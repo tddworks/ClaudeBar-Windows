@@ -5,6 +5,7 @@
         "id": "claude",
         "lines": [
           {
+            "key": "session",
             "window": "5h",
             "percentLeft": 58,
             "resetsAt": 1791912960,
@@ -16,6 +17,7 @@
             "runsOutAt": 1791905100
           },
           {
+            "key": "weekly",
             "window": "7d",
             "percentLeft": 81,
             "resetsAt": 1792180800,
@@ -39,6 +41,7 @@
         "id": "codex",
         "lines": [
           {
+            "key": "session",
             "window": "5h",
             "percentLeft": 0,
             "resetsAt": 1791906000,
@@ -49,6 +52,7 @@
             "strip": true
           },
           {
+            "key": "weekly",
             "window": "7d",
             "percentLeft": 58,
             "resetsAt": 1792335600,
@@ -69,9 +73,12 @@
         "readAt": 1791900000
       },
       {
-        "id": "omp",
+        "id": "omp/Claude",
+        "group": "Claude",
+        "via": "omp",
         "lines": [
           {
+            "key": "time:Claude 5h",
             "window": "5h",
             "percentLeft": 88,
             "resetsAt": 1791908040,
@@ -79,9 +86,10 @@
             "status": "healthy",
             "runningHot": false,
             "tick": 44.7,
-            "strip": false
+            "strip": true
           },
           {
+            "key": "time:Claude 7d",
             "window": "7d",
             "percentLeft": 76,
             "resetsAt": 1792180800,
@@ -92,6 +100,7 @@
             "strip": false
           },
           {
+            "key": "time:Claude Opus 7d",
             "window": "Opus 7d",
             "percentLeft": 69,
             "resetsAt": 1792180800,
@@ -102,6 +111,7 @@
             "strip": false
           },
           {
+            "key": "time:Claude Sonnet 7d",
             "window": "Sonnet 7d",
             "percentLeft": 81,
             "resetsAt": 1792180800,
@@ -110,19 +120,36 @@
             "runningHot": false,
             "tick": 46.4,
             "strip": false
-          },
+          }
+        ],
+        "headline": 2,
+        "others": {
+          "count": 3,
+          "attention": 0
+        },
+        "outUntil": null,
+        "runningHot": false,
+        "readAt": 1791900000
+      },
+      {
+        "id": "omp/Kimi",
+        "group": "Kimi",
+        "via": "omp",
+        "lines": [
           {
-            "window": "Kimi 5h",
+            "key": "time:Kimi 5h",
+            "window": "5h",
             "percentLeft": 44,
             "resetsAt": 1791908040,
             "windowSeconds": 18000,
             "status": "warning",
             "runningHot": false,
             "tick": 44.7,
-            "strip": false
+            "strip": true
           },
           {
-            "window": "Kimi 7d",
+            "key": "time:Kimi 7d",
+            "window": "7d",
             "percentLeft": 31,
             "resetsAt": 1792180800,
             "windowSeconds": 604800,
@@ -130,91 +157,159 @@
             "runningHot": false,
             "tick": 46.4,
             "strip": true
-          },
+          }
+        ],
+        "headline": 1,
+        "others": {
+          "count": 1,
+          "attention": 1
+        },
+        "outUntil": null,
+        "runningHot": false,
+        "readAt": 1791900000
+      },
+      {
+        "id": "omp/Z.ai",
+        "group": "Z.ai",
+        "via": "omp",
+        "lines": [
           {
-            "window": "GLM 5h",
+            "key": "time:Z.ai 5h",
+            "window": "5h",
             "percentLeft": 95,
             "resetsAt": 1791908040,
             "windowSeconds": 18000,
             "status": "healthy",
             "runningHot": false,
             "tick": 44.7,
-            "strip": false
+            "strip": true
           },
           {
-            "window": "GLM 7d",
+            "key": "time:Z.ai 7d",
+            "window": "7d",
             "percentLeft": 47,
             "resetsAt": 1792180800,
             "windowSeconds": 604800,
             "status": "warning",
             "runningHot": false,
             "tick": 46.4,
-            "strip": false
-          },
+            "strip": true
+          }
+        ],
+        "headline": 1,
+        "others": {
+          "count": 1,
+          "attention": 0
+        },
+        "outUntil": null,
+        "runningHot": false,
+        "readAt": 1791900000
+      },
+      {
+        "id": "omp/Codex",
+        "group": "Codex",
+        "via": "omp",
+        "lines": [
           {
-            "window": "Qwen 1d",
-            "percentLeft": 90,
-            "resetsAt": 1791934800,
-            "windowSeconds": 86400,
-            "status": "healthy",
-            "runningHot": false,
-            "tick": 40.3,
-            "strip": false
-          },
-          {
-            "window": "DeepSeek 1d",
-            "percentLeft": 84,
-            "resetsAt": 1791934800,
-            "windowSeconds": 86400,
-            "status": "healthy",
-            "runningHot": false,
-            "tick": 40.3,
-            "strip": false
-          },
-          {
-            "window": "Grok 1d",
-            "percentLeft": 73,
-            "resetsAt": 1791934800,
-            "windowSeconds": 86400,
-            "status": "healthy",
-            "runningHot": false,
-            "tick": 40.3,
-            "strip": false
-          },
-          {
-            "window": "Mistral 1d",
-            "percentLeft": 92,
-            "resetsAt": 1791934800,
-            "windowSeconds": 86400,
-            "status": "healthy",
-            "runningHot": false,
-            "tick": 40.3,
-            "strip": false
-          },
-          {
-            "window": "Codex 7d",
+            "key": "time:Codex 7d",
+            "window": "7d",
             "percentLeft": 66,
             "resetsAt": 1792180800,
             "windowSeconds": 604800,
             "status": "healthy",
             "runningHot": false,
             "tick": 46.4,
+            "strip": true
+          },
+          {
+            "key": "time:Codex Spark 7d",
+            "window": "Spark 7d",
+            "percentLeft": 92,
+            "resetsAt": 1791934800,
+            "windowSeconds": 604800,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 40.3,
             "strip": false
           }
         ],
+        "headline": 0,
+        "others": {
+          "count": 1,
+          "attention": 0
+        },
         "outUntil": null,
         "runningHot": false,
-        "headline": 5,
+        "readAt": 1791900000
+      },
+      {
+        "id": "omp/Claude · work",
+        "group": "Claude · work",
+        "via": "omp",
+        "lines": [
+          {
+            "key": "time:Claude 5h · work",
+            "window": "5h",
+            "percentLeft": 90,
+            "resetsAt": 1791934800,
+            "windowSeconds": 18000,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 40.3,
+            "strip": true
+          },
+          {
+            "key": "time:Claude 7d · work",
+            "window": "7d",
+            "percentLeft": 84,
+            "resetsAt": 1791934800,
+            "windowSeconds": 604800,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 40.3,
+            "strip": false
+          }
+        ],
+        "headline": 0,
         "others": {
-          "count": 12,
-          "attention": 2
+          "count": 1,
+          "attention": 0
         },
+        "outUntil": null,
+        "runningHot": false,
+        "readAt": 1791900000
+      },
+      {
+        "id": "omp/Grok",
+        "group": "Grok",
+        "via": "omp",
+        "lines": [
+          {
+            "key": "time:Grok 1d",
+            "window": "1d",
+            "percentLeft": 73,
+            "resetsAt": 1791934800,
+            "windowSeconds": 86400,
+            "status": "healthy",
+            "runningHot": false,
+            "tick": 40.3,
+            "strip": true
+          }
+        ],
+        "headline": 0,
+        "others": {
+          "count": 0,
+          "attention": 0
+        },
+        "outUntil": null,
+        "runningHot": false,
         "readAt": 1791900000
       },
       {
         "id": "cursor",
         "lines": [
           {
+            "key": "time:month",
             "window": "month",
             "percentLeft": 72,
             "resetsAt": 1792936800,
@@ -238,6 +333,7 @@
         "id": "gemini",
         "lines": [
           {
+            "key": "time:1d",
             "window": "1d",
             "percentLeft": 93,
             "resetsAt": 1791934800,
@@ -261,6 +357,7 @@
         "id": "copilot",
         "lines": [
           {
+            "key": "time:month",
             "window": "month",
             "percentLeft": 64,
             "resetsAt": 1792936800,
@@ -306,9 +403,45 @@
     },
     {
       "id": "omp",
-      "name": "omp",
-      "light": "#7A5AF8",
-      "dark": "#B9A6FF"
+      "name": "Oh My Pi",
+      "light": "#299E61",
+      "dark": "#4DD98C"
+    },
+    {
+      "id": "omp/Claude",
+      "name": "Claude",
+      "light": "#E2674A",
+      "dark": "#FA8C73"
+    },
+    {
+      "id": "omp/Kimi",
+      "name": "Kimi",
+      "light": "#338CD9",
+      "dark": "#4DA6F2"
+    },
+    {
+      "id": "omp/Z.ai",
+      "name": "Z.ai",
+      "light": "#3B82F5",
+      "dark": "#5999FF"
+    },
+    {
+      "id": "omp/Codex",
+      "name": "Codex",
+      "light": "#1C9E93",
+      "dark": "#59D9C7"
+    },
+    {
+      "id": "omp/Claude · work",
+      "name": "Claude · work",
+      "light": "#E2674A",
+      "dark": "#FA8C73"
+    },
+    {
+      "id": "omp/Grok",
+      "name": "Grok",
+      "light": "#1F1F1F",
+      "dark": "#EBEBEB"
     },
     {
       "id": "cursor",

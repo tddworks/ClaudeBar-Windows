@@ -6,10 +6,19 @@ import Quotas
 /// the person's policy, pace, the expected-pace tick), so a limit reads the
 /// same on Windows as in the Mac's popover. Numbers and dates, not words:
 /// the app formats them in the person's language.
+///
+/// A tool whose limits carry a `group` (an aggregator such as Oh My Pi,
+/// reading Claude, Codex and Kimi accounts) is a tool per group, as the
+/// Mac's popover gives each group its own section.
 public struct HudReading: Equatable, Sendable, Encodable {
     public struct Line: Equatable, Sendable, Encodable {
-        public let key: String = ""
-        /// The window's short name: the quota's compact title, or "5h", "7d".
+        /// ClaudeBar's own persisted key for the limit (`QuotaType.quotaKey`:
+        /// `session`, `time:Claude 5h · work`): the same from one reading to
+        /// the next, whatever its title, and naming the account where an
+        /// aggregator reads several.
+        public let key: String
+        /// The window's short name: the quota's compact title, or "5h", "7d";
+        /// inside a group, without the group's own words ("Spark 7d", not "Codex Spark 7d").
         public let window: String
         /// The share left, as the Mac shows it (whole percent, rounded down).
         public let percentLeft: Int
@@ -36,9 +45,12 @@ public struct HudReading: Equatable, Sendable, Encodable {
     }
 
     public struct Tool: Equatable, Sendable, Encodable {
+        /// The login's lineup id, or `<login>/<group>` for a group.
         public let id: String
-        public let group: String? = nil
-        public let via: String? = nil
+        /// The aggregator's section these limits belong to ("Codex", "Claude · work").
+        public let group: String?
+        /// The login a group's limits were read through (`omp`).
+        public let via: String?
         public let lines: [Line]
         /// The index in `lines` of the limit that stops the person first;
         /// `nil` when the tool has no limit with a share.
@@ -58,34 +70,66 @@ public struct HudReading: Equatable, Sendable, Encodable {
     public init(snapshots: [UsageSnapshot], policy: StatusPolicy) {
         let now = Date()
         var worst = QuotaStatus.healthy
-        tools = snapshots.map { snapshot in
-            // A balance with no ceiling has no share to draw; the window shows it.
-            let quotas = snapshot.quotas.filter { !$0.isBalance && $0.percentLeft != nil }
-            let shortest = quotas.min { ($0.windowDuration ?? .infinity) < ($1.windowDuration ?? .infinity) }
-            let statuses = quotas.map { $0.status(under: policy, at: now) }
-            worst = max(worst, statuses.max() ?? .healthy)
-            let lines = zip(quotas, statuses).map { quota, status in
-                let hot = quota.pace(at: now) == .ahead
-                return Line(
-                    window: quota.compactTitle ?? quota.quotaType.shortLabel,
-                    percentLeft: Int(quota.percentLeft ?? quota.percentRemaining),
-                    resetsAt: quota.resetsAt,
-                    windowSeconds: quota.windowDuration,
-                    status: status.name,
-                    runningHot: hot,
-                    tick: quota.expectedProgressPercent(mode: .remaining),
-                    runsOutAt: quota.forecast(at: now).flatMap(\.runsOutIn).map { now.addingTimeInterval($0) },
-                    strip: quota == shortest || status != .healthy || hot
-                )
+        tools = snapshots.flatMap { snapshot in
+            Self.sections(of: snapshot.quotas).map { group, all in
+                // A balance with no ceiling has no share to draw; the window shows it.
+                let quotas = all.filter { !$0.isBalance && $0.percentLeft != nil }
+                let shortest = quotas.min { ($0.windowDuration ?? .infinity) < ($1.windowDuration ?? .infinity) }
+                let statuses = quotas.map { $0.status(under: policy, at: now) }
+                worst = max(worst, statuses.max() ?? .healthy)
+                let lines = zip(quotas, statuses).map { quota, status in
+                    let hot = quota.pace(at: now) == .ahead
+                    return Line(
+                        key: quota.quotaType.quotaKey,
+                        window: quota.compactTitle ?? group.map { Self.title(quota.quotaType.shortLabel, in: $0) } ?? quota.quotaType.shortLabel,
+                        percentLeft: Int(quota.percentLeft ?? quota.percentRemaining),
+                        resetsAt: quota.resetsAt,
+                        windowSeconds: quota.windowDuration,
+                        status: status.name,
+                        runningHot: hot,
+                        tick: quota.expectedProgressPercent(mode: .remaining),
+                        runsOutAt: quota.forecast(at: now).flatMap(\.runsOutIn).map { now.addingTimeInterval($0) },
+                        strip: quota == shortest || status != .healthy || hot
+                    )
+                }
+                let headline = Self.headline(of: quotas, statuses: statuses, lines: lines)
+                let others = statuses.indices.filter { $0 != headline }
+                let out = zip(quotas, lines).filter { $0.1.status == "depleted" }.compactMap { $0.0.resetsAt }.min()
+                return Tool(id: group.map { "\(snapshot.providerId)/\($0)" } ?? snapshot.providerId,
+                            group: group, via: group == nil ? nil : snapshot.providerId, lines: lines, headline: headline,
+                            others: Others(count: others.count, attention: others.filter { statuses[$0] != .healthy }.count),
+                            outUntil: out, runningHot: lines.contains(where: \.runningHot), readAt: snapshot.capturedAt)
             }
-            let headline = Self.headline(of: quotas, statuses: statuses, lines: lines)
-            let others = statuses.indices.filter { $0 != headline }
-            let out = zip(quotas, lines).filter { $0.1.status == "depleted" }.compactMap { $0.0.resetsAt }.min()
-            return Tool(id: snapshot.providerId, lines: lines, headline: headline,
-                        others: Others(count: others.count, attention: others.filter { statuses[$0] != .healthy }.count),
-                        outUntil: out, runningHot: lines.contains(where: \.runningHot), readAt: snapshot.capturedAt)
         }
         self.worst = worst.name
+    }
+
+    /// A tool's limits by group, in the order the groups first appear (the
+    /// Mac's `UsageSnapshot.quotaGroups`); those without a group are one
+    /// section of their own, named by none. A tool with no limits is one section.
+    private static func sections(of quotas: [UsageQuota]) -> [(group: String?, quotas: [UsageQuota])] {
+        var sections: [(group: String?, quotas: [UsageQuota])] = []
+        for quota in quotas {
+            if let index = sections.firstIndex(where: { $0.group == quota.group }) {
+                sections[index].quotas.append(quota)
+            } else {
+                sections.append((quota.group, [quota]))
+            }
+        }
+        return sections.isEmpty ? [(nil, [])] : sections
+    }
+
+    /// A limit's title inside its group: its label without the words the group
+    /// already says, the product first and the account after ` · `, as omp's
+    /// mapping builds both (`Claude 5h · work` in `Claude · work` is `5h`).
+    static func title(_ label: String, in group: String) -> String {
+        let parts = group.components(separatedBy: " · ")
+        var title = label
+        if parts.count > 1 {
+            title = title.replacingOccurrences(of: " · " + parts.dropFirst().joined(separator: " · "), with: "")
+        }
+        if title.hasPrefix(parts[0] + " ") { title = String(title.dropFirst(parts[0].count + 1)) }
+        return title.isEmpty ? label : title
     }
 
     /// The limit that stops the person first: the worst status, then one

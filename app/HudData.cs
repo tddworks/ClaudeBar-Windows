@@ -78,8 +78,11 @@ internal sealed record HudData(
         return new HudSummary(rows, quiet);
     }
 
-    /// Every limit by a key that stays the same between readings: `claude/5h`.
-    internal static string Key(Tool tool, Line line) => $"{tool.Id}/{line.Window}";
+    /// Every limit by a key that stays the same between readings, whatever
+    /// its title: the login it was read through and ClaudeBar's own key for
+    /// the quota (`claude/session`, `omp/time:Claude 5h · work`), so an
+    /// aggregator's groups keep theirs and two accounts never share one.
+    internal static string Key(Tool tool, Line line) => $"{tool.Via ?? tool.Id}/{line.Key}";
 
     /// The reply's reading, or null when it has none (it failed).
     internal static HudData? Parse(JsonObject reply)
@@ -96,13 +99,16 @@ internal sealed record HudData(
                 line["runningHot"]?.GetValue<bool>() == true,
                 line["tick"]?.GetValue<double>(),
                 line["strip"]?.GetValue<bool>() == true,
-                Date(line["runsOutAt"]))).ToList(),
+                Date(line["runsOutAt"]),
+                line["key"]?.GetValue<string>() ?? line["window"]?.GetValue<string>() ?? "")).ToList(),
             Date(tool["outUntil"]),
             tool["runningHot"]?.GetValue<bool>() == true,
             (int)(tool["headline"]?.GetValue<double>() ?? 0),
             (int)(tool["others"]?["count"]?.GetValue<double>() ?? 0),
             (int)(tool["others"]?["attention"]?.GetValue<double>() ?? 0),
-            Date(tool["readAt"]))).ToList();
+            Date(tool["readAt"]),
+            tool["group"]?.GetValue<string>(),
+            tool["via"]?.GetValue<string>())).ToList();
         var problems = (reply["problems"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(problem => new Problem(
                 problem["id"]?.GetValue<string>() ?? "", problem["kind"]?.GetValue<string>() ?? "failed", problem["message"]?.GetValue<string>() ?? ""))
             .Where(problem => problem.Kind != "notSetUp").ToList();
@@ -117,18 +123,33 @@ internal sealed record HudData(
         return new HudData(tools, reading["worst"]?.GetValue<string>() ?? "healthy", Date(reply["readAt"]), problems, looks);
     }
 
-    /// A tool's name and colours: its own, or its product's for a second login
-    /// (`codex.work`), or its id in grey.
+    /// A tool's name and colours: its own, or for a group without one its
+    /// aggregator's colours under the group's name, or its product's for a
+    /// second login (`codex.work`), or its id in grey.
     internal Look LookOf(string id) =>
         Looks.FirstOrDefault(look => look.Id == id)
+        ?? (id.IndexOf('/') is > 0 and var slash ? LookOf(id[..slash]) with { Id = id, Name = id[(slash + 1)..] } : null)
         ?? Looks.FirstOrDefault(look => look.Id == id.Split('.')[0])
         ?? new Look(id, id, "#8A8A8A", "#8A8A8A");
 
-    internal string Header(Tool tool) => LookOf(tool.Id).Name;
+    /// A tool's name as the Limits page and the HUD's settings say it: a group
+    /// says what it was read through (`Codex · via Oh My Pi`).
+    internal string Header(string id) =>
+        Tools.FirstOrDefault(tool => tool.Id == id)?.Via is { } via ? $"{LookOf(id).Name} · via {LookOf(via).Name}" : LookOf(id).Name;
 
-    internal IReadOnlySet<string> Hidden(IReadOnlySet<string> hidden) => hidden;
+    /// The tools taken off the HUD, with every group of an aggregator taken
+    /// off whole (`omp`, as it was hidden before its groups were tools): a
+    /// group it reads later is hidden too.
+    internal IReadOnlySet<string> Hidden(IReadOnlySet<string> hidden) =>
+        hidden.Concat(Tools.Where(tool => tool.Via is { } via && hidden.Contains(via)).Select(tool => tool.Id)).ToHashSet();
 
-    internal IReadOnlySet<string> Showing(IReadOnlySet<string> hidden, string id) => hidden.Where(other => other != id).ToHashSet();
+    /// The tools taken off the HUD once `id` is back on it: a group back on
+    /// takes its aggregator off the whole-hidden list, its other groups staying off.
+    internal IReadOnlySet<string> Showing(IReadOnlySet<string> hidden, string id)
+    {
+        var via = Tools.FirstOrDefault(tool => tool.Id == id)?.Via;
+        return Hidden(hidden).Where(other => other != id && other != via).ToHashSet();
+    }
 
     /// The same reading with every date moved by `by`: the check's sample, read now.
     internal HudData Shifted(TimeSpan by) => this with
@@ -145,9 +166,14 @@ internal sealed record HudData(
     /// Without the tools the person took off the HUD (Settings → HUD → Tools on the HUD).
     internal HudData Without(IReadOnlySet<string> hidden) => hidden.Count == 0 ? this : this with
     {
-        Tools = Tools.Where(tool => !hidden.Contains(tool.Id)).ToList(),
-        Problems = Problems.Where(problem => !hidden.Contains(problem.Id)).ToList(),
+        Tools = Tools.Where(tool => !Off(hidden, tool.Id)).ToList(),
+        Problems = Problems.Where(problem => !Off(hidden, problem.Id)).ToList(),
     };
+
+    /// Whether a tool is off the HUD: by its own id, or a group (`omp/Codex`)
+    /// by its aggregator's, taken off whole.
+    internal static bool Off(IReadOnlySet<string> hidden, string id) =>
+        hidden.Contains(id) || (id.IndexOf('/') is > 0 and var slash && hidden.Contains(id[..slash]));
 
     /// Dates cross the C interface as seconds since 1970.
     private static DateTimeOffset? Date(JsonNode? node) =>

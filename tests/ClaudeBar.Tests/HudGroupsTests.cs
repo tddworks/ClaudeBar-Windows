@@ -51,7 +51,7 @@ public sealed class HudGroupsTests
         Assert.AreEqual("omp/Claude,omp/Codex", string.Join(",", data.Tools.Select(tool => tool.Id)));
         Assert.AreEqual("Claude,Codex", string.Join(",", data.Tools.Select(tool => tool.Group)));
         Assert.AreEqual("omp,omp", string.Join(",", data.Tools.Select(tool => tool.Via)));
-        Assert.AreEqual("Codex · via Oh My Pi", data.Header(data.Tools[1]));
+        Assert.AreEqual("Codex · via Oh My Pi", data.Header("omp/Codex"));
         Assert.AreEqual("Codex", data.LookOf("omp/Codex").Name);
         Assert.AreEqual("#1C9E93", data.LookOf("omp/Codex").Light);
     }
@@ -62,7 +62,7 @@ public sealed class HudGroupsTests
         var data = Read(Tool("claude", null, null, Line("5h", "session", 62)));
 
         Assert.IsNull(data.Tools[0].Via);
-        Assert.AreEqual("Claude", data.Header(data.Tools[0]));
+        Assert.AreEqual("Claude", data.Header("claude"));
     }
 
     [TestMethod]

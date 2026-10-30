@@ -172,13 +172,7 @@ internal sealed class Hud : IDisposable
     }
 
     /// *Quiet until reset* on a notification: nothing more about that limit until it resets.
-    internal void Quiet(string key)
-    {
-        var kept = KeptLines();
-        if (!kept.TryGetValue(key, out var line)) return;
-        kept[key] = line with { QuietUntil = line.ResetsAt ?? DateTimeOffset.Now.AddHours(5) };
-        Preferences.HudLines = kept;
-    }
+    internal void Quiet(string key) => Preferences.HudLines = HudCrossings.Quiet(KeptLines(), key, DateTimeOffset.Now);
 
     /// Draws the HUD again: the countdowns from the reset times, as of now.
     /// Not while it's pressed or dragged (each read, the minute's tick): then once it's released.
@@ -188,7 +182,7 @@ internal sealed class Hud : IDisposable
         if (_renderLater) return;
         var hidden = Preferences.HudHiddenTools;
         var data = _data?.Without(hidden);
-        var pending = Preferences.HudPending.Where(tool => !hidden.Contains(tool.Look.Id)).ToList();
+        var pending = Preferences.HudPending.Where(tool => !HudData.Off(hidden, tool.Look.Id)).ToList();
         var empty = data is { IsEmpty: true };
         var wanted = Preferences.Hud && (data is not null || pending.Count > 0) && !(empty && _shownEmpty);
         if (!wanted)
