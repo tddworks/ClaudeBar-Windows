@@ -256,7 +256,8 @@ internal sealed class HudView
         Place(row, check, 0);
         var names = fine.Ids.Select(id => data.LookOf(id).Name).ToList();
         var lowest = data.LookOf(fine.LowestId).Name;
-        Place(row, Trimmed(Text(fine.All ? "All fine" : string.Join(" · ", names), "HudBody"), double.NaN), 1);
+        // Commas, not ` · `: a group's name has its own (`Claude · work`).
+        Place(row, Trimmed(Text(fine.All ? "All fine" : string.Join(", ", names), "HudBody"), double.NaN), 1);
         Place(row, Tabular(Text(fine.All ? $"lowest {lowest} {fine.LowestPercent}%" : $"lowest {fine.LowestPercent}%", Tail("HudSecondary"))), 2);
         AutomationProperties.SetName(row, fine.All
             ? $"All fine. Lowest: {lowest}, {fine.LowestPercent}% left"
