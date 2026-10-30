@@ -187,4 +187,90 @@ struct HudReadingTests {
         #expect(tool.headline == 0)
         #expect(tool.others == HudReading.Others(count: 0, attention: 0))
     }
+
+    // MARK: - Groups: an aggregator's upstream accounts, each a tool of its own
+
+    /// A quota of an aggregating provider, in its upstream section, titled as omp's mapping titles it.
+    private func grouped(_ label: String, _ group: String, left: Double, resetsIn: TimeInterval? = nil,
+                         window: TimeInterval? = nil, compactTitle: String? = nil) -> UsageQuota {
+        UsageQuota(percentRemaining: left, quotaType: .timeLimit(label), providerId: "omp",
+                   resetsAt: resetsIn.map { now.addingTimeInterval($0) }, windowDuration: window,
+                   group: group, compactTitle: compactTitle)
+    }
+
+    @Test func `should split a tool whose limits carry groups into one tool per group, in the order the groups first appear`() {
+        let reading = HudReading(snapshots: [
+            snapshot("claude", [quota(.session, left: 62, resetsIn: 2 * hour, window: 5 * hour)]),
+            snapshot("omp", [
+                grouped("Claude 5h", "Claude", left: 70, window: 5 * hour),
+                grouped("Codex 7d", "Codex", left: 12, window: 7 * day),
+                grouped("Claude 7d", "Claude", left: 50, window: 7 * day),
+                grouped("Kimi 5h", "Kimi", left: 90, window: 5 * hour),
+                grouped("Codex Spark 7d", "Codex", left: 80, window: 7 * day),
+            ]),
+        ], policy: .absolute)
+
+        #expect(reading.tools.map(\.id) == ["claude", "omp/Claude", "omp/Codex", "omp/Kimi"])
+        #expect(reading.tools.map(\.group) == [nil, "Claude", "Codex", "Kimi"])
+        #expect(reading.tools.map(\.via) == [nil, "omp", "omp", "omp"])
+        #expect(reading.tools[1].lines.map(\.percentLeft) == [70, 50])
+        #expect(reading.tools[2].lines.map(\.percentLeft) == [12, 80])
+        #expect(reading.tools.allSatisfy { $0.readAt == now })
+    }
+
+    @Test func `should title a grouped limit without its group's words, keeping any it says beyond the window`() {
+        let reading = HudReading(snapshots: [snapshot("omp", [
+            grouped("Codex 7d", "Codex", left: 12, window: 7 * day),
+            grouped("Codex Spark 7d", "Codex", left: 80, window: 7 * day),
+            grouped("Claude 5h · jkjk98765", "Claude · jkjk98765", left: 40, window: 5 * hour),
+            grouped("Kimi Total quota", "Kimi", left: 60, compactTitle: "Total"),
+        ])], policy: .absolute)
+
+        #expect(reading.tools.map { $0.lines.map(\.window) } == [["7d", "Spark 7d"], ["5h"], ["Total"]])
+    }
+
+    @Test func `should headline each group by itself, with its own others and out-until`() {
+        let reading = HudReading(snapshots: [snapshot("omp", [
+            grouped("Claude 5h", "Claude", left: 0, resetsIn: 1 * hour, window: 5 * hour),
+            grouped("Claude 7d", "Claude", left: 50, window: 7 * day),
+            grouped("Codex 5h", "Codex", left: 90, window: 5 * hour),
+            grouped("Codex 7d", "Codex", left: 30, window: 7 * day),
+            grouped("Codex Spark 7d", "Codex", left: 60, window: 7 * day),
+        ])], policy: .absolute)
+
+        let (claude, codex) = (reading.tools[0], reading.tools[1])
+        #expect(claude.headline == 0)
+        #expect(claude.outUntil == now.addingTimeInterval(1 * hour))
+        #expect(claude.others == HudReading.Others(count: 1, attention: 0))
+        #expect(codex.headline == 1)
+        #expect(codex.outUntil == nil)
+        #expect(codex.others == HudReading.Others(count: 2, attention: 0))
+        #expect(reading.worst == "depleted")
+    }
+
+    @Test func `should key each limit by ClaudeBar's own quota key, so two accounts with the same title stay apart`() {
+        let reading = HudReading(snapshots: [
+            snapshot("claude", [quota(.session, left: 62, resetsIn: 2 * hour, window: 5 * hour)]),
+            snapshot("omp", [
+                grouped("Claude 5h · alice", "Claude · alice", left: 40, window: 5 * hour, compactTitle: "5h"),
+                grouped("Claude 5h · bob", "Claude · bob", left: 70, window: 5 * hour, compactTitle: "5h"),
+            ]),
+        ], policy: .absolute)
+
+        #expect(reading.tools.map { $0.lines.map(\.window) } == [["5h"], ["5h"], ["5h"]])
+        #expect(reading.tools.map { $0.lines.map(\.key) } == [["session"], ["time:Claude 5h · alice"], ["time:Claude 5h · bob"]])
+    }
+
+    @Test func `should keep a group's balances off its lines, as for a whole tool`() {
+        let credits = UsageQuota(percentRemaining: 100, quotaType: .timeLimit("Codex Credits"), providerId: "omp",
+                                 dollarRemaining: 12, group: "Codex")
+        let reading = HudReading(snapshots: [snapshot("omp", [
+            grouped("Claude 5h", "Claude", left: 70, window: 5 * hour),
+            credits,
+        ])], policy: .absolute)
+
+        #expect(reading.tools.map(\.id) == ["omp/Claude", "omp/Codex"])
+        #expect(reading.tools[1].lines.isEmpty)
+        #expect(reading.tools[1].headline == nil)
+    }
 }

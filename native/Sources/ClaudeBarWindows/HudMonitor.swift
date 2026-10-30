@@ -151,4 +151,8 @@ public final class HudMonitor {
         guard monitor.usage(of: login) == nil else { return nil }
         return Problem(id: login.id, kind: "reading", message: "")
     }
+
+    static func looks(_ lineup: [Look], for reading: HudReading, definitions: [ProviderDefinition]) -> [Look] { lineup }
+
+    static func spread(_ problems: [Problem], over reading: HudReading) -> [Problem] { problems }
 }

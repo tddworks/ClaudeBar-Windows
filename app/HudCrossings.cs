@@ -47,6 +47,8 @@ internal static class HudCrossings
         return (notify, next);
     }
 
+    internal static Dictionary<string, KeptLine> Quiet(IReadOnlyDictionary<string, KeptLine> kept, string key, DateTimeOffset now) => new(kept);
+
     /// The crossing from one status to the next, if it's one that notifies.
     internal static Crossing? Of(string before, string now) =>
         before == "depleted" && now != "depleted" ? Crossing.Back

@@ -17,14 +17,15 @@ internal sealed record HudData(
     /// ahead of an even pace, where an even pace would end (0–100), whether
     /// the strip shows it, and when it runs out at this pace, if the reading says.
     internal sealed record Line(string Window, int PercentLeft, DateTimeOffset? ResetsAt, double? WindowSeconds,
-                                string Status, bool RunningHot, double? Tick, bool Strip, DateTimeOffset? RunsOutAt = null);
+                                string Status, bool RunningHot, double? Tick, bool Strip, DateTimeOffset? RunsOutAt = null, string Key = "");
 
     /// A tool's limits in its own order, with the one that stops the person
     /// first (`Headline`, ClaudeBar's rule: the HUD never ranks them again),
     /// how many others there are and how many of those aren't healthy, and
     /// when its numbers were read, if the reading says.
     internal sealed record Tool(string Id, IReadOnlyList<Line> Lines, DateTimeOffset? OutUntil, bool RunningHot,
-                                int Headline = 0, int OthersCount = 0, int OthersAttention = 0, DateTimeOffset? ReadAt = null)
+                                int Headline = 0, int OthersCount = 0, int OthersAttention = 0, DateTimeOffset? ReadAt = null,
+                                string? Group = null, string? Via = null)
     {
         internal Line HeadlineLine => Lines[Math.Clamp(Headline, 0, Lines.Count - 1)];
     }
@@ -122,6 +123,12 @@ internal sealed record HudData(
         Looks.FirstOrDefault(look => look.Id == id)
         ?? Looks.FirstOrDefault(look => look.Id == id.Split('.')[0])
         ?? new Look(id, id, "#8A8A8A", "#8A8A8A");
+
+    internal string Header(Tool tool) => LookOf(tool.Id).Name;
+
+    internal IReadOnlySet<string> Hidden(IReadOnlySet<string> hidden) => hidden;
+
+    internal IReadOnlySet<string> Showing(IReadOnlySet<string> hidden, string id) => hidden.Where(other => other != id).ToHashSet();
 
     /// The same reading with every date moved by `by`: the check's sample, read now.
     internal HudData Shifted(TimeSpan by) => this with

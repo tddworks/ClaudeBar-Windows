@@ -8,6 +8,7 @@ import Quotas
 /// the app formats them in the person's language.
 public struct HudReading: Equatable, Sendable, Encodable {
     public struct Line: Equatable, Sendable, Encodable {
+        public let key: String = ""
         /// The window's short name: the quota's compact title, or "5h", "7d".
         public let window: String
         /// The share left, as the Mac shows it (whole percent, rounded down).
@@ -36,6 +37,8 @@ public struct HudReading: Equatable, Sendable, Encodable {
 
     public struct Tool: Equatable, Sendable, Encodable {
         public let id: String
+        public let group: String? = nil
+        public let via: String? = nil
         public let lines: [Line]
         /// The index in `lines` of the limit that stops the person first;
         /// `nil` when the tool has no limit with a share.
