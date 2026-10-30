@@ -15,6 +15,7 @@
     <!-- The app is a WinUI exe, which a plain test project can't reference: its
          pure files, with no WinUI in them, are compiled in here by link. -->
     <Compile Include="..\..\app\HudGeometry.cs" Link="HudGeometry.cs" />
+    <Compile Include="..\..\app\HudDrag.cs" Link="HudDrag.cs" />
     <Compile Include="..\..\app\HudText.cs" Link="HudText.cs" />
     <Compile Include="..\..\app\HudData.cs" Link="HudData.cs" />
     <Compile Include="..\..\app\HudCrossings.cs" Link="HudCrossings.cs" />
