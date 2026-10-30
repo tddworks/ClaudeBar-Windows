@@ -46,6 +46,8 @@ internal sealed class HudView
     internal Action? Quit;
     /// After an action a click on the HUD ran: the person's window again.
     internal Action? AfterClick;
+    /// The right-click menu opened.
+    internal Action? MenuOpened;
 
     /// Draws one label in the tertiary colour: the check's proof that its
     /// contrast measure finds a label under 4.5:1 (plan, Task 7).
@@ -492,6 +494,8 @@ internal sealed class HudView
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Quit ClaudeBar", "\uE711", Quit, keepsFocus: true);
         menu.Opening += (_, _) => givesBack = true;
+        // In front while it's open, so a click anywhere else closes it, as a menu does.
+        menu.Opened += (_, _) => MenuOpened?.Invoke();
         menu.Closed += (_, _) => { if (givesBack) AfterClick?.Invoke(); };
         return menu;
     }

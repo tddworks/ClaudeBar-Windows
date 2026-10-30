@@ -246,6 +246,10 @@ internal sealed class HudWindow
     /// After any action a click on the HUD runs: the person's window again.
     internal void AfterClick() => _foreground.GiveBack();
 
+    /// The HUD in front, for its right-click menu: deactivated by a click on
+    /// another window, the menu closes (then AfterClick gives the foreground back).
+    internal void Activate() => Win32.SetForegroundWindow(_hwnd);
+
     private double Scale => Win32.GetDpiForWindow(_hwnd) / 96.0;
 
     /// The screen the HUD is on now.

@@ -65,6 +65,7 @@ internal sealed class Hud : IDisposable
         _view.HideHud = () => SetShown(false);
         _view.Quit = () => Quit?.Invoke();
         _view.AfterClick = _window.AfterClick;
+        _view.MenuOpened = _window.Activate;
         _poll = queue.CreateTimer();
         _poll.Interval = TimeSpan.FromSeconds(30);
         _poll.Tick += (_, _) => _ = Read(refresh: false);
