@@ -271,7 +271,7 @@ function Collapse($check) {
   $h = Rect $check.Hud
   Mouse-Move ([int]($h.L + 20 * $check.Scale)) ([int]($h.B - 12 * $check.Scale))
   $root = [Windows.Automation.AutomationElement]::FromHandle($check.Hud); $button = $null
-  for ($i = 0; $i -lt 30 -and -not $button; $i++) { Start-Sleep -Milliseconds 100; $button = Find-Named $root 'Collapse to the strip' }
+  for ($i = 0; $i -lt 30 -and -not $button; $i++) { Start-Sleep -Milliseconds 100; $button = Find-Named $root 'Collapse to the strip' -Button }
   if (-not $button) { return 'no Collapse button' }
   $br = $button.Current.BoundingRectangle
   Mouse-Click ([int]($br.X + $br.Width / 2)) ([int]($br.Y + $br.Height / 2)); Start-Sleep -Milliseconds 800
@@ -372,9 +372,10 @@ function Contrast($check, $name) {
   $bmp.Dispose()
   $results
 }
-function Find-Named($root, $pattern) {
+# The first element named like `pattern`; a button only, with -Button (a tooltip carries a button's name too).
+function Find-Named($root, $pattern, [switch]$Button) {
   $all = $root.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
-  foreach ($e in $all) { if ($e.Current.Name -like $pattern) { return $e } }
+  foreach ($e in $all) { if ($e.Current.Name -like $pattern -and (-not $Button -or $e.Current.ControlType -eq [Windows.Automation.ControlType]::Button)) { return $e } }
   $null
 }
 
@@ -420,7 +421,7 @@ foreach ($theme in $Themes) {
     Mouse-Move ([int]($h.L + 20 * $check.Scale)) ([int]($h.B - 12 * $check.Scale))
     # The footer's buttons show once the pointer is over the card: wait for them.
     $refresh = $null
-    for ($i = 0; $i -lt 30 -and -not $refresh; $i++) { Start-Sleep -Milliseconds 100; $refresh = Find-Named $root 'Refresh the limits' }
+    for ($i = 0; $i -lt 30 -and -not $refresh; $i++) { Start-Sleep -Milliseconds 100; $refresh = Find-Named $root 'Refresh the limits' -Button }
     if (-not $refresh) { "  {0} no 'Refresh the limits' button on the HUD" -f (Pass $false) }
     else {
       $br = $refresh.Current.BoundingRectangle
@@ -439,12 +440,12 @@ foreach ($theme in $Themes) {
       Report-Presses "UIA Invoke on 'Refresh the limits'" 20 (Presses 20 $other $check {
         # A refresh draws the card again: the button found before it is gone, so find it each time.
         $button = $null
-        for ($i = 0; $i -lt 30 -and -not $button; $i++) { $button = Find-Named $root 'Refresh the limits'; if (-not $button) { Start-Sleep -Milliseconds 100 } }
+        for ($i = 0; $i -lt 30 -and -not $button; $i++) { $button = Find-Named $root 'Refresh the limits' -Button; if (-not $button) { Start-Sleep -Milliseconds 100 } }
         try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); 'invoked' } catch { "invoke failed: $_" }
       })
       # A redraw (each read, the minute's tick) with the pointer resting on Refresh, and a
       # press at once, before XAML tells the new card the pointer is over it: the click runs.
-      $button = Find-Named $root 'Refresh the limits'
+      $button = Find-Named $root 'Refresh the limits' -Button
       if (-not $button) { Unverified "a press just after a redraw: no 'Refresh the limits' on the HUD" }
       else {
         $br = $button.Current.BoundingRectangle
@@ -477,7 +478,11 @@ foreach ($theme in $Themes) {
     Mouse-Click ([int]($h.L + 8 * $check.Scale)) ([int](($h.T + $h.B) / 2)) 8 0x10; Start-Sleep -Milliseconds 800
     $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
     "  {0} a right-click on the card opens its menu: 'Hide the HUD' shown={1}" -f (Pass ([bool]$menu)), [bool]$menu
-    [H]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero); [H]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero); Start-Sleep -Milliseconds 500
+    # Closed as a person does, a click elsewhere (Esc goes to the window in front, not the HUD).
+    $o = Rect $other.Window
+    Mouse-Click ([int](($o.L + $o.R) / 2)) ([int](($o.T + $o.B) / 2)); Start-Sleep -Milliseconds 600
+    $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
+    "  {0} a click elsewhere closes the menu: closed={1}" -f (Pass (-not $menu)), (-not $menu)
     [void][H]::SetCursorPos($saved.X, $saved.Y)
     $other.Process.Kill()
   }

@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -102,12 +103,13 @@ internal sealed class HudWindow
         _watch.Tick += (_, _) => FollowFullScreen();
         // A left press anywhere on the card or the strip but its buttons (which
         // handle their own presses) is a click, or drags the HUD once it moves
-        // past the system's drag threshold (HudDrag).
+        // past the system's drag threshold (HudDrag). After the press it's followed
+        // from the pointer and the button themselves, each frame (Follow): XAML's
+        // own moves and release didn't always reach the HUD after a press on a row
+        // or on the strip (measured with real mouse input, check-hud's drag step).
         _root.PointerPressed += OnPressed;
-        _root.PointerMoved += OnMoved;
-        _root.PointerReleased += OnReleased;
-        _root.PointerCaptureLost += (_, _) => Cancelled();
-        _root.PointerCanceled += (_, _) => Cancelled();
+        _root.PointerMoved += (_, _) => Follow();
+        _root.PointerReleased += (_, _) => Follow();
         _root.ActualThemeChanged += (_, _) => ThemeChanged?.Invoke();
         // Esc after UI Automation or a click made it active: back to the person's window.
         _root.KeyDown += (_, e) =>
@@ -165,40 +167,39 @@ internal sealed class HudWindow
 
     private void OnPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (!e.GetCurrentPoint(_root).Properties.IsLeftButtonPressed || !Win32.GetCursorPos(out var at)) return;
+        if (_press is not null || !e.GetCurrentPoint(_root).Properties.IsLeftButtonPressed || !Win32.GetCursorPos(out var at)) return;
         var dpi = Win32.GetDpiForWindow(_hwnd);
         var window = _window.AppWindow.Position;
         _press = new HudDrag(new Pixel(at.X, at.Y), new Pixel(window.X, window.Y),
                              new Pixel(Win32.GetSystemMetricsForDpi(Win32.SM_CXDRAG, dpi), Win32.GetSystemMetricsForDpi(Win32.SM_CYDRAG, dpi)));
         _pressedOn = e.OriginalSource;
+        CompositionTarget.Rendering += OnFrame;
     }
 
-    /// Past the threshold: the HUD follows the pointer, which it holds until the release.
-    private void OnMoved(object sender, PointerRoutedEventArgs e)
+    private void OnFrame(object? sender, object e) => Follow();
+
+    /// The press as the pointer and the primary button are now: past the
+    /// threshold the HUD follows the pointer; the button up ends it, as a click
+    /// on what it went down on, or a drop.
+    private void Follow()
     {
         if (_press is not { } press || !Win32.GetCursorPos(out var at)) return;
-        var started = press.Dragging;
-        if (press.Move(new Pixel(at.X, at.Y)) is not { } to) return;
-        if (!started) _root.CapturePointer(e.Pointer);
-        _window.AppWindow.Move(new PointInt32(to.X, to.Y));
-    }
-
-    private void OnReleased(object sender, PointerRoutedEventArgs e)
-    {
-        if (_press is not { } press) return;
-        _press = null;
-        var dragged = press.Release() == HudPress.Drag;
-        if (dragged) _root.ReleasePointerCapture(e.Pointer);
-        else Clicked?.Invoke(_pressedOn);
-        Ended(dragged);
-    }
-
-    /// The press taken away (another window took the capture): a drag ends where it is.
-    private void Cancelled()
-    {
-        if (_press is not { } press) return;
-        _press = null;
-        Ended(press.Dragging);
+        var button = Win32.GetSystemMetrics(Win32.SM_SWAPBUTTON) != 0 ? Win32.VK_RBUTTON : Win32.VK_LBUTTON;
+        if ((Win32.GetAsyncKeyState(button) & 0x8000) == 0)
+        {
+            _press = null;
+            CompositionTarget.Rendering -= OnFrame;
+            var dragged = press.Release() == HudPress.Drag;
+            // After this frame or event: a click may draw the HUD again (the strip -> the card).
+            var on = _pressedOn;
+            _window.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!dragged) Clicked?.Invoke(on);
+                Ended(dragged);
+            });
+            return;
+        }
+        if (press.Move(new Pixel(at.X, at.Y)) is { } to) _window.AppWindow.Move(new PointInt32(to.X, to.Y));
     }
 
     /// A press ended. After a drag: the nearest corner, and the person's window

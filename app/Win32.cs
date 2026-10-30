@@ -119,6 +119,10 @@ internal static class Win32
     internal const uint GA_ROOT = 2;
     [DllImport("user32.dll")] internal static extern int GetSystemMetricsForDpi(int index, uint dpi);
     internal const int SM_CXDRAG = 68, SM_CYDRAG = 69;
+    // A press on the HUD, followed until the primary button is up: the left one, or the right when swapped.
+    [DllImport("user32.dll")] internal static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] internal static extern short GetAsyncKeyState(int key);
+    internal const int SM_SWAPBUTTON = 23, VK_LBUTTON = 1, VK_RBUTTON = 2;
 
     // The taskbar button's dot (an icon made from a bitmap) and the HUD's shortcut.
     [StructLayout(LayoutKind.Sequential)]
