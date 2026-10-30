@@ -112,7 +112,7 @@ internal static class Win32
     [DllImport("dwmapi.dll")] internal static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out RECT value, int size);
     [DllImport("user32.dll")] internal static extern bool ClientToScreen(IntPtr window, ref POINT point);
     internal const int QUNS_PRESENTATION_MODE = 4;
-    internal const uint WM_EXITSIZEMOVE = 0x0232, WM_DPICHANGED = 0x02E0, WM_DISPLAYCHANGE = 0x007E, WM_SETTINGCHANGE = 0x001A;
+    internal const uint WM_ENTERSIZEMOVE = 0x0231, WM_EXITSIZEMOVE = 0x0232, WM_DPICHANGED = 0x02E0, WM_DISPLAYCHANGE = 0x007E, WM_SETTINGCHANGE = 0x001A;
     // The HUD: whether the pointer rests on it, and how far a press moves before it drags.
     [DllImport("user32.dll")] internal static extern IntPtr WindowFromPoint(POINT point);
     [DllImport("user32.dll")] internal static extern IntPtr GetAncestor(IntPtr window, uint flags);

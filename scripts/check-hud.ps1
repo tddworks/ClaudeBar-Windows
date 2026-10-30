@@ -245,11 +245,15 @@ function Mouse-Click($x, $y, $down = 2, $up = 4) {
   Mouse-Move $x $y; Start-Sleep -Milliseconds 150
   [H]::Mouse($x, $y, $down); Start-Sleep -Milliseconds 70; [H]::Mouse($x, $y, $up); Start-Sleep -Milliseconds 150
 }
-# A real drag: pressed at (x, y), moved to (tx, ty) in 25 steps, released there.
-function Mouse-Drag($x, $y, $tx, $ty) {
+# A real drag: pressed at (x, y), moved to (tx, ty) in 25 steps, released there;
+# `midway` runs with the button still down, half way.
+function Mouse-Drag($x, $y, $tx, $ty, [scriptblock]$midway) {
   Mouse-Move $x $y; Start-Sleep -Milliseconds 150
   [H]::Mouse($x, $y, 2); Start-Sleep -Milliseconds 120
-  for ($i = 1; $i -le 25; $i++) { [H]::Mouse([int]($x + ($tx - $x) * $i / 25), [int]($y + ($ty - $y) * $i / 25), 0); Start-Sleep -Milliseconds 25 }
+  for ($i = 1; $i -le 25; $i++) {
+    [H]::Mouse([int]($x + ($tx - $x) * $i / 25), [int]($y + ($ty - $y) * $i / 25), 0); Start-Sleep -Milliseconds 25
+    if ($i -eq 12 -and $midway) { & $midway }
+  }
   Start-Sleep -Milliseconds 150; [H]::Mouse($tx, $ty, 4); Start-Sleep -Milliseconds 1200
 }
 # The card, not the strip: taller than 80 effective px.
@@ -275,7 +279,9 @@ function Collapse($check) {
 }
 # A real drag from (x, y) on the HUD toward the opposite corner, with another app in front:
 # it must move there and snap, give the foreground back, and ask for nothing a click asks for.
-function Drag-Check($check, $other, $what, $x, $y) {
+# With -Redraw, the HUD is drawn again half way (as a read or the minute's tick does): it must
+# stay under the pointer, not jump back to its corner.
+function Drag-Check($check, $other, $what, $x, $y, [switch]$Redraw) {
   $from = Corner-Of $check
   $w = [System.Windows.Forms.Screen]::FromHandle($check.Hud).WorkingArea
   $right = $from -like '*Right'; $bottom = $from -like 'Bottom*'
@@ -285,11 +291,25 @@ function Drag-Check($check, $other, $what, $x, $y) {
   if ([H]::RootAt($x, $y) -ne $check.Hud) { Unverified "drag from $what`: ($x,$y) isn't on the HUD"; return }
   Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
   $before = Fg; $strip = -not (Is-Card $check)
-  Mouse-Drag $x $y $tx $ty
+  $start = Rect $check.Hud; $script:held = $null
+  $midway = if ($Redraw) { {
+    $script:held = if (Command 'render' 5) { 'drawn' } else { 'not drawn' }
+    Start-Sleep -Milliseconds 400
+    $p = New-Object H+POINT; [void][H]::GetCursorPos([ref]$p); $r = Rect $check.Hud
+    # How far the HUD is from where the pointer holds it: 0 while it follows the pointer.
+    $script:off = [math]::Max([math]::Abs(($r.L - $start.L) - ($p.X - $x)), [math]::Abs(($r.T - $start.T) - ($p.Y - $y)))
+  } }
+  Mouse-Drag $x $y $tx $ty $midway
   $now = Corner-Of $check; $after = Fg; $h = Rect $check.Hud
   $clicked = Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
   $ok = $now -eq $want -and $before -eq $after -and -not $clicked -and $strip -eq (-not (Is-Card $check))
-  "  {0} a drag from {1}, {2} -> toward {3}: now at {4} ({5},{6},{7},{8}), foreground kept={9}, clicks run: {10}" -f (Pass $ok), $what, $from, $want, $now, $h.L, $h.T, $h.R, $h.B, ($before -eq $after), $(if ($clicked) { $clicked -join ',' } else { 'none' })
+  $note = ''
+  if ($Redraw) {
+    if ($script:held -ne 'drawn') { Unverified "a redraw during the drag from $what`: the check didn't draw it again" }
+    $ok = $ok -and $script:off -le 3
+    $note = ", half way and drawn again: {0} px from under the pointer" -f $script:off
+  }
+  "  {0} a drag from {1}, {2} -> toward {3}: now at {4} ({5},{6},{7},{8}), foreground kept={9}, clicks run: {10}{11}" -f (Pass $ok), $what, $from, $want, $now, $h.L, $h.T, $h.R, $h.B, ($before -eq $after), $(if ($clicked) { $clicked -join ',' } else { 'none' }), $note
 }
 # `count` presses on Refresh made by `press` (it returns a note), each with another app in
 # front: each must run Refresh and leave that app in front. A press during which a window of
@@ -514,12 +534,13 @@ foreach ($theme in $Themes) {
   if ($Tests -contains 'drag') {
     # A press anywhere on the HUD but a button drags it once it moves: the card's body, its
     # top edge, a row (no Limits page then), and the strip. Each snaps to the nearest corner
-    # and gives the foreground back. A drag past the threshold isn't a click.
+    # and gives the foreground back. A drag past the threshold isn't a click. A redraw half
+    # way through (each read, the minute's tick) waits for the drop.
     $other = Other-App
     $h = Rect $check.Hud
     Drag-Check $check $other "the card's middle" ([int](($h.L + $h.R) / 2)) ([int](($h.T + $h.B) / 2))
     $h = Rect $check.Hud
-    Drag-Check $check $other "the card's top edge" ([int](($h.L + $h.R) / 2)) ($h.T + [int](5 * $check.Scale))
+    Drag-Check $check $other "the card's top edge" ([int](($h.L + $h.R) / 2)) ($h.T + [int](5 * $check.Scale)) -Redraw
     $row = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Claude*'
     if ($row) {
       $br = $row.Current.BoundingRectangle

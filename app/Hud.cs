@@ -24,6 +24,8 @@ internal sealed class Hud : IDisposable
     private bool _reading;
     /// Nothing found was shown once this run; after that the HUD waits for a tool.
     private bool _shownEmpty;
+    /// A redraw asked for while the HUD was pressed or dragged: run once it's released.
+    private bool _renderLater;
 
     /// The reading changed, or whether it's offline: for the window's Limits page and the taskbar dot.
     internal Action? Changed;
@@ -43,7 +45,12 @@ internal sealed class Hud : IDisposable
     internal Hud(DispatcherQueue queue, Func<bool, Task<JsonObject>> read)
     {
         _read = read;
-        _window = new HudWindow(_foreground) { CloseRequested = () => SetShown(false), Clicked = source => _view.Click(source) };
+        _window = new HudWindow(_foreground)
+        {
+            CloseRequested = () => SetShown(false),
+            Clicked = source => _view.Click(source),
+            Released = () => { if (_renderLater) Render(); },
+        };
         // Drawn again after the theme change has gone through the tree: replacing
         // the content inside ActualThemeChanged crashes XAML (seen with --theme light on a dark PC).
         _window.ThemeChanged = () => queue.TryEnqueue(DispatcherQueuePriority.Low, Render);
@@ -173,8 +180,11 @@ internal sealed class Hud : IDisposable
     }
 
     /// Draws the HUD again: the countdowns from the reset times, as of now.
+    /// Not while it's pressed or dragged (each read, the minute's tick): then once it's released.
     internal void Render()
     {
+        _renderLater = _window.Held;
+        if (_renderLater) return;
         var hidden = Preferences.HudHiddenTools;
         var data = _data?.Without(hidden);
         var pending = Preferences.HudPending.Where(tool => !hidden.Contains(tool.Look.Id)).ToList();

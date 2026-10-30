@@ -28,6 +28,10 @@ internal sealed class HudWindow
     /// The left press in progress on the HUD: a click, or a drag once it moves.
     private HudDrag? _press;
     private object? _pressedOn;
+    /// In the system's move loop (WM_ENTERSIZEMOVE…WM_EXITSIZEMOVE: the system menu's Move).
+    private bool _moving;
+    /// Screens, scaling or the taskbar changed while it was held: placed again once it's released.
+    private bool _placeLater;
 
     /// Asked to close (Alt+F4 after a click, or the system menu): the HUD hides instead.
     internal Action? CloseRequested;
@@ -37,6 +41,9 @@ internal sealed class HudWindow
 
     /// A click on the HUD that isn't on a button and didn't drag: what it went down on.
     internal Action<object?>? Clicked;
+
+    /// A press or a drag ended (snapped, if it dragged): what was put off meanwhile can run.
+    internal Action? Released;
 
     internal HudWindow(ForegroundTracker foreground)
     {
@@ -67,18 +74,26 @@ internal sealed class HudWindow
         // Snapped when a drag ends (OnReleased, or the system menu's Move from the
         // keyboard), then the foreground goes back to the person's window, as after
         // a click. Screens, scaling or the taskbar changing put it back in place,
-        // except while it's being dragged.
+        // once it's no longer held.
         _subclass = (window, message, wParam, lParam, id, data) =>
         {
             switch (message)
             {
+                case Win32.WM_ENTERSIZEMOVE:
+                    _moving = true;
+                    break;
                 case Win32.WM_EXITSIZEMOVE:
-                    Dropped();
+                    _moving = false;
+                    Ended(dragged: true);
                     break;
                 case Win32.WM_DPICHANGED:
                 case Win32.WM_DISPLAYCHANGE:
                 case Win32.WM_SETTINGCHANGE:
-                    _window.DispatcherQueue.TryEnqueue(() => { if (_wanted && _press is not { Dragging: true }) Place(); });
+                    _window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (Held) _placeLater = true;
+                        else if (_wanted) Place();
+                    });
                     break;
             }
             return Win32.DefSubclassProc(window, message, wParam, lParam);
@@ -127,6 +142,11 @@ internal sealed class HudWindow
         set => _presenter.IsAlwaysOnTop = value;
     }
 
+    /// Pressed or dragged now: the HUD is neither drawn again nor moved to its
+    /// corner until it's released (Hud.Render, Released), or a redraw would
+    /// snap it back under the pointer mid-drag.
+    internal bool Held => _press is not null || _moving;
+
     /// Puts `content` in the HUD, sized to it: `widthDip` wide, or as wide as
     /// it asks when that is null (the strip), and as tall as it asks, up to the
     /// work area less the margins.
@@ -167,12 +187,10 @@ internal sealed class HudWindow
     {
         if (_press is not { } press) return;
         _press = null;
-        if (press.Release() == HudPress.Drag)
-        {
-            _root.ReleasePointerCapture(e.Pointer);
-            Dropped();
-        }
+        var dragged = press.Release() == HudPress.Drag;
+        if (dragged) _root.ReleasePointerCapture(e.Pointer);
         else Clicked?.Invoke(_pressedOn);
+        Ended(dragged);
     }
 
     /// The press taken away (another window took the capture): a drag ends where it is.
@@ -180,14 +198,21 @@ internal sealed class HudWindow
     {
         if (_press is not { } press) return;
         _press = null;
-        if (press.Dragging) Dropped();
+        Ended(press.Dragging);
     }
 
-    /// A drag ended: the nearest corner, and the person's window in front again.
-    private void Dropped()
+    /// A press ended. After a drag: the nearest corner, and the person's window
+    /// in front again. Then what was put off while it was held.
+    private void Ended(bool dragged)
     {
-        Snap();
-        _foreground.GiveBack();
+        if (dragged)
+        {
+            Snap();
+            _foreground.GiveBack();
+        }
+        else if (_placeLater && _wanted) Place();
+        _placeLater = false;
+        Released?.Invoke();
     }
 
     /// Shows it at its corner, without activating it.
