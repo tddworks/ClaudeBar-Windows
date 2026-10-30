@@ -18,8 +18,11 @@ internal sealed class HudDrag(Pixel pointer, Pixel window, Pixel threshold)
     /// Where the HUD's window goes for the pointer at `at`, or null while the press is still a click.
     internal Pixel? Move(Pixel at)
     {
-        // Red: v0.1.4's body never dragged.
-        return null;
+        var dx = at.X - pointer.X;
+        var dy = at.Y - pointer.Y;
+        if (!_dragging && Math.Abs(dx) <= threshold.X && Math.Abs(dy) <= threshold.Y) return null;
+        _dragging = true;
+        return new Pixel(window.X + dx, window.Y + dy);
     }
 
     internal bool Dragging => _dragging;

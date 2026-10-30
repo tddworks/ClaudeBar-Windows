@@ -14,13 +14,14 @@ using Path = System.IO.Path;
 namespace ClaudeBar;
 
 /// A test entry point, like the hourly upload's: `ClaudeBar.exe --hud-check
-/// [--theme light|dark] [--style strip] [--sample fine] [--calibrate]` opens
+/// [--theme light|dark] [--style strip] [--sample fine] [--calibrate] [--keep-settings]` opens
 /// the real HUD on the sample reading in tests/hud-check.json, or every tool
 /// fine in tests/hud-check-fine.json (built into the exe), with the
 /// spike's red | blue over stripes window behind it, for scripts/check-hud.ps1
 /// and the screenshots. It reads no limits, opens no membership, keeps its
 /// settings in its own folder, and isn't offered in the Start menu or the
-/// jump list.
+/// jump list. `--keep-settings` starts on the settings the last check left,
+/// as a restart of the app would.
 ///
 /// The script drives it through files in %TEMP%\claudebar-hud-check: it
 /// writes cmd.txt, the check answers ack-<command>.txt; ready.json carries
@@ -36,7 +37,9 @@ internal sealed class HudCheck
     internal HudCheck(string[] arguments)
     {
         Directory.CreateDirectory(Folder);
-        foreach (var file in Directory.GetFiles(Folder)) File.Delete(file);
+        var keep = arguments.Contains("--keep-settings");
+        foreach (var file in Directory.GetFiles(Folder))
+            if (!(keep && Path.GetFileName(file) == "app.json")) File.Delete(file);
         // What went wrong, for the script to print: a crash otherwise leaves only an Application Error event.
         Application.Current.UnhandledException += (_, e) => File.AppendAllText(Path.Combine(Folder, "crash.txt"), e.Exception + "\n");
         Preferences.UseFile(Path.Combine(Folder, "app.json"));

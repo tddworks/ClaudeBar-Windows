@@ -22,8 +22,6 @@ internal sealed class Hud : IDisposable
     private string? _lastReading;
     private bool _offline;
     private bool _reading;
-    /// The strip, clicked: the card until the pointer leaves it.
-    private bool _peek;
     /// Nothing found was shown once this run; after that the HUD waits for a tool.
     private bool _shownEmpty;
 
@@ -37,22 +35,22 @@ internal sealed class Hud : IDisposable
     internal Action? OpenLimits;
     internal Action? ChooseTools;
     internal Action? Quit;
-    /// Shown or hidden from the HUD itself (its menu, or closing it): Settings follows.
-    internal Action? ShownChanged;
+    /// Shown, hidden or its style changed from the HUD itself (its menu, closing it, Collapse, a click on the strip): Settings follows.
+    internal Action? SettingsChanged;
 
     /// `read(refresh)`: `Swift.HudRefresh()` when asked to refresh, else
     /// `Swift.HudReading()`, which answers from the last numbers at once.
     internal Hud(DispatcherQueue queue, Func<bool, Task<JsonObject>> read)
     {
         _read = read;
-        _window = new HudWindow(_foreground) { CloseRequested = () => SetShown(false) };
+        _window = new HudWindow(_foreground) { CloseRequested = () => SetShown(false), Clicked = source => _view.Click(source) };
         // Drawn again after the theme change has gone through the tree: replacing
         // the content inside ActualThemeChanged crashes XAML (seen with --theme light on a dark PC).
         _window.ThemeChanged = () => queue.TryEnqueue(DispatcherQueuePriority.Low, Render);
         _view.Refresh = () => _ = Read(refresh: true);
         _view.ToggleOnTop = () => SetOnTop(!Preferences.HudOnTop);
-        _view.ShowStrip = () => { _peek = false; SetStyle("strip"); };
-        _view.ShowCard = () => { _peek = true; Render(); };
+        _view.ShowStrip = () => { SetStyle("strip"); SettingsChanged?.Invoke(); };
+        _view.ShowCard = () => { SetStyle("card"); SettingsChanged?.Invoke(); };
         _view.OpenWindow = () => OpenWindow?.Invoke();
         _view.OpenSettings = () => OpenSettings?.Invoke();
         _view.OpenLimits = () => OpenLimits?.Invoke();
@@ -60,8 +58,6 @@ internal sealed class Hud : IDisposable
         _view.HideHud = () => SetShown(false);
         _view.Quit = () => Quit?.Invoke();
         _view.AfterClick = _window.AfterClick;
-        // The buttons are passed through the footer's drag region only while they show.
-        _view.RegionsChanged = () => _window.SetDragRegions(_view.Captions, _view.Passthrough);
         _poll = queue.CreateTimer();
         _poll.Interval = TimeSpan.FromSeconds(30);
         _poll.Tick += (_, _) => _ = Read(refresh: false);
@@ -145,7 +141,7 @@ internal sealed class Hud : IDisposable
         Preferences.Hud = shown;
         if (shown) _shownEmpty = false;
         Render();
-        ShownChanged?.Invoke();
+        SettingsChanged?.Invoke();
     }
 
     internal void SetStyle(string style)
@@ -192,11 +188,9 @@ internal sealed class Hud : IDisposable
         if (data is { IsEmpty: true }) _shownEmpty = true;
         var input = new HudView.Input(data, pending, _offline, TodayTokens, Place, DateTimeOffset.Now,
                                       _window.ActualTheme == ElementTheme.Dark, Preferences.HudOnTop, _window.PointerOver);
-        var strip = Preferences.HudStyle == "strip" && !_peek;
+        var strip = Preferences.HudStyle == "strip";
         var content = strip ? _view.Strip(input) : _view.Card(input);
-        if (_peek) content.PointerExited += (_, _) => { _peek = false; Render(); };
         _window.SetContent(content, strip ? null : CardWidth);
-        _window.SetDragRegions(_view.Captions, _view.Passthrough);
         if (!_window.IsShown) _window.Show();
     }
 
