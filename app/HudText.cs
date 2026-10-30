@@ -41,10 +41,12 @@ internal static class HudText
         { } at => Until(at - now),
     };
 
-    /// A window's name in words: `5-hour limit`, `7-day limit`, or the quota's
-    /// own title (`Opus limit`).
+    /// A window's name in words: one that says only its length by its length,
+    /// stated by the reading when it says (`5-hour limit`, `7-day limit`), any
+    /// other by every word it has (`Spark 7d limit`, `Opus limit`).
     internal static string LimitName(string window, double? seconds)
     {
+        if (!Lengths.IsMatch(window)) return $"{window} limit";
         if (seconds is > 0 and var length)
         {
             var whole = (long)length;
@@ -63,6 +65,11 @@ internal static class HudText
         }
         return $"{window} limit";
     }
+
+    /// A window that says nothing but its length: `5h`, `7d`, `1mo`, `month`, `weekly`.
+    private static readonly System.Text.RegularExpressions.Regex Lengths = new(
+        @"^(\d+\s*(m|min|h|d|w|mo)|session|hour|hourly|day|daily|week|weekly|month|monthly)$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// The sentence UI Automation reads for a line: `Claude, 5-hour limit: 62%
     /// left, resets in 2 hours 14 minutes`.

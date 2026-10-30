@@ -3,7 +3,11 @@
 # real HUD on the sample reading (`ClaudeBar.exe --hud-check`), beside a
 # ClaudeBar that may be running, and measures from the screen what it does.
 # It moves the mouse, clicks the HUD and brings windows to the front, so run
-# it on a PC nobody is using. Windows PowerShell 5.1 or PowerShell 7.
+# it on a PC nobody is using. Its clicks and drags are real input (SendInput),
+# as a person's mouse sends them: never UI Automation's Invoke, unless named.
+# A press only goes down on the check's own windows; one that would land on any
+# other window (a chat that came up meanwhile) stops the run instead.
+# Windows PowerShell 5.1 or PowerShell 7.
 # It prints PASS or FAIL per check, and UNVERIFIED for a check it couldn't
 # make (a skipped click, a group with nothing to measure): those never count
 # as a pass. It exits 1 on any FAIL, 2 when nothing failed but something went
@@ -14,7 +18,7 @@ param(
   [string]$Exe = (Join-Path $PSScriptRoot '..\out\win-x64\ClaudeBar.exe'),
   [string]$Shots = (Join-Path $env:TEMP 'claudebar-hud-shots'),
   [string[]]$Themes = @('light', 'dark'),
-  [string[]]$Tests = @('focus', 'measure', 'click', 'style', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots', 'theme')
+  [string[]]$Tests = @('focus', 'measure', 'click', 'style', 'collapse', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots', 'theme')
 )
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -34,7 +38,18 @@ public static class H {
   [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
-  [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, uint d, UIntPtr e);
+  [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT { public int dx, dy; public uint data, flags, time; public IntPtr extra; }
+  [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint type; public MOUSEINPUT mi; }
+  [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] inputs, int size);
+  [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
+  // Real input, as a mouse sends it: the pointer at (x, y) on the virtual desktop, with a
+  // button flag (2 left down, 4 left up, 8 right down, 0x10 right up) or none (0).
+  public static void Mouse(int x, int y, uint button) {
+    int vx = GetSystemMetrics(76), vy = GetSystemMetrics(77), vw = GetSystemMetrics(78), vh = GetSystemMetrics(79);
+    var i = new INPUT { type = 0 };
+    i.mi.dx = (int)Math.Round((x - vx) * 65535.0 / (vw - 1)); i.mi.dy = (int)Math.Round((y - vy) * 65535.0 / (vh - 1));
+    i.mi.flags = button | 0x0001 | 0x8000 | 0x4000;
+    SendInput(1, new[] { i }, Marshal.SizeOf(typeof(INPUT))); }
   [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int i);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
@@ -107,6 +122,8 @@ public static class H {
     var t = new System.Threading.Thread(() => { SetWinEventHook(3, 3, IntPtr.Zero, watcher, 0, 0, 0); MSG m; while (GetMessageW(out m, IntPtr.Zero, 0, 0) > 0) { } });
     t.IsBackground = true; t.Start();
   }
+  // The process of the top-level window at (x, y).
+  public static int PidAt(int x, int y) { uint pid; GetWindowThreadProcessId(RootAt(x, y), out pid); return (int)pid; }
   // The windows of processes other than `a` and `b` that took the foreground since `ticks` (UTC).
   public static string OthersSince(long ticks, int a, int b) {
     var found = new System.Collections.Generic.List<string>();
@@ -182,7 +199,7 @@ function Other-App {
   # Another process in front, as an editor would be. (Windows 11's Notepad hands
   # off to a packaged process, so a plain WinForms window in its own process.)
   $form = 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = ''Other app''; $f.StartPosition = ''Manual''; $f.Location = New-Object Drawing.Point 200, 200; $f.Size = New-Object Drawing.Size 420, 260; [Windows.Forms.Application]::Run($f)'
-  $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden
+  $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden; $script:ours += $p.Id
   $other = [IntPtr]::Zero
   for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::FindWindowW([NullString]::Value, 'Other app') }
   [void][H]::Front($other); Start-Sleep -Milliseconds 800
@@ -195,7 +212,7 @@ function Start-Check($theme, $style, $extra) {
   if ($style) { $arguments += '--style', $style }
   if ($extra) { $arguments += $extra }
   Remove-Item (Join-Path $dir 'ready.json') -ErrorAction SilentlyContinue
-  $p = Start-Process $Exe -ArgumentList $arguments -PassThru
+  $p = Start-Process $Exe -ArgumentList $arguments -PassThru; $script:ours += $p.Id
   $ready = Join-Path $dir 'ready.json'
   for ($i = 0; $i -lt 600 -and -not (Test-Path $ready) -and -not $p.HasExited; $i++) { Start-Sleep -Milliseconds 100 }
   if (-not (Test-Path $ready)) {
@@ -213,14 +230,100 @@ function Stop-Check($check) {
   [void](Command 'exit')
   if (-not $check.Process.WaitForExit(5000)) { $check.Process.Kill() }
 }
+# Every press goes down only on the check's own windows (the HUD, the window behind it, the
+# other app): a window that came up meanwhile, a chat or a console, is never clicked.
+$script:ours = @()
+function Safe-Press($x, $y) {
+  $pid_ = [H]::PidAt($x, $y)
+  if ($script:ours -notcontains $pid_) { $at = [H]::RootAt($x, $y); throw ("refused a press at ({0},{1}): it would land on ""{2}"" (pid {3}), not the check's windows" -f $x, $y, [H]::Title($at), $pid_) }
+}
 # A click at (x, y); $script:under says which window was there as the button went down.
 function Click-At($x, $y) {
   $saved = New-Object H+POINT; [void][H]::GetCursorPos([ref]$saved)
-  [void][H]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 120
+  Mouse-Move $x $y; Start-Sleep -Milliseconds 120
   $at = [H]::RootAt($x, $y); $script:under = '{0} "{1}" {2}' -f $at, [H]::Title($at), [H]::ClassOf($at); $script:at = (Get-Date).ToString('HH:mm:ss.fff')
-  [H]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [H]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+  Safe-Press $x $y
+  [H]::Mouse($x, $y, 2); Start-Sleep -Milliseconds 60; [H]::Mouse($x, $y, 4)
   Start-Sleep -Milliseconds 120
   [void][H]::SetCursorPos($saved.X, $saved.Y)
+}
+# The pointer moved to (x, y) from where it is, in `steps` real moves.
+function Mouse-Move($x, $y, $steps = 8) {
+  $p = New-Object H+POINT; [void][H]::GetCursorPos([ref]$p)
+  for ($i = 1; $i -le $steps; $i++) { [H]::Mouse([int]($p.X + ($x - $p.X) * $i / $steps), [int]($p.Y + ($y - $p.Y) * $i / $steps), 0); Start-Sleep -Milliseconds 15 }
+}
+# A real click that stays where it went down, with the left button, or the right (8, 0x10).
+function Mouse-Click($x, $y, $down = 2, $up = 4) {
+  Mouse-Move $x $y; Start-Sleep -Milliseconds 150
+  Safe-Press $x $y
+  [H]::Mouse($x, $y, $down); Start-Sleep -Milliseconds 70; [H]::Mouse($x, $y, $up); Start-Sleep -Milliseconds 150
+}
+# A real drag: pressed at (x, y), moved to (tx, ty) in 25 steps, released there;
+# `midway` runs with the button still down, half way.
+function Mouse-Drag($x, $y, $tx, $ty, [scriptblock]$midway) {
+  Mouse-Move $x $y; Start-Sleep -Milliseconds 150
+  Safe-Press $x $y
+  [H]::Mouse($x, $y, 2); Start-Sleep -Milliseconds 120
+  for ($i = 1; $i -le 25; $i++) {
+    [H]::Mouse([int]($x + ($tx - $x) * $i / 25), [int]($y + ($ty - $y) * $i / 25), 0); Start-Sleep -Milliseconds 25
+    if ($i -eq 12 -and $midway) { & $midway }
+  }
+  Start-Sleep -Milliseconds 150; [H]::Mouse($tx, $ty, 4); Start-Sleep -Milliseconds 1200
+}
+# The card, not the strip: taller than 80 effective px.
+function Is-Card($check) { $h = Rect $check.Hud; ($h.B - $h.T) -gt 80 * $check.Scale }
+# The corner of its work area the HUD sits at, 12 effective px in from both edges, or 'none'.
+function Corner-Of($check) {
+  $h = Rect $check.Hud; $w = [System.Windows.Forms.Screen]::FromHandle($check.Hud).WorkingArea; $m = [int](12 * $check.Scale)
+  $left = [math]::Abs($h.L - ($w.Left + $m)) -le 2; $right = [math]::Abs($h.R - ($w.Right - $m)) -le 2
+  $top = [math]::Abs($h.T - ($w.Top + $m)) -le 2; $bottom = [math]::Abs($h.B - ($w.Bottom - $m)) -le 2
+  if ($top -and $left) { 'TopLeft' } elseif ($top -and $right) { 'TopRight' } elseif ($bottom -and $left) { 'BottomLeft' } elseif ($bottom -and $right) { 'BottomRight' } else { 'none' }
+}
+function Asked($what) { (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains $what }
+# The footer's 'Collapse to the strip', clicked with the mouse: the pointer on the card first, so it shows.
+function Collapse($check) {
+  $h = Rect $check.Hud
+  Mouse-Move ([int]($h.L + 20 * $check.Scale)) ([int]($h.B - 12 * $check.Scale))
+  $root = [Windows.Automation.AutomationElement]::FromHandle($check.Hud); $button = $null
+  for ($i = 0; $i -lt 30 -and -not $button; $i++) { Start-Sleep -Milliseconds 100; $button = Find-Named $root 'Collapse to the strip' -Button }
+  if (-not $button) { return 'no Collapse button' }
+  $br = $button.Current.BoundingRectangle
+  Mouse-Click ([int]($br.X + $br.Width / 2)) ([int]($br.Y + $br.Height / 2)); Start-Sleep -Milliseconds 800
+  if (Is-Card $check) { 'still the card' } else { 'strip' }
+}
+# A real drag from (x, y) on the HUD toward the opposite corner, with another app in front:
+# it must move there and snap, give the foreground back, and ask for nothing a click asks for.
+# With -Redraw, the HUD is drawn again half way (as a read or the minute's tick does): it must
+# stay under the pointer, not jump back to its corner.
+function Drag-Check($check, $other, $what, $x, $y, [switch]$Redraw) {
+  $from = Corner-Of $check
+  $w = [System.Windows.Forms.Screen]::FromHandle($check.Hud).WorkingArea
+  $right = $from -like '*Right'; $bottom = $from -like 'Bottom*'
+  $want = $(if ($bottom) { 'Top' } else { 'Bottom' }) + $(if ($right) { 'Left' } else { 'Right' })
+  $tx = $w.Left + [int]($w.Width * $(if ($right) { 0.3 } else { 0.7 })); $ty = $w.Top + [int]($w.Height * $(if ($bottom) { 0.3 } else { 0.7 }))
+  [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
+  if ([H]::RootAt($x, $y) -ne $check.Hud) { Unverified "drag from $what`: ($x,$y) isn't on the HUD"; return }
+  Remove-Item (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
+  $before = Fg; $strip = -not (Is-Card $check)
+  $start = Rect $check.Hud; $script:held = $null
+  $midway = if ($Redraw) { {
+    $script:held = if (Command 'render' 5) { 'drawn' } else { 'not drawn' }
+    Start-Sleep -Milliseconds 400
+    $p = New-Object H+POINT; [void][H]::GetCursorPos([ref]$p); $r = Rect $check.Hud
+    # How far the HUD is from where the pointer holds it: 0 while it follows the pointer.
+    $script:off = [math]::Max([math]::Abs(($r.L - $start.L) - ($p.X - $x)), [math]::Abs(($r.T - $start.T) - ($p.Y - $y)))
+  } }
+  Mouse-Drag $x $y $tx $ty $midway
+  $now = Corner-Of $check; $after = Fg; $h = Rect $check.Hud
+  $clicked = Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue
+  $ok = $now -eq $want -and $before -eq $after -and -not $clicked -and $strip -eq (-not (Is-Card $check))
+  $note = ''
+  if ($Redraw) {
+    if ($script:held -ne 'drawn') { Unverified "a redraw during the drag from $what`: the check didn't draw it again" }
+    $ok = $ok -and $script:off -le 3
+    $note = ", half way and drawn again: {0} px from under the pointer" -f $script:off
+  }
+  "  {0} a drag from {1}, {2} -> toward {3}: now at {4} ({5},{6},{7},{8}), foreground kept={9}, clicks run: {10}{11}" -f (Pass $ok), $what, $from, $want, $now, $h.L, $h.T, $h.R, $h.B, ($before -eq $after), $(if ($clicked) { $clicked -join ',' } else { 'none' }), $note
 }
 # `count` presses on Refresh made by `press` (it returns a note), each with another app in
 # front: each must run Refresh and leave that app in front. A press during which a window of
@@ -283,9 +386,10 @@ function Contrast($check, $name) {
   $bmp.Dispose()
   $results
 }
-function Find-Named($root, $pattern) {
+# The first element named like `pattern`; a button only, with -Button (a tooltip carries a button's name too).
+function Find-Named($root, $pattern, [switch]$Button) {
   $all = $root.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
-  foreach ($e in $all) { if ($e.Current.Name -like $pattern) { return $e } }
+  foreach ($e in $all) { if ($e.Current.Name -like $pattern -and (-not $Button -or $e.Current.ControlType -eq [Windows.Automation.ControlType]::Button)) { return $e } }
   $null
 }
 
@@ -328,10 +432,10 @@ foreach ($theme in $Themes) {
     # The buttons show while the pointer is over the card: point at its footer first.
     $h = Rect $check.Hud
     $saved = New-Object H+POINT; [void][H]::GetCursorPos([ref]$saved)
-    [void][H]::SetCursorPos([int]($h.L + 20 * $check.Scale), [int]($h.B - 12 * $check.Scale))
+    Mouse-Move ([int]($h.L + 20 * $check.Scale)) ([int]($h.B - 12 * $check.Scale))
     # The footer's buttons show once the pointer is over the card: wait for them.
     $refresh = $null
-    for ($i = 0; $i -lt 30 -and -not $refresh; $i++) { Start-Sleep -Milliseconds 100; $refresh = Find-Named $root 'Refresh the limits' }
+    for ($i = 0; $i -lt 30 -and -not $refresh; $i++) { Start-Sleep -Milliseconds 100; $refresh = Find-Named $root 'Refresh the limits' -Button }
     if (-not $refresh) { "  {0} no 'Refresh the limits' button on the HUD" -f (Pass $false) }
     else {
       $br = $refresh.Current.BoundingRectangle
@@ -350,21 +454,22 @@ foreach ($theme in $Themes) {
       Report-Presses "UIA Invoke on 'Refresh the limits'" 20 (Presses 20 $other $check {
         # A refresh draws the card again: the button found before it is gone, so find it each time.
         $button = $null
-        for ($i = 0; $i -lt 30 -and -not $button; $i++) { $button = Find-Named $root 'Refresh the limits'; if (-not $button) { Start-Sleep -Milliseconds 100 } }
+        for ($i = 0; $i -lt 30 -and -not $button; $i++) { $button = Find-Named $root 'Refresh the limits' -Button; if (-not $button) { Start-Sleep -Milliseconds 100 } }
         try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); 'invoked' } catch { "invoke failed: $_" }
       })
       # A redraw (each read, the minute's tick) with the pointer resting on Refresh, and a
       # press at once, before XAML tells the new card the pointer is over it: the click runs.
-      $button = Find-Named $root 'Refresh the limits'
+      $button = Find-Named $root 'Refresh the limits' -Button
       if (-not $button) { Unverified "a press just after a redraw: no 'Refresh the limits' on the HUD" }
       else {
         $br = $button.Current.BoundingRectangle
         $bx = [int]($br.X + $br.Width / 2); $by = [int]($br.Y + $br.Height / 2)
-        [void][H]::SetCursorPos($bx, $by); Start-Sleep -Milliseconds 500
+        Mouse-Move $bx $by; Start-Sleep -Milliseconds 500
         $script:unasked = 0
         Report-Presses "a press on 'Refresh the limits' just after a redraw under the resting pointer" 10 (Presses 10 $other $check {
           if (-not (Command 'render' 5)) { $script:unasked++ }
-          [H]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [H]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+          Safe-Press $bx $by
+          [H]::Mouse($bx, $by, 2); Start-Sleep -Milliseconds 60; [H]::Mouse($bx, $by, 4)
           'after a redraw'
         })
         if ($script:unasked) { Unverified "a press just after a redraw: the check didn't redraw $script:unasked times" }
@@ -383,6 +488,30 @@ foreach ($theme in $Themes) {
         "  {0} a click on Claude's row asks for the Limits page: clicked={1}" -f (Pass $clicked), $clicked
       } else { Unverified "a click on Claude's row: the point isn't on the HUD" }
     } else { "  {0} no row for Claude on the HUD" -f (Pass $false) }
+    # A right-click on the card opens its menu; Esc closes it. The other app goes back in
+    # front first: a window that came up meanwhile (a chat, a console) may cover it.
+    [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
+    $h = Rect $check.Hud
+    Mouse-Click ([int]($h.L + 8 * $check.Scale)) ([int](($h.T + $h.B) / 2)) 8 0x10; Start-Sleep -Milliseconds 800
+    $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
+    "  {0} a right-click on the card opens its menu: 'Hide the HUD' shown={1}" -f (Pass ([bool]$menu)), [bool]$menu
+    # Closed as a person does, a click elsewhere (Esc goes to the window in front, not the HUD),
+    # only on a point of the other app or the window behind the HUD that nothing covers.
+    $spot = $null
+    foreach ($w in $other.Window, $check.Behind) {
+      $r = Rect $w
+      foreach ($f in @(@(0.5, 0.5), @(0.25, 0.25), @(0.75, 0.25), @(0.25, 0.75), @(0.75, 0.75))) {
+        $x = [int]($r.L + ($r.R - $r.L) * $f[0]); $y = [int]($r.T + ($r.B - $r.T) * $f[1])
+        if (-not $spot -and [H]::RootAt($x, $y) -eq $w) { $spot = $x, $y }
+      }
+    }
+    if (-not $spot) { Unverified "a click elsewhere closes the menu: other windows cover the other app and the window behind the HUD" }
+    else {
+      Mouse-Click $spot[0] $spot[1]; Start-Sleep -Milliseconds 600
+      $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
+      "  {0} a click elsewhere closes the menu: closed={1}" -f (Pass (-not $menu)), (-not $menu)
+    }
+    [void][H]::SetCursorPos($saved.X, $saved.Y)
     $other.Process.Kill()
   }
 
@@ -399,30 +528,61 @@ foreach ($theme in $Themes) {
     Get-Content (Join-Path $dir 'crash.txt') -ErrorAction SilentlyContinue | Select-Object -First 6 | ForEach-Object { "    crash.txt: $_" }
   }
 
+  if ($Tests -contains 'collapse') {
+    # The footer's Collapse, then a click on the strip, as a person does it: the card comes
+    # back and stays, after the pointer leaves it, a redraw and a restart. A click at the
+    # strip's far end and at its corner end: the strip can be wider than the card.
+    $other = Other-App
+    $card = Rect $check.Hud
+    foreach ($end in 'far', 'corner') {
+      # The card to collapse from, if the last click didn't leave it up (set, not tested here).
+      if (-not (Is-Card $check)) { [void](Command 'style:card'); Start-Sleep -Milliseconds 800 }
+      $collapsed = Collapse $check
+      $style = (Get-Content (Join-Path $dir 'app.json') -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json).hudStyle
+      "  {0} the footer's 'Collapse to the strip', clicked: {1}, Style in Settings: {2}" -f (Pass ($collapsed -eq 'strip' -and $style -eq 'strip')), $collapsed, $style
+      if ($collapsed -ne 'strip') { continue }
+      $h = Rect $check.Hud; $atRight = (Corner-Of $check) -like '*Right'
+      $x = if (($end -eq 'far') -eq $atRight) { $h.L + [int](14 * $check.Scale) } else { $h.R - [int](14 * $check.Scale) }
+      $y = [int](($h.T + $h.B) / 2)
+      Mouse-Click $x $y; Start-Sleep -Milliseconds 800
+      $shown = Is-Card $check
+      $o = Rect $other.Window
+      Mouse-Move ([int](($o.L + $o.R) / 2)) ([int](($o.T + $o.B) / 2)); Start-Sleep -Milliseconds 1500
+      $left = Is-Card $check
+      [void](Command 'render'); Start-Sleep -Milliseconds 800
+      $redrawn = Is-Card $check
+      $style = (Get-Content (Join-Path $dir 'app.json') -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json).hudStyle
+      "  {0} a click on the strip's {1} end brings the card back for good: card after the click={2}, after the pointer left={3}, after a redraw={4}, Style={5}" -f (Pass ($shown -and $left -and $redrawn -and $style -eq 'card')), $end, $shown, $left, $redrawn, $style
+    }
+    $other.Process.Kill()
+    # Started again on the settings it left: the card, at its size.
+    $style = (Get-Content (Join-Path $dir 'app.json') -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json).hudStyle
+    Stop-Check $check
+    $check = Start-Check $theme $null '--keep-settings'
+    if (-not $check) { continue }
+    $again = Rect $check.Hud
+    "  {0} after a restart: Style kept={1}, the card shown at its size={2} (height {3} -> {4})" -f (Pass ($style -eq 'card' -and ($again.B - $again.T) -eq ($card.B - $card.T))), $style, (($again.B - $again.T) -eq ($card.B - $card.T)), ($card.B - $card.T), ($again.B - $again.T)
+  }
+
   if ($Tests -contains 'drag') {
-    # A drag by the caption region (the top edge) snaps to the nearest corner, and the focus goes back.
+    # A press anywhere on the HUD but a button drags it once it moves: the card's body, its
+    # top edge, a row (no Limits page then), and the strip. Each snaps to the nearest corner
+    # and gives the foreground back. A drag past the threshold isn't a click. A redraw half
+    # way through (each read, the minute's tick) waits for the drop.
     $other = Other-App
     $h = Rect $check.Hud
-    $gx = [int](($h.L + $h.R) / 2); $gy = $h.T + [int](5 * $check.Scale)
-    $work = [System.Windows.Forms.Screen]::FromHandle($check.Hud).WorkingArea
-    if ([H]::RootAt($gx, $gy) -ne $check.Hud) { Unverified "drag: the HUD's top edge isn't the HUD at ($gx,$gy)" }
-    else {
-      $before = Fg
-      $saved = New-Object H+POINT; [void][H]::GetCursorPos([ref]$saved)
-      [void][H]::SetCursorPos($gx, $gy); Start-Sleep -Milliseconds 150
-      [H]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 150
-      $tx = $work.Left + [int]($work.Width * 0.3); $ty = $work.Top + [int]($work.Height * 0.3)
-      for ($i = 1; $i -le 20; $i++) { [void][H]::SetCursorPos([int]($gx + ($tx - $gx) * $i / 20), [int]($gy + ($ty - $gy) * $i / 20)); Start-Sleep -Milliseconds 25 }
-      Start-Sleep -Milliseconds 150
-      [H]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
-      [void][H]::SetCursorPos($saved.X, $saved.Y)
-      Start-Sleep -Milliseconds 1200
-      $h = Rect $check.Hud
-      $m = [int](12 * $check.Scale)
-      $snapped = [math]::Abs($h.L - ($work.Left + $m)) -le 2 -and [math]::Abs($h.T - ($work.Top + $m)) -le 2
-      $after = Fg
-      "  {0} dragged toward the top left: snapped there={1} rect=({2},{3},{4},{5}) work=({6},{7}) before={8} after={9}" -f (Pass ($snapped -and $before -eq $after)), $snapped, $h.L, $h.T, $h.R, $h.B, $work.Left, $work.Top, $before, $after
-    }
+    Drag-Check $check $other "the card's middle" ([int](($h.L + $h.R) / 2)) ([int](($h.T + $h.B) / 2))
+    $h = Rect $check.Hud
+    Drag-Check $check $other "the card's top edge" ([int](($h.L + $h.R) / 2)) ($h.T + [int](5 * $check.Scale)) -Redraw
+    $row = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Claude*'
+    if ($row) {
+      $br = $row.Current.BoundingRectangle
+      Drag-Check $check $other "Claude's row" ([int]($br.X + 12 * $check.Scale)) ([int]($br.Y + $br.Height / 2))
+    } else { "  {0} no row for Claude on the HUD" -f (Pass $false) }
+    [void](Command 'style:strip'); Start-Sleep -Milliseconds 800
+    $h = Rect $check.Hud
+    Drag-Check $check $other 'the strip' ([int](($h.L + $h.R) / 2)) ([int](($h.T + $h.B) / 2))
+    [void](Command 'style:card'); Start-Sleep -Milliseconds 500
     $other.Process.Kill()
     [void](Command 'corner:BottomRight'); Start-Sleep -Milliseconds 500
   }
@@ -494,7 +654,7 @@ foreach ($theme in $Themes) {
       for ($i = 0; $i -lt 50 -and -not (Test-Path (Join-Path $dir 'activated.txt')); $i++) { Start-Sleep -Milliseconds 100 }
       $got = Get-Content (Join-Path $dir 'activated.txt') -ErrorAction SilentlyContinue
       $got | ForEach-Object { "    $_" }
-      $quiet = ($got -match '^quiet=omp/Kimi 7d$').Count -eq 1 -and -not ($got -match '^quietUntil=(none|no such limit)$')
+      $quiet = ($got -match '^quiet=omp/time:Kimi 7d$').Count -eq 1 -and -not ($got -match '^quietUntil=(none|no such limit)$')
       "  {0} 'Quiet until reset' on the notification quiets omp's Kimi 7d" -f (Pass $quiet)
     }
   }

@@ -112,11 +112,17 @@ internal static class Win32
     [DllImport("dwmapi.dll")] internal static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out RECT value, int size);
     [DllImport("user32.dll")] internal static extern bool ClientToScreen(IntPtr window, ref POINT point);
     internal const int QUNS_PRESENTATION_MODE = 4;
-    internal const uint WM_EXITSIZEMOVE = 0x0232, WM_DPICHANGED = 0x02E0, WM_DISPLAYCHANGE = 0x007E, WM_SETTINGCHANGE = 0x001A;
-    // The HUD: whether the pointer rests on it.
+    internal const uint WM_ENTERSIZEMOVE = 0x0231, WM_EXITSIZEMOVE = 0x0232, WM_DPICHANGED = 0x02E0, WM_DISPLAYCHANGE = 0x007E, WM_SETTINGCHANGE = 0x001A;
+    // The HUD: whether the pointer rests on it, and how far a press moves before it drags.
     [DllImport("user32.dll")] internal static extern IntPtr WindowFromPoint(POINT point);
     [DllImport("user32.dll")] internal static extern IntPtr GetAncestor(IntPtr window, uint flags);
     internal const uint GA_ROOT = 2;
+    [DllImport("user32.dll")] internal static extern int GetSystemMetricsForDpi(int index, uint dpi);
+    internal const int SM_CXDRAG = 68, SM_CYDRAG = 69;
+    // A press on the HUD, followed until the primary button is up: the left one, or the right when swapped.
+    [DllImport("user32.dll")] internal static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] internal static extern short GetAsyncKeyState(int key);
+    internal const int SM_SWAPBUTTON = 23, VK_LBUTTON = 1, VK_RBUTTON = 2;
 
     // The taskbar button's dot (an icon made from a bitmap) and the HUD's shortcut.
     [StructLayout(LayoutKind.Sequential)]

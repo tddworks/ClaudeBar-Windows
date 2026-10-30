@@ -53,15 +53,19 @@ public sealed class HudTextTests
         var reply = (JsonObject)JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "hud-check.json")))!;
         var data = HudData.Parse(reply)!;
 
-        Assert.AreEqual("claude,codex,omp,cursor,gemini,copilot", string.Join(",", data.Tools.Select(tool => tool.Id)));
+        Assert.AreEqual("claude,codex,omp/Claude,omp/Kimi,omp/Z.ai,omp/Codex,omp/Claude · work,omp/Grok,cursor,gemini,copilot", string.Join(",", data.Tools.Select(tool => tool.Id)));
         Assert.AreEqual("5h,7d", string.Join(",", data.Tools[0].Lines.Select(line => line.Window)));
+        Assert.AreEqual("session,weekly", string.Join(",", data.Tools[0].Lines.Select(line => line.Key)));
         Assert.AreEqual(DateTimeOffset.FromUnixTimeSeconds(1_791_900_000 + 3 * 3600 + 36 * 60), data.Tools[0].Lines[0].ResetsAt);
-        Assert.HasCount(13, data.Tools[2].Lines);
-        Assert.AreEqual(("Kimi 7d", 12, 2), (data.Tools[2].HeadlineLine.Window, data.Tools[2].OthersCount, data.Tools[2].OthersAttention));
+        var kimi = data.Tools[3];
+        Assert.AreEqual(("Kimi", "omp"), (kimi.Group, kimi.Via));
+        Assert.AreEqual(("7d", 1, 1), (kimi.HeadlineLine.Window, kimi.OthersCount, kimi.OthersAttention));
+        Assert.AreEqual("omp/time:Kimi 7d", HudData.Key(kimi, kimi.HeadlineLine));
         Assert.AreEqual("depleted", data.Worst);
         Assert.AreEqual("signedOut", data.Stale("cursor")!.Kind);
-        Assert.AreEqual("claude,codex,omp,cursor", string.Join(",", data.Summary().Rows.Select(row => row.Tool!.Id)));
-        Assert.AreEqual("gemini,copilot", string.Join(",", data.Summary().Fine!.Ids));
+        Assert.AreEqual("claude,codex,omp/Kimi,omp/Z.ai,cursor", string.Join(",", data.Summary().Rows.Select(row => row.Tool!.Id)));
+        Assert.AreEqual("omp/Claude,omp/Codex,omp/Claude · work,omp/Grok,gemini,copilot", string.Join(",", data.Summary().Fine!.Ids));
         Assert.AreEqual("Codex", data.LookOf("codex.work").Name);
+        Assert.AreEqual(("Kimi", "Kimi · via Oh My Pi"), (data.LookOf("omp/Kimi").Name, data.Header("omp/Kimi")));
     }
 }

@@ -46,8 +46,8 @@ internal sealed class HudView
     internal Action? Quit;
     /// After an action a click on the HUD ran: the person's window again.
     internal Action? AfterClick;
-    /// The footer's buttons showed or hid: where a drag starts changed.
-    internal Action? RegionsChanged;
+    /// The right-click menu opened.
+    internal Action? MenuOpened;
 
     /// Draws one label in the tertiary colour: the check's proof that its
     /// contrast measure finds a label under 4.5:1 (plan, Task 7).
@@ -59,12 +59,8 @@ internal sealed class HudView
     /// card -> strip -> card that left it in the old card's track, and adding it
     /// to the new one threw 0x800F1000, so the card never came back.
     private readonly Dictionary<string, (Border Fill, Panel Track)> _fills = new();
-    private readonly List<FrameworkElement> _captions = new();
-    private readonly List<FrameworkElement> _passthrough = new();
-
-    /// Where a drag starts in the last view drawn, and what stays clickable inside it.
-    internal IReadOnlyList<FrameworkElement> Captions => _captions;
-    internal IReadOnlyList<FrameworkElement> Passthrough => _passthrough;
+    /// A click on the strip, wherever it lands: the card.
+    private Action? _clickElsewhere;
 
     // MARK: - The card
 
@@ -75,17 +71,12 @@ internal sealed class HudView
     internal FrameworkElement Card(Input input)
     {
         _calibrated = false;
-        _captions.Clear();
-        _passthrough.Clear();
+        _clickElsewhere = null;
+        // The top 12 px are room above the rows. A press anywhere but a button drags the HUD (HudWindow).
         var root = new Grid { Background = new SolidColorBrush(Colors.Transparent) };
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(12) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-        // The top 12 px drag the HUD.
-        var grip = new Border { Background = new SolidColorBrush(Colors.Transparent) };
-        root.Children.Add(grip);
-        _captions.Add(grip);
 
         var body = new StackPanel { Spacing = 10, Padding = new Thickness(14, 0, 14, 12) };
         if (input.Data is { IsEmpty: true })
@@ -116,7 +107,6 @@ internal sealed class HudView
         var (footer, age) = Footer(input);
         Grid.SetRow(footer, 2);
         root.Children.Add(footer);
-        _captions.Add(footer);
         var tools = Toolbar(input.OnTop);
         Grid.SetColumn(tools, 1);
         footer.Children.Add(tools);
@@ -130,8 +120,8 @@ internal sealed class HudView
             if (age is not null) age.Visibility = over ? Visibility.Collapsed : Visibility.Visible;
         }
         Hover(input.PointerOver);
-        root.PointerEntered += (_, _) => { Hover(true); RegionsChanged?.Invoke(); };
-        root.PointerExited += (_, _) => { Hover(false); RegionsChanged?.Invoke(); };
+        root.PointerEntered += (_, _) => Hover(true);
+        root.PointerExited += (_, _) => Hover(false);
         root.ContextFlyout = Menu();
         return root;
     }
@@ -266,7 +256,8 @@ internal sealed class HudView
         Place(row, check, 0);
         var names = fine.Ids.Select(id => data.LookOf(id).Name).ToList();
         var lowest = data.LookOf(fine.LowestId).Name;
-        Place(row, Trimmed(Text(fine.All ? "All fine" : string.Join(" · ", names), "HudBody"), double.NaN), 1);
+        // Commas, not ` · `: a group's name has its own (`Claude · work`).
+        Place(row, Trimmed(Text(fine.All ? "All fine" : string.Join(", ", names), "HudBody"), double.NaN), 1);
         Place(row, Tabular(Text(fine.All ? $"lowest {lowest} {fine.LowestPercent}%" : $"lowest {fine.LowestPercent}%", Tail("HudSecondary"))), 2);
         AutomationProperties.SetName(row, fine.All
             ? $"All fine. Lowest: {lowest}, {fine.LowestPercent}% left"
@@ -325,8 +316,21 @@ internal sealed class HudView
     /// A click on a row opens the Limits page.
     private HudRow Clickable(HudRow row)
     {
-        row.Tapped += (_, _) => OpenLimits?.Invoke();
+        row.Click = () => OpenLimits?.Invoke();
         return row;
+    }
+
+    /// A click on the HUD (HudWindow: not on a button, and it didn't drag): the
+    /// action of the row it went down on, or on the strip, the card.
+    internal void Click(object? source)
+    {
+        for (var at = source as DependencyObject; at is not null; at = VisualTreeHelper.GetParent(at))
+            if (at is HudRow { Click: { } click })
+            {
+                click();
+                return;
+            }
+        _clickElsewhere?.Invoke();
     }
 
     private bool _calibrated;
@@ -386,7 +390,6 @@ internal sealed class HudView
         panel.Children.Add(sentence);
         var choose = new Button { Content = "Choose tools", HorizontalAlignment = HorizontalAlignment.Left };
         choose.Click += (_, _) => ChooseTools?.Invoke();
-        _passthrough.Add(choose);
         panel.Children.Add(choose);
         return panel;
     }
@@ -492,6 +495,8 @@ internal sealed class HudView
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Quit ClaudeBar", "\uE711", Quit, keepsFocus: true);
         menu.Opening += (_, _) => givesBack = true;
+        // In front while it's open, so a click anywhere else closes it, as a menu does.
+        menu.Opened += (_, _) => MenuOpened?.Invoke();
         menu.Closed += (_, _) => { if (givesBack) AfterClick?.Invoke(); };
         return menu;
     }
@@ -499,11 +504,9 @@ internal sealed class HudView
     // MARK: - The strip
 
     /// One line: the worst tool's headline, then a dot per other tool in its
-    /// status colour. A click shows the card.
+    /// status colour. A click brings the card back; a drag moves the HUD.
     internal FrameworkElement Strip(Input input)
     {
-        _captions.Clear();
-        _passthrough.Clear();
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Padding = new Thickness(12, 8, 12, 8), Background = new SolidColorBrush(Colors.Transparent) };
         var item = new HudRow();
         var parts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
@@ -602,9 +605,8 @@ internal sealed class HudView
         }
         foreach (var child in parts.Children.OfType<FrameworkElement>()) child.VerticalAlignment = VerticalAlignment.Center;
         AutomationProperties.SetName(item, string.Join(". ", sentences));
-        // A click on it opens the card. It has no caption region, so it doesn't
-        // drag: the card does, and the strip keeps the card's corner.
-        row.Tapped += (_, _) => { ShowCard?.Invoke(); AfterClick?.Invoke(); };
+        // A click anywhere on it brings the card back, for good, as Settings' Style does.
+        _clickElsewhere = () => { ShowCard?.Invoke(); AfterClick?.Invoke(); };
         row.ContextFlyout = Menu();
         return row;
     }
@@ -654,7 +656,6 @@ internal sealed class HudView
         var link = new HyperlinkButton { Content = text, Padding = new Thickness(4, 0, 4, 0), FontSize = 12, MinHeight = 0 };
         AutomationProperties.SetName(link, name);
         link.Click += (_, _) => { action(); AfterClick?.Invoke(); };
-        _passthrough.Add(link);
         return link;
     }
 
@@ -668,7 +669,6 @@ internal sealed class HudView
         AutomationProperties.SetName(button, name);
         ToolTipService.SetToolTip(button, name);
         button.Click += (_, _) => action();
-        _passthrough.Add(button);
         return button;
     }
 
@@ -682,8 +682,11 @@ internal sealed class HudView
 /// A row the HUD reads as one sentence: its texts are drawn but left out of
 /// UI Automation's control view, and the row carries the full sentence
 /// (`AutomationProperties.Name`), as a Text element, for anyone who points at it.
+/// `Click` is what a click on it does.
 internal sealed partial class HudRow : Grid
 {
+    internal Action? Click { get; set; }
+
     protected override AutomationPeer OnCreateAutomationPeer() => new Peer(this);
 
     private sealed partial class Peer(HudRow owner) : FrameworkElementAutomationPeer(owner)

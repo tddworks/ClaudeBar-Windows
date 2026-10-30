@@ -22,10 +22,10 @@ internal sealed class Hud : IDisposable
     private string? _lastReading;
     private bool _offline;
     private bool _reading;
-    /// The strip, clicked: the card until the pointer leaves it.
-    private bool _peek;
     /// Nothing found was shown once this run; after that the HUD waits for a tool.
     private bool _shownEmpty;
+    /// A redraw asked for while the HUD was pressed or dragged: run once it's released.
+    private bool _renderLater;
 
     /// The reading changed, or whether it's offline: for the window's Limits page and the taskbar dot.
     internal Action? Changed;
@@ -37,22 +37,27 @@ internal sealed class Hud : IDisposable
     internal Action? OpenLimits;
     internal Action? ChooseTools;
     internal Action? Quit;
-    /// Shown or hidden from the HUD itself (its menu, or closing it): Settings follows.
-    internal Action? ShownChanged;
+    /// Shown, hidden or its style changed from the HUD itself (its menu, closing it, Collapse, a click on the strip): Settings follows.
+    internal Action? SettingsChanged;
 
     /// `read(refresh)`: `Swift.HudRefresh()` when asked to refresh, else
     /// `Swift.HudReading()`, which answers from the last numbers at once.
     internal Hud(DispatcherQueue queue, Func<bool, Task<JsonObject>> read)
     {
         _read = read;
-        _window = new HudWindow(_foreground) { CloseRequested = () => SetShown(false) };
+        _window = new HudWindow(_foreground)
+        {
+            CloseRequested = () => SetShown(false),
+            Clicked = source => _view.Click(source),
+            Released = () => { if (_renderLater) Render(); },
+        };
         // Drawn again after the theme change has gone through the tree: replacing
         // the content inside ActualThemeChanged crashes XAML (seen with --theme light on a dark PC).
         _window.ThemeChanged = () => queue.TryEnqueue(DispatcherQueuePriority.Low, Render);
         _view.Refresh = () => _ = Read(refresh: true);
         _view.ToggleOnTop = () => SetOnTop(!Preferences.HudOnTop);
-        _view.ShowStrip = () => { _peek = false; SetStyle("strip"); };
-        _view.ShowCard = () => { _peek = true; Render(); };
+        _view.ShowStrip = () => { SetStyle("strip"); SettingsChanged?.Invoke(); };
+        _view.ShowCard = () => { SetStyle("card"); SettingsChanged?.Invoke(); };
         _view.OpenWindow = () => OpenWindow?.Invoke();
         _view.OpenSettings = () => OpenSettings?.Invoke();
         _view.OpenLimits = () => OpenLimits?.Invoke();
@@ -60,8 +65,7 @@ internal sealed class Hud : IDisposable
         _view.HideHud = () => SetShown(false);
         _view.Quit = () => Quit?.Invoke();
         _view.AfterClick = _window.AfterClick;
-        // The buttons are passed through the footer's drag region only while they show.
-        _view.RegionsChanged = () => _window.SetDragRegions(_view.Captions, _view.Passthrough);
+        _view.MenuOpened = _window.Activate;
         _poll = queue.CreateTimer();
         _poll.Interval = TimeSpan.FromSeconds(30);
         _poll.Tick += (_, _) => _ = Read(refresh: false);
@@ -145,7 +149,7 @@ internal sealed class Hud : IDisposable
         Preferences.Hud = shown;
         if (shown) _shownEmpty = false;
         Render();
-        ShownChanged?.Invoke();
+        SettingsChanged?.Invoke();
     }
 
     internal void SetStyle(string style)
@@ -168,20 +172,17 @@ internal sealed class Hud : IDisposable
     }
 
     /// *Quiet until reset* on a notification: nothing more about that limit until it resets.
-    internal void Quiet(string key)
-    {
-        var kept = KeptLines();
-        if (!kept.TryGetValue(key, out var line)) return;
-        kept[key] = line with { QuietUntil = line.ResetsAt ?? DateTimeOffset.Now.AddHours(5) };
-        Preferences.HudLines = kept;
-    }
+    internal void Quiet(string key) => Preferences.HudLines = HudCrossings.Quiet(KeptLines(), key, DateTimeOffset.Now);
 
     /// Draws the HUD again: the countdowns from the reset times, as of now.
+    /// Not while it's pressed or dragged (each read, the minute's tick): then once it's released.
     internal void Render()
     {
+        _renderLater = _window.Held;
+        if (_renderLater) return;
         var hidden = Preferences.HudHiddenTools;
         var data = _data?.Without(hidden);
-        var pending = Preferences.HudPending.Where(tool => !hidden.Contains(tool.Look.Id)).ToList();
+        var pending = Preferences.HudPending.Where(tool => !HudData.Off(hidden, tool.Look.Id)).ToList();
         var empty = data is { IsEmpty: true };
         var wanted = Preferences.Hud && (data is not null || pending.Count > 0) && !(empty && _shownEmpty);
         if (!wanted)
@@ -192,11 +193,9 @@ internal sealed class Hud : IDisposable
         if (data is { IsEmpty: true }) _shownEmpty = true;
         var input = new HudView.Input(data, pending, _offline, TodayTokens, Place, DateTimeOffset.Now,
                                       _window.ActualTheme == ElementTheme.Dark, Preferences.HudOnTop, _window.PointerOver);
-        var strip = Preferences.HudStyle == "strip" && !_peek;
+        var strip = Preferences.HudStyle == "strip";
         var content = strip ? _view.Strip(input) : _view.Card(input);
-        if (_peek) content.PointerExited += (_, _) => { _peek = false; Render(); };
         _window.SetContent(content, strip ? null : CardWidth);
-        _window.SetDragRegions(_view.Captions, _view.Passthrough);
         if (!_window.IsShown) _window.Show();
     }
 

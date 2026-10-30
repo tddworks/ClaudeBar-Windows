@@ -1,4 +1,5 @@
-using Microsoft.UI.Input;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -25,14 +26,25 @@ internal sealed class HudWindow
     private bool _wanted;
     private bool _hiddenForFullScreen;
     private bool _closing;
-    private FrameworkElement[] _captions = Array.Empty<FrameworkElement>();
-    private FrameworkElement[] _passthrough = Array.Empty<FrameworkElement>();
+    /// The left press in progress on the HUD: a click, or a drag once it moves.
+    private HudDrag? _press;
+    private object? _pressedOn;
+    /// In the system's move loop (WM_ENTERSIZEMOVE…WM_EXITSIZEMOVE: the system menu's Move).
+    private bool _moving;
+    /// Screens, scaling or the taskbar changed while it was held: placed again once it's released.
+    private bool _placeLater;
 
     /// Asked to close (Alt+F4 after a click, or the system menu): the HUD hides instead.
     internal Action? CloseRequested;
 
     /// Its theme changed: Windows' own, or high contrast.
     internal Action? ThemeChanged;
+
+    /// A click on the HUD that isn't on a button and didn't drag: what it went down on.
+    internal Action<object?>? Clicked;
+
+    /// A press or a drag ended (snapped, if it dragged): what was put off meanwhile can run.
+    internal Action? Released;
 
     internal HudWindow(ForegroundTracker foreground)
     {
@@ -60,28 +72,44 @@ internal sealed class HudWindow
         var round = Win32.DWMWCP_ROUND;
         Win32.DwmSetWindowAttribute(_hwnd, Win32.DWMWA_WINDOW_CORNER_PREFERENCE, ref round, sizeof(int));
 
-        // Dragged by its caption regions (SetDragRegions); snapped when the drag
-        // ends, then the foreground goes back to the person's window, as after a
-        // click. Screens, scaling or the taskbar changing put it back in place.
+        // Snapped when a drag ends (OnReleased, or the system menu's Move from the
+        // keyboard), then the foreground goes back to the person's window, as after
+        // a click. Screens, scaling or the taskbar changing put it back in place,
+        // once it's no longer held.
         _subclass = (window, message, wParam, lParam, id, data) =>
         {
             switch (message)
             {
+                case Win32.WM_ENTERSIZEMOVE:
+                    _moving = true;
+                    break;
                 case Win32.WM_EXITSIZEMOVE:
-                    Snap();
-                    _foreground.GiveBack();
+                    _moving = false;
+                    Ended(dragged: true);
                     break;
                 case Win32.WM_DPICHANGED:
                 case Win32.WM_DISPLAYCHANGE:
                 case Win32.WM_SETTINGCHANGE:
-                    _window.DispatcherQueue.TryEnqueue(() => { if (_wanted) Place(); });
+                    _window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (Held) _placeLater = true;
+                        else if (_wanted) Place();
+                    });
                     break;
             }
             return Win32.DefSubclassProc(window, message, wParam, lParam);
         };
         Win32.SetWindowSubclass(_hwnd, _subclass, (UIntPtr)1, UIntPtr.Zero);
         _watch.Tick += (_, _) => FollowFullScreen();
-        _root.SizeChanged += (_, _) => UpdateDragRegions();
+        // A left press anywhere on the card or the strip but its buttons (which
+        // handle their own presses) is a click, or drags the HUD once it moves
+        // past the system's drag threshold (HudDrag). After the press it's followed
+        // from the pointer and the button themselves, each frame (Follow): XAML's
+        // own moves and release didn't always reach the HUD after a press on a row
+        // or on the strip (measured with real mouse input, check-hud's drag step).
+        _root.PointerPressed += OnPressed;
+        _root.PointerMoved += (_, _) => Follow();
+        _root.PointerReleased += (_, _) => Follow();
         _root.ActualThemeChanged += (_, _) => ThemeChanged?.Invoke();
         // Esc after UI Automation or a click made it active: back to the person's window.
         _root.KeyDown += (_, e) =>
@@ -116,6 +144,11 @@ internal sealed class HudWindow
         set => _presenter.IsAlwaysOnTop = value;
     }
 
+    /// Pressed or dragged now: the HUD is neither drawn again nor moved to its
+    /// corner until it's released (Hud.Render, Released), or a redraw would
+    /// snap it back under the pointer mid-drag.
+    internal bool Held => _press is not null || _moving;
+
     /// Puts `content` in the HUD, sized to it: `widthDip` wide, or as wide as
     /// it asks when that is null (the strip), and as tall as it asks, up to the
     /// work area less the margins.
@@ -132,12 +165,55 @@ internal sealed class HudWindow
         _root.UpdateLayout();
     }
 
-    /// The parts a drag starts from, and the controls inside them that stay clickable.
-    internal void SetDragRegions(IEnumerable<FrameworkElement> captions, IEnumerable<FrameworkElement> passthrough)
+    private void OnPressed(object sender, PointerRoutedEventArgs e)
     {
-        _captions = captions.ToArray();
-        _passthrough = passthrough.ToArray();
-        _window.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, UpdateDragRegions);
+        if (_press is not null || !e.GetCurrentPoint(_root).Properties.IsLeftButtonPressed || !Win32.GetCursorPos(out var at)) return;
+        var dpi = Win32.GetDpiForWindow(_hwnd);
+        var window = _window.AppWindow.Position;
+        _press = new HudDrag(new Pixel(at.X, at.Y), new Pixel(window.X, window.Y),
+                             new Pixel(Win32.GetSystemMetricsForDpi(Win32.SM_CXDRAG, dpi), Win32.GetSystemMetricsForDpi(Win32.SM_CYDRAG, dpi)));
+        _pressedOn = e.OriginalSource;
+        CompositionTarget.Rendering += OnFrame;
+    }
+
+    private void OnFrame(object? sender, object e) => Follow();
+
+    /// The press as the pointer and the primary button are now: past the
+    /// threshold the HUD follows the pointer; the button up ends it, as a click
+    /// on what it went down on, or a drop.
+    private void Follow()
+    {
+        if (_press is not { } press || !Win32.GetCursorPos(out var at)) return;
+        var button = Win32.GetSystemMetrics(Win32.SM_SWAPBUTTON) != 0 ? Win32.VK_RBUTTON : Win32.VK_LBUTTON;
+        if ((Win32.GetAsyncKeyState(button) & 0x8000) == 0)
+        {
+            _press = null;
+            CompositionTarget.Rendering -= OnFrame;
+            var dragged = press.Release() == HudPress.Drag;
+            // After this frame or event: a click may draw the HUD again (the strip -> the card).
+            var on = _pressedOn;
+            _window.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!dragged) Clicked?.Invoke(on);
+                Ended(dragged);
+            });
+            return;
+        }
+        if (press.Move(new Pixel(at.X, at.Y)) is { } to) _window.AppWindow.Move(new PointInt32(to.X, to.Y));
+    }
+
+    /// A press ended. After a drag: the nearest corner, and the person's window
+    /// in front again. Then what was put off while it was held.
+    private void Ended(bool dragged)
+    {
+        if (dragged)
+        {
+            Snap();
+            _foreground.GiveBack();
+        }
+        else if (_placeLater && _wanted) Place();
+        _placeLater = false;
+        Released?.Invoke();
     }
 
     /// Shows it at its corner, without activating it.
@@ -169,6 +245,10 @@ internal sealed class HudWindow
 
     /// After any action a click on the HUD runs: the person's window again.
     internal void AfterClick() => _foreground.GiveBack();
+
+    /// The HUD in front, for its right-click menu: deactivated by a click on
+    /// another window, the menu closes (then AfterClick gives the foreground back).
+    internal void Activate() => Win32.SetForegroundWindow(_hwnd);
 
     private double Scale => Win32.GetDpiForWindow(_hwnd) / 96.0;
 
@@ -233,37 +313,5 @@ internal sealed class HudWindow
         if (hide == _hiddenForFullScreen) return;
         _hiddenForFullScreen = hide;
         if (hide) _window.AppWindow.Hide(); else _window.AppWindow.Show(false);
-    }
-
-    /// The caption regions a drag starts from, in the window's physical pixels,
-    /// with the controls inside them passed through so they stay clickable.
-    private void UpdateDragRegions()
-    {
-        if (_root.XamlRoot is null) return;
-        var source = InputNonClientPointerSource.GetForWindowId(_window.AppWindow.Id);
-        source.SetRegionRects(NonClientRegionKind.Caption, Rects(_captions));
-        source.SetRegionRects(NonClientRegionKind.Passthrough, Rects(_passthrough));
-    }
-
-    private RectInt32[] Rects(IEnumerable<FrameworkElement> elements)
-    {
-        var scale = _root.XamlRoot?.RasterizationScale ?? Scale;
-        var rects = new List<RectInt32>();
-        foreach (var element in elements)
-        {
-            if (element.XamlRoot is null || element.ActualWidth <= 0 || !Shown(element)) continue;
-            var bounds = element.TransformToVisual(null).TransformBounds(new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
-            rects.Add(new RectInt32((int)(bounds.X * scale), (int)(bounds.Y * scale), (int)Math.Ceiling(bounds.Width * scale), (int)Math.Ceiling(bounds.Height * scale)));
-        }
-        return rects.ToArray();
-    }
-
-    /// Drawn: neither it nor anything it's in is collapsed (the footer's buttons
-    /// while the pointer is elsewhere), so a drag starts there again.
-    private static bool Shown(FrameworkElement element)
-    {
-        for (DependencyObject? at = element; at is not null; at = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(at))
-            if (at is UIElement { Visibility: Visibility.Collapsed }) return false;
-        return true;
     }
 }

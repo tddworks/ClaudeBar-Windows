@@ -9,7 +9,7 @@ internal enum Crossing { Low, Out, Back }
 /// and until when the person asked for quiet.
 internal sealed record KeptLine(string Status, DateTimeOffset? ResetsAt, IReadOnlyList<Crossing> Notified, DateTimeOffset? QuietUntil = null);
 
-/// A limit in this reading: its key (`claude/5h`), status and reset.
+/// A limit in this reading: its key (`claude/session`, HudData.Key), status and reset.
 internal sealed record LineNow(string Key, string Status, DateTimeOffset? ResetsAt);
 
 /// When the HUD notifies (Task 11): on a crossing into critical, into
@@ -25,9 +25,13 @@ internal static class HudCrossings
         IReadOnlyDictionary<string, KeptLine> kept, IEnumerable<LineNow> lines, DateTimeOffset now)
     {
         var notify = new List<(string, Crossing)>();
-        // A limit missing from this reading (a tool that failed) keeps where it was.
-        var next = new Dictionary<string, KeptLine>(kept);
-        foreach (var line in lines)
+        var reading = lines.ToList();
+        // A limit missing from this reading keeps where it was while its login is missing too (it
+        // failed); a login that answered without it no longer has it, so it goes, as do keys of an
+        // earlier shape (`omp/Kimi 7d`, before keys were ClaudeBar's own).
+        var answered = reading.Select(line => Login(line.Key)).ToHashSet();
+        var next = kept.Where(pair => !answered.Contains(Login(pair.Key))).ToDictionary(pair => pair.Key, pair => pair.Value);
+        foreach (var line in reading)
         {
             if (!kept.TryGetValue(line.Key, out var before))
             {
@@ -46,6 +50,18 @@ internal static class HudCrossings
         }
         return (notify, next);
     }
+
+    /// *Quiet until reset* on one limit: no notification about it until its
+    /// reset, or for 5 hours when it states none; every other limit as it was.
+    internal static Dictionary<string, KeptLine> Quiet(IReadOnlyDictionary<string, KeptLine> kept, string key, DateTimeOffset now)
+    {
+        var next = new Dictionary<string, KeptLine>(kept);
+        if (next.TryGetValue(key, out var line)) next[key] = line with { QuietUntil = line.ResetsAt ?? now.AddHours(5) };
+        return next;
+    }
+
+    /// The login a key belongs to: `omp` for `omp/time:Claude 5h`.
+    private static string Login(string key) => key.IndexOf('/') is > 0 and var slash ? key[..slash] : key;
 
     /// The crossing from one status to the next, if it's one that notifies.
     internal static Crossing? Of(string before, string now) =>

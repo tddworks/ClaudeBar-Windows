@@ -114,7 +114,7 @@ public sealed partial class MainWindow : Window
             Quit = Quit,
             Changed = OnHudChanged,
             Crossed = OnCrossed,
-            ShownChanged = ShowHudSettings,
+            SettingsChanged = ShowHudSettings,
         };
         _usage = DispatcherQueue.CreateTimer();
         _usage.Interval = TimeSpan.FromMinutes(30);

@@ -60,6 +60,10 @@ public sealed partial class MainWindow
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         header.Children.Add(new Ellipse { Width = 10, Height = 10, Fill = Brush(Hex(IsDark ? look.Dark : look.Light)), VerticalAlignment = VerticalAlignment.Center });
         header.Children.Add(new TextBlock { Text = look.Name, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        // A group says what it was read through: `Codex · via Oh My Pi`.
+        if (tool?.Via is { } via)
+            header.Children.Add(new TextBlock { Text = $"· via {data.LookOf(via).Name}", Style = (Style)Root.Resources["Secondary"], VerticalAlignment = VerticalAlignment.Center });
+        AutomationProperties.SetName(header, data.Header(id));
         // Numbers that aren't live say since when.
         var since = tool is not null && (tool.ReadAt ?? data.ReadAt) is { } from ? $" · numbers from {HudText.Clock(from, culture)}" : "";
         var flag = problem?.Kind switch
@@ -279,7 +283,7 @@ public sealed partial class MainWindow
             HudCornerBox.SelectedIndex = (int)Preferences.HudCorner;
             HudOnTopSwitch.IsOn = Preferences.HudOnTop;
             var hidden = Preferences.HudHiddenTools;
-            var names = KnownTools().Where(tool => !hidden.Contains(tool.Id)).Select(tool => tool.Name).ToList();
+            var names = KnownTools().Where(tool => !HudData.Off(hidden, tool.Id)).Select(tool => tool.Name).ToList();
             HudToolsText.Text = KnownTools().Count == 0 ? "Every tool signed in on this PC"
                 : names.Count == 0 ? "None" : string.Join(", ", names);
             HudShortcutText.Text = Preferences.HudShortcut is { } shortcut ? ShortcutText(shortcut.Modifiers, shortcut.Key) : "None set";
@@ -289,11 +293,11 @@ public sealed partial class MainWindow
         finally { _showing = false; }
     }
 
-    /// Every tool the last reading named, in its order.
-    private List<HudData.Look> KnownTools()
+    /// Every tool the last reading named, in its order, by the name its card has.
+    private List<(string Id, string Name)> KnownTools()
     {
-        if (_hud.Data is not { } data) return new List<HudData.Look>();
-        return data.Tools.Select(tool => tool.Id).Concat(data.Problems.Select(problem => problem.Id)).Distinct().Select(data.LookOf).ToList();
+        if (_hud.Data is not { } data) return new List<(string, string)>();
+        return data.Tools.Select(tool => tool.Id).Concat(data.Problems.Select(problem => problem.Id)).Distinct().Select(id => (id, data.Header(id))).ToList();
     }
 
     private void OnHudToggled(object sender, RoutedEventArgs e)
@@ -324,11 +328,13 @@ public sealed partial class MainWindow
         if (tools.Count == 0) list.Children.Add(new TextBlock { Text = "No tools signed in on this PC yet.", Style = (Style)Root.Resources["Secondary"] });
         foreach (var tool in tools)
         {
-            var box = new CheckBox { Content = tool.Name, IsChecked = !Preferences.HudHiddenTools.Contains(tool.Id) };
+            var box = new CheckBox { Content = tool.Name, IsChecked = !HudData.Off(Preferences.HudHiddenTools, tool.Id) };
             box.Click += (_, _) =>
             {
                 var hidden = Preferences.HudHiddenTools.ToHashSet();
-                if (box.IsChecked == true) hidden.Remove(tool.Id); else hidden.Add(tool.Id);
+                if (box.IsChecked != true) hidden.Add(tool.Id);
+                else if (_hud.Data is { } data) hidden = data.Showing(hidden, tool.Id).ToHashSet();
+                else hidden.Remove(tool.Id);
                 Preferences.HudHiddenTools = hidden;
                 _hud.Render();
                 ShowHudSettings();
