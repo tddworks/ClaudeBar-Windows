@@ -5,6 +5,8 @@
 # It moves the mouse, clicks the HUD and brings windows to the front, so run
 # it on a PC nobody is using. Its clicks and drags are real input (SendInput),
 # as a person's mouse sends them: never UI Automation's Invoke, unless named.
+# A press only goes down on the check's own windows; one that would land on any
+# other window (a chat that came up meanwhile) stops the run instead.
 # Windows PowerShell 5.1 or PowerShell 7.
 # It prints PASS or FAIL per check, and UNVERIFIED for a check it couldn't
 # make (a skipped click, a group with nothing to measure): those never count
@@ -120,6 +122,8 @@ public static class H {
     var t = new System.Threading.Thread(() => { SetWinEventHook(3, 3, IntPtr.Zero, watcher, 0, 0, 0); MSG m; while (GetMessageW(out m, IntPtr.Zero, 0, 0) > 0) { } });
     t.IsBackground = true; t.Start();
   }
+  // The process of the top-level window at (x, y).
+  public static int PidAt(int x, int y) { uint pid; GetWindowThreadProcessId(RootAt(x, y), out pid); return (int)pid; }
   // The windows of processes other than `a` and `b` that took the foreground since `ticks` (UTC).
   public static string OthersSince(long ticks, int a, int b) {
     var found = new System.Collections.Generic.List<string>();
@@ -195,7 +199,7 @@ function Other-App {
   # Another process in front, as an editor would be. (Windows 11's Notepad hands
   # off to a packaged process, so a plain WinForms window in its own process.)
   $form = 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = ''Other app''; $f.StartPosition = ''Manual''; $f.Location = New-Object Drawing.Point 200, 200; $f.Size = New-Object Drawing.Size 420, 260; [Windows.Forms.Application]::Run($f)'
-  $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden
+  $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden; $script:ours += $p.Id
   $other = [IntPtr]::Zero
   for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::FindWindowW([NullString]::Value, 'Other app') }
   [void][H]::Front($other); Start-Sleep -Milliseconds 800
@@ -208,7 +212,7 @@ function Start-Check($theme, $style, $extra) {
   if ($style) { $arguments += '--style', $style }
   if ($extra) { $arguments += $extra }
   Remove-Item (Join-Path $dir 'ready.json') -ErrorAction SilentlyContinue
-  $p = Start-Process $Exe -ArgumentList $arguments -PassThru
+  $p = Start-Process $Exe -ArgumentList $arguments -PassThru; $script:ours += $p.Id
   $ready = Join-Path $dir 'ready.json'
   for ($i = 0; $i -lt 600 -and -not (Test-Path $ready) -and -not $p.HasExited; $i++) { Start-Sleep -Milliseconds 100 }
   if (-not (Test-Path $ready)) {
@@ -226,11 +230,19 @@ function Stop-Check($check) {
   [void](Command 'exit')
   if (-not $check.Process.WaitForExit(5000)) { $check.Process.Kill() }
 }
+# Every press goes down only on the check's own windows (the HUD, the window behind it, the
+# other app): a window that came up meanwhile, a chat or a console, is never clicked.
+$script:ours = @()
+function Safe-Press($x, $y) {
+  $pid_ = [H]::PidAt($x, $y)
+  if ($script:ours -notcontains $pid_) { $at = [H]::RootAt($x, $y); throw ("refused a press at ({0},{1}): it would land on ""{2}"" (pid {3}), not the check's windows" -f $x, $y, [H]::Title($at), $pid_) }
+}
 # A click at (x, y); $script:under says which window was there as the button went down.
 function Click-At($x, $y) {
   $saved = New-Object H+POINT; [void][H]::GetCursorPos([ref]$saved)
   Mouse-Move $x $y; Start-Sleep -Milliseconds 120
   $at = [H]::RootAt($x, $y); $script:under = '{0} "{1}" {2}' -f $at, [H]::Title($at), [H]::ClassOf($at); $script:at = (Get-Date).ToString('HH:mm:ss.fff')
+  Safe-Press $x $y
   [H]::Mouse($x, $y, 2); Start-Sleep -Milliseconds 60; [H]::Mouse($x, $y, 4)
   Start-Sleep -Milliseconds 120
   [void][H]::SetCursorPos($saved.X, $saved.Y)
@@ -243,12 +255,14 @@ function Mouse-Move($x, $y, $steps = 8) {
 # A real click that stays where it went down, with the left button, or the right (8, 0x10).
 function Mouse-Click($x, $y, $down = 2, $up = 4) {
   Mouse-Move $x $y; Start-Sleep -Milliseconds 150
+  Safe-Press $x $y
   [H]::Mouse($x, $y, $down); Start-Sleep -Milliseconds 70; [H]::Mouse($x, $y, $up); Start-Sleep -Milliseconds 150
 }
 # A real drag: pressed at (x, y), moved to (tx, ty) in 25 steps, released there;
 # `midway` runs with the button still down, half way.
 function Mouse-Drag($x, $y, $tx, $ty, [scriptblock]$midway) {
   Mouse-Move $x $y; Start-Sleep -Milliseconds 150
+  Safe-Press $x $y
   [H]::Mouse($x, $y, 2); Start-Sleep -Milliseconds 120
   for ($i = 1; $i -le 25; $i++) {
     [H]::Mouse([int]($x + ($tx - $x) * $i / 25), [int]($y + ($ty - $y) * $i / 25), 0); Start-Sleep -Milliseconds 25
@@ -454,6 +468,7 @@ foreach ($theme in $Themes) {
         $script:unasked = 0
         Report-Presses "a press on 'Refresh the limits' just after a redraw under the resting pointer" 10 (Presses 10 $other $check {
           if (-not (Command 'render' 5)) { $script:unasked++ }
+          Safe-Press $bx $by
           [H]::Mouse($bx, $by, 2); Start-Sleep -Milliseconds 60; [H]::Mouse($bx, $by, 4)
           'after a redraw'
         })
@@ -481,12 +496,18 @@ foreach ($theme in $Themes) {
     $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
     "  {0} a right-click on the card opens its menu: 'Hide the HUD' shown={1}" -f (Pass ([bool]$menu)), [bool]$menu
     # Closed as a person does, a click elsewhere (Esc goes to the window in front, not the HUD),
-    # only on the other app: never on whatever window is there instead.
-    $o = Rect $other.Window
-    $ox = [int](($o.L + $o.R) / 2); $oy = [int](($o.T + $o.B) / 2)
-    if ([H]::RootAt($ox, $oy) -ne $other.Window) { Unverified "a click elsewhere closes the menu: the other app isn't at ($ox,$oy) ($([H]::Title([H]::RootAt($ox, $oy))) is)" }
+    # only on a point of the other app or the window behind the HUD that nothing covers.
+    $spot = $null
+    foreach ($w in $other.Window, $check.Behind) {
+      $r = Rect $w
+      foreach ($f in @(@(0.5, 0.5), @(0.25, 0.25), @(0.75, 0.25), @(0.25, 0.75), @(0.75, 0.75))) {
+        $x = [int]($r.L + ($r.R - $r.L) * $f[0]); $y = [int]($r.T + ($r.B - $r.T) * $f[1])
+        if (-not $spot -and [H]::RootAt($x, $y) -eq $w) { $spot = $x, $y }
+      }
+    }
+    if (-not $spot) { Unverified "a click elsewhere closes the menu: other windows cover the other app and the window behind the HUD" }
     else {
-      Mouse-Click $ox $oy; Start-Sleep -Milliseconds 600
+      Mouse-Click $spot[0] $spot[1]; Start-Sleep -Milliseconds 600
       $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
       "  {0} a click elsewhere closes the menu: closed={1}" -f (Pass (-not $menu)), (-not $menu)
     }
