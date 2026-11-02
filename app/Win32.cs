@@ -116,7 +116,7 @@ internal static class Win32
     // The HUD: whether the pointer rests on it, and how far a press moves before it drags.
     [DllImport("user32.dll")] internal static extern IntPtr WindowFromPoint(POINT point);
     [DllImport("user32.dll")] internal static extern IntPtr GetAncestor(IntPtr window, uint flags);
-    internal const uint GA_ROOT = 2, GA_ROOTOWNER = 3;
+    internal const uint GA_ROOT = 2;
     [DllImport("user32.dll")] internal static extern int GetSystemMetricsForDpi(int index, uint dpi);
     internal const int SM_CXDRAG = 68, SM_CYDRAG = 69;
     // A press on the HUD, followed until the primary button is up: the left one, or the right when swapped.
