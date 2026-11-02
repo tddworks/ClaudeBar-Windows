@@ -7,6 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MSTest" Version="4.0.2" />
+    <!-- Its SemanticVersion, which the app compares versions with (UpdateFlow.cs). -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
@@ -20,6 +22,8 @@
     <Compile Include="..\..\app\HudData.cs" Link="HudData.cs" />
     <Compile Include="..\..\app\HudCrossings.cs" Link="HudCrossings.cs" />
     <Compile Include="..\..\app\LaunchArguments.cs" Link="LaunchArguments.cs" />
+    <Compile Include="..\..\app\UpdateFlow.cs" Link="UpdateFlow.cs" />
+    <Compile Include="..\..\app\UploadTask.cs" Link="UploadTask.cs" />
     <!-- The sample the HUD check shows, read as the C interface sends it. -->
     <Content Include="..\hud-check.json" Link="hud-check.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\hud-check-fine.json" Link="hud-check-fine.json" CopyToOutputDirectory="PreserveNewest" />
