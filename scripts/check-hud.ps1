@@ -482,21 +482,12 @@ foreach ($theme in $Themes) {
           "at $script:at under=$script:under"
         })
       }
-      # Invoke activates the HUD after the action has run, and the hand-back then fails
-      # (traced: SetForegroundWindow returns false with the HUD in front). The design's
-      # remedy is Esc on the HUD: it must run Refresh, and Esc must hand the focus back.
-      $script:escs = 0
-      $invoked = Presses 20 $other $check {
+      Report-Presses "UIA Invoke on 'Refresh the limits'" 20 (Presses 20 $other $check {
         # A refresh draws the card again: the button found before it is gone, so find it each time.
         $button = $null
         for ($i = 0; $i -lt 30 -and -not $button; $i++) { $button = Find-Named $root 'Refresh the limits' -Button; if (-not $button) { Start-Sleep -Milliseconds 100 } }
-        try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); $note = 'invoked' } catch { $note = "invoke failed: $_" }
-        Start-Sleep -Milliseconds 900
-        # Only into the check's own window: Esc never goes to anyone else's.
-        if ([H]::ForegroundPid() -eq $check.Process.Id) { [H]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero); [H]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero); $script:escs++; $note += ', Esc' }
-        $note
-      }
-      Report-Presses "UIA Invoke on 'Refresh the limits' ran it, and the focus came back ($script:escs of them with Esc, the design's remedy)" 20 $invoked
+        try { $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); 'invoked' } catch { "invoke failed: $_" }
+      })
       # A redraw (each read, the minute's tick) with the pointer resting on Refresh, and a
       # press at once, before XAML tells the new card the pointer is over it: the click runs.
       $button = Find-Named $root 'Refresh the limits' -Button
