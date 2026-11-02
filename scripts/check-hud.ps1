@@ -142,7 +142,7 @@ $Exe = (Resolve-Path $Exe).Path
 $quns = @{ 1 = 'NOT_PRESENT'; 2 = 'BUSY'; 3 = 'RUNNING_D3D_FULL_SCREEN'; 4 = 'PRESENTATION_MODE'; 5 = 'ACCEPTS_NOTIFICATIONS'; 6 = 'QUIET_TIME'; 7 = 'APP' }
 function Quns { $s = 0; [void][H]::SHQueryUserNotificationState([ref]$s); $quns[$s] }
 function Rect($h) { [H]::Frame($h) }
-function Fg { $f = [H]::GetForegroundWindow(); $p = [H]::ForegroundPid(); '{0} "{1}" ({2})' -f $f, [H]::Title($f), (Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName }
+function Fg { $f = [H]::GetForegroundWindow(); $p = [H]::ForegroundPid(); '{0} "{1}" {2} ({3})' -f $f, [H]::Title($f), [H]::ClassOf($f), (Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName }
 $script:failures = 0
 function Pass($ok) { if ($ok) { 'PASS' } else { $script:failures++; 'FAIL' } }
 $script:unverified = 0
@@ -203,7 +203,8 @@ function Other-App {
   $form = 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = ''Other app''; $f.StartPosition = ''Manual''; $f.Location = New-Object Drawing.Point 200, 200; $f.Size = New-Object Drawing.Size 420, 260; [Windows.Forms.Application]::Run($f)'
   $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden; $script:ours += $p.Id
   $other = [IntPtr]::Zero
-  for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::FindWindowW([NullString]::Value, 'Other app') }
+  # Its own window: one left by an earlier run that was stopped has the same title.
+  for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $p.Refresh(); $other = $p.MainWindowHandle }
   [void][H]::Front($other); Start-Sleep -Milliseconds 800
   # Without it in front, the focus checks after this compare nothing: unverified, not passed.
   if ([H]::GetForegroundWindow() -ne $other) { Write-Host (Unverified "focus handed back to another process: the other app didn't come to the front ($(Fg))") }
@@ -349,7 +350,7 @@ function Presses($count, $other, $check, [scriptblock]$press) {
       # foreground just now may not be in yet, but if it's still in front, it's seen here.
       Start-Sleep -Milliseconds 200
       $third = [H]::OthersSince($since, $other.Process.Id, $check.Process.Id)
-      if (-not $third -and [H]::ForegroundPid() -notin @($other.Process.Id, $check.Process.Id)) { $third = $after }
+      if (-not $third -and [H]::GetForegroundWindow() -ne $other.Window -and [H]::ForegroundPid() -ne $check.Process.Id) { $third = $after }
       if (-not $ok -and $third -and $try -lt 3) { $again += "#$n (the foreground went to $third)"; continue }
       if (-not $ok) { $bad += "#$n $note clicked=$clicked before=$before after=$after" + $(if ($third) { " foreground also went to $third" } else { '' }) }
       break
