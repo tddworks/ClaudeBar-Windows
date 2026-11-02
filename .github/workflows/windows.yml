@@ -100,6 +100,38 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Velopack's installer and update packages (docs/plans/2026-11-02-updates-design.md):
+      # Setup.exe, the full package, and a delta from the last Velopack release,
+      # whose full package `vpk download` fetches as the delta's base. The job's
+      # token only reads the public releases.
+      - name: Pack the installer and the update packages
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dotnet tool install --tool-path .vpk vpk --version 1.2.161
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = '${{ github.ref_name }}'.Substring(1)
+          .vpk/vpk download github --repoUrl 'https://github.com/${{ github.repository }}' --token $env:GH_TOKEN --pre --channel win --outputDir releases
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .vpk/vpk pack --packId ClaudeBarWindows --packVersion $version --packDir out/win-x64 --mainExe ClaudeBar.exe `
+            --packTitle ClaudeBar --packAuthors 'ClaudeBar for Windows' --icon app/Assets/ClaudeBar.ico `
+            --shortcuts StartMenuRoot --noPortable --channel win --runtime win-x64 --outputDir releases
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Only this release's files go on: the last release's package was the delta's base.
+          $assets = @((Get-Content -Raw releases/assets.win.json | ConvertFrom-Json).RelativeFileName) + 'assets.win.json'
+          Get-ChildItem releases -File | Where-Object { $assets -notcontains $_.Name } | Remove-Item
+          Get-ChildItem releases -File | ForEach-Object { '{0}  {1:N0} bytes' -f $_.Name, $_.Length }
+
+      - name: Upload the update packages
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ClaudeBar-velopack
+          path: releases
+          if-no-files-found: error
+          retention-days: 7
+
   # Only a tag publishes, and only this job can write to the repo: the build
   # above never holds a token that can.
   release:
@@ -107,7 +139,7 @@ jobs:
     needs: client
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -117,21 +149,51 @@ jobs:
           name: ClaudeBar-win-x64
           path: ClaudeBar
 
-      # One folder in the zip, so extracting it gives ClaudeBar\ClaudeBar.exe.
-      - name: Zip it, with its SHA-256
+      - name: Download the update packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ClaudeBar-velopack
+          path: releases
+
+      # For the zip install, kept while people move to Setup.exe. One folder in
+      # the zip, so extracting it gives ClaudeBar\ClaudeBar.exe.
+      - name: Zip it
         run: |
           zip_name="ClaudeBar-Windows-${GITHUB_REF_NAME#v}-x64.zip"
           zip -q -r -X "$zip_name" ClaudeBar
-          sha256sum "$zip_name" > "$zip_name.sha256"
-          cat "$zip_name.sha256"
           echo "ZIP=$zip_name" >> "$GITHUB_ENV"
 
-      - name: Create the pre-release
+      - name: Install .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # vpk makes the release as a draft, which the app's update check can't
+      # see, uploads the installer and the packages, and adds releases.win.json
+      # (what the app reads) and the legacy RELEASES.
+      - name: Upload the installer and the packages to a draft release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" \
-            --prerelease --verify-tag \
+          dotnet tool install --tool-path .vpk vpk --version 1.2.161
+          .vpk/vpk upload github --repoUrl "https://github.com/$GH_REPO" --token "$GH_TOKEN" --channel win --pre \
+            --tag "$GITHUB_REF_NAME" --releaseName "ClaudeBar for Windows $GITHUB_REF_NAME (preview)" --outputDir releases
+
+      # Every file the release has gets its SHA-256 beside it, read back from
+      # the release itself; only then is it published.
+      - name: Add the zip and every file's SHA-256, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" "$ZIP"
+          mkdir published
+          gh release download "$GITHUB_REF_NAME" --dir published
+          cd published
+          for file in *; do sha256sum "$file" > "$file.sha256"; done
+          cat ./*.sha256
+          gh release upload "$GITHUB_REF_NAME" ./*.sha256
+          gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease \
             --title "ClaudeBar for Windows $GITHUB_REF_NAME (preview)" \
-            --notes "The Leaderboard client, x64, not code-signed. How to install, update and remove it: [README](https://github.com/$GH_REPO/blob/$GITHUB_REF_NAME/README.md#install-a-release). Check the download: compare its SHA-256 (\`Get-FileHash\`) with \`$ZIP.sha256\`."
+            --notes "The Leaderboard client, x64, not code-signed. Install it with \`ClaudeBarWindows-win-Setup.exe\`; once installed, it updates itself from Settings. \`$ZIP\` is the same app for a manual install. How to install, update and remove it: [README](https://github.com/$GH_REPO/blob/$GITHUB_REF_NAME/README.md#install-a-release). Each file has its SHA-256 beside it (\`<file>.sha256\`); compare it with \`Get-FileHash\`."
