@@ -223,11 +223,13 @@ internal sealed class HudView
     }
 
     /// A tool without numbers, dimmed: `○ Cursor  signed out`; what to do is its tooltip and its sentence.
+    /// With no bar to line up, its name takes the bar's room, so an account's
+    /// group (`Claude · josh`) reads whole, and the words end the row.
     private HudRow DownRow(HudData.Look look, HudData.Problem problem, bool dark)
     {
-        var row = Row(look, dark, hollow: true, look.Name, "HudStrongSecondary");
+        var row = Row(look, dark, hollow: true, look.Name, "HudStrongSecondary", nameSpan: 3);
         var words = problem.Kind switch { "signedOut" => "signed out", "reading" => "reading…", _ => "couldn't read" };
-        Place(row, Text(words, Tail("HudSecondary")), 3, span: 4);
+        Place(row, Text(words, Tail("HudSecondary")), 4, span: 3);
         AutomationProperties.SetName(row, problem.Message == "" ? $"{look.Name}: {words.TrimEnd('…')}" : $"{look.Name}: {words.TrimEnd('…')}. {problem.Message}");
         if (problem.Message != "") ToolTipService.SetToolTip(row, problem.Message);
         return row;
@@ -236,8 +238,8 @@ internal sealed class HudView
     /// A tool whose limits have no share to draw (balances only): `○ Amp  no limits to show`.
     private HudRow NoLimitsRow(HudData.Look look, bool dark)
     {
-        var row = Row(look, dark, hollow: true, look.Name, "HudStrongSecondary");
-        Place(row, Text("no limits to show", Tail("HudSecondary")), 3, span: 4);
+        var row = Row(look, dark, hollow: true, look.Name, "HudStrongSecondary", nameSpan: 3);
+        Place(row, Text("no limits to show", Tail("HudSecondary")), 4, span: 3);
         AutomationProperties.SetName(row, $"{look.Name}: no limits to show");
         return row;
     }
@@ -276,8 +278,8 @@ internal sealed class HudView
     }
 
     /// A row's columns: the dot, the name, the window label, the bar, the
-    /// share, the time and the other limits.
-    private HudRow Row(HudData.Look look, bool dark, bool hollow, string name, string nameStyle)
+    /// share, the time and the other limits. A name spanning more takes their room.
+    private HudRow Row(HudData.Look look, bool dark, bool hollow, string name, string nameStyle, int nameSpan = 1)
     {
         var row = new HudRow { ColumnSpacing = 6, MinHeight = 20, Background = new SolidColorBrush(Colors.Transparent) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -286,7 +288,7 @@ internal sealed class HudView
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         for (var column = 4; column < 7; column++) row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         Place(row, hollow ? Ring(look, dark) : Dot(look, dark), 0);
-        Place(row, Trimmed(Text(name, nameStyle), double.NaN), 1);
+        Place(row, Trimmed(Text(name, nameStyle), double.NaN), 1, span: nameSpan);
         return row;
     }
 
