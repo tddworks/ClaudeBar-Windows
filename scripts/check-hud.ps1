@@ -142,7 +142,7 @@ $Exe = (Resolve-Path $Exe).Path
 $quns = @{ 1 = 'NOT_PRESENT'; 2 = 'BUSY'; 3 = 'RUNNING_D3D_FULL_SCREEN'; 4 = 'PRESENTATION_MODE'; 5 = 'ACCEPTS_NOTIFICATIONS'; 6 = 'QUIET_TIME'; 7 = 'APP' }
 function Quns { $s = 0; [void][H]::SHQueryUserNotificationState([ref]$s); $quns[$s] }
 function Rect($h) { [H]::Frame($h) }
-function Fg { $f = [H]::GetForegroundWindow(); '{0} "{1}"' -f $f, [H]::Title($f) }
+function Fg { $f = [H]::GetForegroundWindow(); $p = [H]::ForegroundPid(); '{0} "{1}" ({2})' -f $f, [H]::Title($f), (Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName }
 $script:failures = 0
 function Pass($ok) { if ($ok) { 'PASS' } else { $script:failures++; 'FAIL' } }
 $script:unverified = 0
@@ -513,9 +513,13 @@ foreach ($theme in $Themes) {
     # front first: a window that came up meanwhile (a chat, a console) may cover it.
     [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
     $h = Rect $check.Hud
-    Mouse-Click ([int]($h.L + 8 * $check.Scale)) ([int](($h.T + $h.B) / 2)) 8 0x10; Start-Sleep -Milliseconds 800
-    $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
-    "  {0} a right-click on the card opens its menu: 'Hide the HUD' shown={1}" -f (Pass ([bool]$menu)), [bool]$menu
+    $x = [int]($h.L + 8 * $check.Scale); $y = [int](($h.T + $h.B) / 2)
+    Mouse-Click $x $y 8 0x10
+    # Up to 3 s: on a loaded PC the menu takes longer than a moment to come up.
+    $menu = $null
+    for ($i = 0; $i -lt 30 -and -not $menu; $i++) { Start-Sleep -Milliseconds 100; $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD' }
+    $under = [H]::RootAt($x, $y)
+    "  {0} a right-click on the card opens its menu: 'Hide the HUD' shown={1}{2}" -f (Pass ([bool]$menu)), [bool]$menu, $(if ($menu) { '' } else { "; under the pointer: $under ""$([H]::Title($under))"", in front: $(Fg)" })
     # Closed as a person does, a click elsewhere (Esc goes to the window in front, not the HUD),
     # only on a point of the other app or the window behind the HUD that nothing covers.
     $spot = $null
