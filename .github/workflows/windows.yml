@@ -103,18 +103,23 @@ jobs:
       # Velopack's installer and update packages (docs/plans/2026-11-02-updates-design.md):
       # Setup.exe, the full package, and a delta from the last Velopack release,
       # whose full package `vpk download` fetches as the delta's base. The job's
-      # token only reads the public releases.
+      # token only reads the public releases. A PR or main packs too, under a
+      # version no release has and without a delta, so a release never meets vpk first.
       - name: Pack the installer and the update packages
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           dotnet tool install --tool-path .vpk vpk --version 1.2.161
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $version = '${{ github.ref_name }}'.Substring(1)
-          .vpk/vpk download github --repoUrl 'https://github.com/${{ github.repository }}' --token $env:GH_TOKEN --pre --channel win --outputDir releases
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .vpk/vpk pack --packId ClaudeBarWindows --packVersion $version --packDir out/win-x64 --mainExe ClaudeBar.exe `
+          if ('${{ github.ref }}'.StartsWith('refs/tags/v')) {
+            $version = '${{ github.ref_name }}'.Substring(1)
+            .vpk/vpk.exe download github --repoUrl 'https://github.com/${{ github.repository }}' --token $env:GH_TOKEN --pre --channel win --outputDir releases
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            $project = ([xml](Get-Content -Raw app/ClaudeBar.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+            $version = "$project-ci.${{ github.run_number }}"
+          }
+          .vpk/vpk.exe pack --packId ClaudeBarWindows --packVersion $version --packDir out/win-x64 --mainExe ClaudeBar.exe `
             --packTitle ClaudeBar --packAuthors 'ClaudeBar for Windows' --icon app/Assets/ClaudeBar.ico `
             --shortcuts StartMenuRoot --noPortable --channel win --runtime win-x64 --outputDir releases
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
