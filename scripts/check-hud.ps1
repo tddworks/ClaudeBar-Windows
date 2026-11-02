@@ -124,6 +124,8 @@ public static class H {
   }
   // The process of the top-level window at (x, y).
   public static int PidAt(int x, int y) { uint pid; GetWindowThreadProcessId(RootAt(x, y), out pid); return (int)pid; }
+  // The process of the window in front.
+  public static int ForegroundPid() { uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid); return (int)pid; }
   // The windows of processes other than `a` and `b` that took the foreground since `ticks` (UTC).
   public static string OthersSince(long ticks, int a, int b) {
     var found = new System.Collections.Generic.List<string>();
@@ -343,7 +345,11 @@ function Presses($count, $other, $check, [scriptblock]$press) {
       $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
       $after = Fg
       $ok = $clicked -and $before -eq $after
+      # The hook's events come in on its own thread, a moment late: a window that took the
+      # foreground just now may not be in yet, but if it's still in front, it's seen here.
+      Start-Sleep -Milliseconds 200
       $third = [H]::OthersSince($since, $other.Process.Id, $check.Process.Id)
+      if (-not $third -and [H]::ForegroundPid() -notin @($other.Process.Id, $check.Process.Id)) { $third = $after }
       if (-not $ok -and $third -and $try -lt 3) { $again += "#$n (the foreground went to $third)"; continue }
       if (-not $ok) { $bad += "#$n $note clicked=$clicked before=$before after=$after" + $(if ($third) { " foreground also went to $third" } else { '' }) }
       break
