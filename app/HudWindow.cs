@@ -67,6 +67,7 @@ internal sealed class HudWindow
         };
 
         _hwnd = WindowNative.GetWindowHandle(_window);
+        _foreground.Hud = _hwnd;
         var ex = (long)Win32.GetWindowLongPtrW(_hwnd, Win32.GWL_EXSTYLE);
         Win32.SetWindowLongPtrW(_hwnd, Win32.GWL_EXSTYLE, (IntPtr)(ex | Win32.WS_EX_NOACTIVATE | Win32.WS_EX_TOOLWINDOW));
         var round = Win32.DWMWCP_ROUND;
@@ -168,6 +169,7 @@ internal sealed class HudWindow
     private void OnPressed(object sender, PointerRoutedEventArgs e)
     {
         if (_press is not null || !e.GetCurrentPoint(_root).Properties.IsLeftButtonPressed || !Win32.GetCursorPos(out var at)) return;
+        _foreground.Keep();
         var dpi = Win32.GetDpiForWindow(_hwnd);
         var window = _window.AppWindow.Position;
         _press = new HudDrag(new Pixel(at.X, at.Y), new Pixel(window.X, window.Y),
@@ -248,7 +250,11 @@ internal sealed class HudWindow
 
     /// The HUD in front, for its right-click menu: deactivated by a click on
     /// another window, the menu closes (then AfterClick gives the foreground back).
-    internal void Activate() => Win32.SetForegroundWindow(_hwnd);
+    internal void Activate()
+    {
+        _foreground.Keep();
+        Win32.SetForegroundWindow(_hwnd);
+    }
 
     private double Scale => Win32.GetDpiForWindow(_hwnd) / 96.0;
 
