@@ -20,6 +20,8 @@ internal sealed class HudWindow
     private readonly ForegroundTracker _foreground;
     private readonly OverlappedPresenter _presenter;
     private readonly DispatcherTimer _watch = new() { Interval = TimeSpan.FromSeconds(1) };
+    /// A moment after a click's action: the HUD still in front gives the foreground back again.
+    private readonly DispatcherTimer _giveBackAgain = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private readonly Win32.SubclassProc _subclass;
     private double _widthDip = 320;
     private double _heightDip = 200;
@@ -67,7 +69,6 @@ internal sealed class HudWindow
         };
 
         _hwnd = WindowNative.GetWindowHandle(_window);
-        _foreground.Hud = _hwnd;
         var ex = (long)Win32.GetWindowLongPtrW(_hwnd, Win32.GWL_EXSTYLE);
         Win32.SetWindowLongPtrW(_hwnd, Win32.GWL_EXSTYLE, (IntPtr)(ex | Win32.WS_EX_NOACTIVATE | Win32.WS_EX_TOOLWINDOW));
         var round = Win32.DWMWCP_ROUND;
@@ -102,6 +103,11 @@ internal sealed class HudWindow
         };
         Win32.SetWindowSubclass(_hwnd, _subclass, (UIntPtr)1, UIntPtr.Zero);
         _watch.Tick += (_, _) => FollowFullScreen();
+        _giveBackAgain.Tick += (_, _) =>
+        {
+            _giveBackAgain.Stop();
+            if (InFront) _foreground.GiveBack();
+        };
         // A left press anywhere on the card or the strip but its buttons (which
         // handle their own presses) is a click, or drags the HUD once it moves
         // past the system's drag threshold (HudDrag). After the press it's followed
@@ -169,7 +175,7 @@ internal sealed class HudWindow
     private void OnPressed(object sender, PointerRoutedEventArgs e)
     {
         if (_press is not null || !e.GetCurrentPoint(_root).Properties.IsLeftButtonPressed || !Win32.GetCursorPos(out var at)) return;
-        _foreground.Keep();
+        _giveBackAgain.Stop();
         var dpi = Win32.GetDpiForWindow(_hwnd);
         var window = _window.AppWindow.Position;
         _press = new HudDrag(new Pixel(at.X, at.Y), new Pixel(window.X, window.Y),
@@ -246,14 +252,31 @@ internal sealed class HudWindow
     }
 
     /// After any action a click on the HUD runs: the person's window again.
-    internal void AfterClick() => _foreground.GiveBack();
+    /// UI Automation's Invoke can run the action before it activates the HUD
+    /// (2 of 120 presses, check-hud), so a moment later the HUD, if it's still
+    /// in front, gives it back again; a press on it or its menu keep it.
+    internal void AfterClick()
+    {
+        _foreground.GiveBack();
+        _giveBackAgain.Start();
+    }
 
     /// The HUD in front, for its right-click menu: deactivated by a click on
     /// another window, the menu closes (then AfterClick gives the foreground back).
     internal void Activate()
     {
-        _foreground.Keep();
+        _giveBackAgain.Stop();
         Win32.SetForegroundWindow(_hwnd);
+    }
+
+    /// In front: the HUD, or its input site (InputSiteWindowClass, measured after an Invoke).
+    private bool InFront
+    {
+        get
+        {
+            var front = Win32.GetForegroundWindow();
+            return front == _hwnd || Win32.GetAncestor(front, Win32.GA_ROOT) == _hwnd || Win32.GetAncestor(front, Win32.GA_ROOTOWNER) == _hwnd;
+        }
     }
 
     private double Scale => Win32.GetDpiForWindow(_hwnd) / 96.0;

@@ -10,10 +10,6 @@ internal sealed class ForegroundTracker : IDisposable
     private readonly IntPtr _hook;
     private readonly uint _ownProcess = (uint)Environment.ProcessId;
     private IntPtr _last;
-    private long? _gaveBack;
-
-    /// The HUD's window: in front just after a give-back, it gives back again.
-    internal IntPtr Hud;
 
     internal ForegroundTracker()
     {
@@ -24,35 +20,13 @@ internal sealed class ForegroundTracker : IDisposable
 
     private void Remember(IntPtr window)
     {
-        if (window == IntPtr.Zero) return;
         Win32.GetWindowThreadProcessId(window, out var process);
-        if (process != _ownProcess) _last = window;
-        // UI Automation's Invoke can run a button's action before it activates the
-        // HUD (2 of 120 presses, check-hud): the HUD in front within a second of
-        // giving back is that same press, so the foreground goes back again, once.
-        // In front may be the HUD or its input site (InputSiteWindowClass, measured).
-        else if (IsHud(window) && _gaveBack is { } at && Environment.TickCount64 - at < 1000)
-        {
-            _gaveBack = null;
-            Return();
-        }
+        if (window != IntPtr.Zero && process != _ownProcess) _last = window;
     }
-
-    private bool IsHud(IntPtr window) =>
-        window == Hud || Win32.GetAncestor(window, Win32.GA_ROOT) == Hud || Win32.GetAncestor(window, Win32.GA_ROOTOWNER) == Hud;
 
     /// Returns the foreground to the person's window, if there is one and it
     /// hasn't closed since.
     internal void GiveBack()
-    {
-        _gaveBack = Environment.TickCount64;
-        Return();
-    }
-
-    /// The HUD in front on purpose (its menu, a press on it): kept there.
-    internal void Keep() => _gaveBack = null;
-
-    private void Return()
     {
         if (_last != IntPtr.Zero && Win32.IsWindow(_last)) Win32.SetForegroundWindow(_last);
     }
