@@ -452,7 +452,12 @@ foreach ($theme in $Themes) {
     # The footer's buttons show once the pointer is over the card: wait for them.
     $refresh = $null
     for ($i = 0; $i -lt 30 -and -not $refresh; $i++) { Start-Sleep -Milliseconds 100; $refresh = Find-Named $root 'Refresh the limits' -Button }
-    if (-not $refresh) { "  {0} no 'Refresh the limits' button on the HUD" -f (Pass $false) }
+    if (-not $refresh) {
+      # The buttons show only under the pointer: if another window is there (a notification), say which.
+      $px = [int]($h.L + 20 * $check.Scale); $py = [int]($h.B - 12 * $check.Scale); $at = [H]::RootAt($px, $py)
+      if ($at -ne $check.Hud) { Unverified ("the footer's buttons: the window at ($px,$py) is {0} ""{1}"" {2}, not the HUD" -f $at, [H]::Title($at), [H]::ClassOf($at)) }
+      else { "  {0} no 'Refresh the limits' button on the HUD" -f (Pass $false) }
+    }
     else {
       $br = $refresh.Current.BoundingRectangle
       $cx = [int]($br.X + $br.Width / 2); $cy = [int]($br.Y + $br.Height / 2)
