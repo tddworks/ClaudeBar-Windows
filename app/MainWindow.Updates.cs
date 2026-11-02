@@ -37,14 +37,17 @@ public sealed partial class MainWindow
         _updateTimer.Start();
     }
 
+    /// Always sets the next check, even if this one throws: the timer fires once per setting.
     private async Task ScheduledCheck()
     {
-        if (Updater.PersonIsBusy)
+        var outcome = UpdateSchedule.Outcome.Failed;
+        try
         {
-            CheckAgainAfter(UpdateSchedule.Outcome.Busy);
-            return;
+            outcome = Updater.PersonIsBusy ? UpdateSchedule.Outcome.Busy
+                : await CheckForUpdates() ? UpdateSchedule.Outcome.Checked : UpdateSchedule.Outcome.Failed;
         }
-        CheckAgainAfter(await CheckForUpdates() ? UpdateSchedule.Outcome.Checked : UpdateSchedule.Outcome.Failed);
+        catch (Exception error) { Tell(error.Message, InfoBarSeverity.Error); }
+        finally { CheckAgainAfter(outcome); }
     }
 
     /// Checks unless a check or an update runs; answers false when the check failed.
@@ -67,6 +70,7 @@ public sealed partial class MainWindow
         ShowUpdate();
         if (_update.Available is { } available && UpdateStatus.ShouldNotify(available, Preferences.UpdateNotified, _update.Current))
         {
+            // Kept first: one that can't be kept would be notified again at every check.
             Preferences.UpdateNotified = available;
             App.Notify($"ClaudeBar {available} is available", "Update installs it and restarts ClaudeBar. Your settings and membership stay.",
                 ("Update", "--update"));
@@ -132,9 +136,9 @@ public sealed partial class MainWindow
         UpdateBarButton.IsEnabled = _update.CanUpdate;
     }
 
-    private async void OnCheckForUpdates(object sender, RoutedEventArgs e) => await CheckForUpdates();
+    private async void OnCheckForUpdates(object sender, RoutedEventArgs e) => await Guarded(CheckForUpdates);
 
-    private async void OnUpdate(object sender, RoutedEventArgs e) => await Update();
+    private async void OnUpdate(object sender, RoutedEventArgs e) => await Guarded(Update);
 
     private void OnUpdateBarClosed(InfoBar sender, InfoBarClosedEventArgs args)
     {

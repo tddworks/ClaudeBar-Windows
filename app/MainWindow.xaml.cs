@@ -180,7 +180,7 @@ public sealed partial class MainWindow : Window
         else if (words.Contains("--startup") && shownElsewhere) return;
         AppWindow.Show();
         Activate();
-        if (words.Contains("--update")) _ = UpdateFromLaunch();
+        if (words.Contains("--update")) _ = Guarded(UpdateFromLaunch);
         else if (words.Contains("--settings")) Navigate("settings");
         else if (words.Contains("--board")) Navigate("leaderboard");
         if (_state is null)

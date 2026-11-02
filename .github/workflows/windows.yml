@@ -175,12 +175,17 @@ jobs:
 
       # vpk makes the release as a draft, which the app's update check can't
       # see, uploads the installer and the packages, and adds releases.win.json
-      # (what the app reads) and the legacy RELEASES.
+      # (what the app reads) and the legacy RELEASES. A rerun after a failure
+      # here or below finds this tag's draft, which vpk won't add to, so the
+      # draft goes first; a published release is never deleted.
       - name: Upload the installer and the packages to a draft release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft -q .isDraft 2>/dev/null)" = "true" ]; then
+            gh release delete "$GITHUB_REF_NAME" --yes
+          fi
           dotnet tool install --tool-path .vpk vpk --version 1.2.161
           .vpk/vpk upload github --repoUrl "https://github.com/$GH_REPO" --token "$GH_TOKEN" --channel win --pre \
             --tag "$GITHUB_REF_NAME" --releaseName "ClaudeBar for Windows $GITHUB_REF_NAME (preview)" --outputDir releases

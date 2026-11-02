@@ -47,7 +47,8 @@ internal sealed record UpdateStatus(UpdatePhase Phase, string Current, string? A
         ? this with { Phase = UpdatePhase.Downloading, Percent = Math.Clamp(percent, 0, 100), Error = null }
         : this;
 
-    internal UpdateStatus DownloadFailed(string reason) => Phase != UpdatePhase.Downloading ? this
+    /// The download failed, or `Update.exe` couldn't start after it: nothing quits, so *Update* is offered again.
+    internal UpdateStatus DownloadFailed(string reason) => Phase is not (UpdatePhase.Downloading or UpdatePhase.Restarting) ? this
         : this with { Phase = UpdatePhase.Failed, Error = $"Couldn't update. {reason}" };
 
     internal UpdateStatus Restarting() => Phase != UpdatePhase.Downloading ? this : this with { Phase = UpdatePhase.Restarting };
