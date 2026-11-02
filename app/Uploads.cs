@@ -15,20 +15,32 @@ internal static class Uploads
     /// Whether the task should exist, as last asked; each run acts on this, so
     /// the last ask wins even when an earlier one finishes after it.
     private static volatile bool _wanted;
-    /// Whether this launch has made the task, pointing at its own uploader. A
-    /// copy unzipped to another folder (an update) takes the task over from the
-    /// old one the first time it runs, rather than leave it on a deleted path.
-    private static volatile bool _madeHere;
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
     /// Each runs `schtasks.exe` on a worker thread, one at a time: it can take
     /// a while, and the window mustn't wait.
-    internal static Task<bool> EnsureScheduledAsync() => Apply(wanted: true, create: !_madeHere);
+    /// A task that runs another copy's uploader (a zip install Setup replaced,
+    /// an older folder) is pointed at this one's.
+    internal static Task<bool> EnsureScheduledAsync() => Apply(wanted: true, create: false);
 
     /// Made again even if it exists, as on joining.
     internal static Task<bool> ScheduleAsync() => Apply(wanted: true, create: true);
 
     internal static Task<bool> UnscheduleAsync() => Apply(wanted: false, create: false);
+
+    /// For Velopack's install and update hooks, which show no UI and must end
+    /// within 15 seconds: points an existing task at this copy's uploader. It
+    /// never makes one: only joining does.
+    internal static void FollowThisCopy()
+    {
+        if (IsScheduled && !PointsHere) Schedule();
+    }
+
+    /// For the uninstall hook: the task would run an uploader that's gone.
+    internal static void Remove()
+    {
+        if (IsScheduled) Run("/Delete", "/F", "/TN", TaskName);
+    }
 
     private static async Task<bool> Apply(bool wanted, bool create)
     {
@@ -37,18 +49,22 @@ internal static class Uploads
         try
         {
             return await Task.Run(() => _wanted
-                ? (!create && IsScheduled) || Schedule()
-                : !IsScheduled || Run("/Delete", "/F", "/TN", TaskName) == 0);
+                ? (!create && PointsHere) || Schedule()
+                : !IsScheduled || Run("/Delete", "/F", "/TN", TaskName).Code == 0);
         }
         finally { Gate.Release(); }
     }
 
-    private static bool IsScheduled => Run("/Query", "/TN", TaskName) == 0;
+    private static bool IsScheduled => Run("/Query", "/TN", TaskName).Code == 0;
+
+    /// Whether the task exists and runs this copy's uploader.
+    private static bool PointsHere =>
+        Run("/Query", "/TN", TaskName, "/XML") is { Code: 0 } query && UploadTask.PointsAt(UploadTask.Command(query.Output), Uploader);
 
     private static bool Schedule() =>
-        _madeHere = Run("/Create", "/F", "/SC", "HOURLY", "/TN", TaskName, "/TR", $"\"{Uploader}\"") == 0;
+        Run("/Create", "/F", "/SC", "HOURLY", "/TN", TaskName, "/TR", $"\"{Uploader}\"").Code == 0;
 
-    private static int Run(params string[] arguments)
+    private static (int Code, string Output) Run(params string[] arguments)
     {
         var start = new ProcessStartInfo("schtasks.exe")
         {
@@ -59,9 +75,10 @@ internal static class Uploads
         };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start)!;
-        process.StandardOutput.ReadToEnd();
-        process.StandardError.ReadToEnd();
+        var error = process.StandardError.ReadToEndAsync();
+        var output = process.StandardOutput.ReadToEnd();
+        error.Wait();
         process.WaitForExit();
-        return process.ExitCode;
+        return (process.ExitCode, output);
     }
 }

@@ -129,6 +129,13 @@ internal static class Preferences
         set => Write("startupOffered", value);
     }
 
+    /// The last version a notification said is available: one notification per version.
+    internal static string? UpdateNotified
+    {
+        get => Read()?["updateNotified"]?.GetValue<string>();
+        set => Write("updateNotified", value);
+    }
+
     private static DateTimeOffset? Date(JsonNode? node) =>
         node?.GetValue<long>() is long seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
 

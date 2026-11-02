@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
+using Velopack;
 
 namespace ClaudeBar;
 
@@ -11,9 +12,25 @@ namespace ClaudeBar;
 /// ends, so there is never a second membership open on this PC.
 public static partial class Program
 {
+    /// The version Velopack just updated this copy to, for the window to say so; null otherwise.
+    internal static string? UpdatedTo { get; private set; }
+
     [STAThread]
     private static int Main(string[] args)
     {
+        // First, as Velopack requires: Setup, Update.exe and the uninstaller run
+        // this exe with a hook's arguments, and it ends here after the hook
+        // (docs/plans/2026-11-02-updates-design.md). The hooks show no UI.
+        VelopackApp.Build()
+            .OnAfterInstallFastCallback(_ => Uploads.FollowThisCopy())
+            .OnAfterUpdateFastCallback(_ => Uploads.FollowThisCopy())
+            .OnBeforeUninstallFastCallback(_ =>
+            {
+                Uploads.Remove();
+                Startup.Remove();
+            })
+            .OnRestarted(version => UpdatedTo = version.ToString())
+            .Run();
         WinRT.ComWrappersSupport.InitializeComWrappers();
         // The HUD's check (HudCheck.cs) runs beside the real ClaudeBar: it opens no membership.
         if (args.Contains("--hud-check"))
