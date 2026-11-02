@@ -110,6 +110,19 @@ public sealed class HudNotesTests
     }
 
     [TestMethod]
+    public void Should_say_only_the_sign_out_on_the_HUD_not_the_group_s_other_notes()
+    {
+        var data = Read(new[]
+        {
+            Tool("omp/Codex · josh", Array.Empty<JsonObject>(), new[] { Note("1 saved reset · next expires Nov 7"), Note("Signed out · run omp login") }, signedOut: true),
+        });
+
+        var problem = data.Summary().Rows.Single().Problem!;
+
+        Assert.AreEqual(("signedOut", "Signed out · run omp login"), (problem.Kind, problem.Message));
+    }
+
+    [TestMethod]
     public void Should_keep_a_problem_the_reading_already_has_for_a_signed_out_group()
     {
         var data = Read(new[] { Tool("omp/Claude · josh", Array.Empty<JsonObject>(), new[] { Note("Signed out · run omp login") }, signedOut: true) },
@@ -139,6 +152,7 @@ public sealed class HudNotesTests
         var data = Read(new[]
         {
             Tool("claude", new[] { Line("7d", 80) }),
+            Tool("omp/Codex", new[] { Line("7d", 70) }),
             Tool("omp/OpenRouter", Array.Empty<JsonObject>(), new[] { Note("$12.50 left") }),
             Tool("omp/Qwen Cloud · API key", Array.Empty<JsonObject>(), new[] { Note("No usage reported") }),
         });
@@ -147,8 +161,26 @@ public sealed class HudNotesTests
 
         Assert.IsEmpty(summary.Rows);
         Assert.IsTrue(summary.Fine!.All);
-        CollectionAssert.AreEqual(new[] { "claude" }, summary.Fine.Ids.ToArray());
-        CollectionAssert.AreEqual(new[] { "claude" }, data.OnHud.Select(tool => tool.Id).ToArray(), "and out of the rows drawn while it reads");
+        CollectionAssert.AreEqual(new[] { "claude", "omp/Codex" }, summary.Fine.Ids.ToArray());
+        CollectionAssert.AreEqual(new[] { "claude", "omp/Codex" }, data.OnHud.Select(tool => tool.Id).ToArray(), "and out of the rows drawn while it reads");
+    }
+
+    [TestMethod]
+    public void Should_keep_an_aggregator_whose_groups_are_all_other_notes_on_the_HUD_as_one_with_no_limits_to_show()
+    {
+        var data = Read(new[]
+        {
+            Tool("omp/Kimi · API key", Array.Empty<JsonObject>(), new[] { Note("No usage reported") }),
+            Tool("omp/OpenRouter", Array.Empty<JsonObject>(), new[] { Note("$12.50 left") }),
+        });
+
+        var row = data.Summary().Rows.Single();
+
+        Assert.AreEqual("omp", row.Tool!.Id);
+        Assert.IsNull(row.Headline);
+        Assert.IsNull(row.Problem);
+        CollectionAssert.AreEqual(new[] { "omp" }, data.OnHud.Select(tool => tool.Id).ToArray());
+        Assert.HasCount(2, data.Tools, "the Limits page keeps both groups");
     }
 
     [TestMethod]
