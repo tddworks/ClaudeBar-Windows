@@ -94,6 +94,19 @@ public sealed class UpdateFlowTests
     }
 
     [TestMethod]
+    public void Should_offer_update_again_when_update_exe_can_t_start()
+    {
+        // The download finished, then starting Update.exe failed: nothing quits, so the person must be able to try again.
+        var status = UpdateStatus.Start("0.1.8", installed: true).Checking().Checked("0.1.9", Now)
+            .Downloading(100).Restarting().DownloadFailed("Update.exe wasn't found.");
+
+        Assert.AreEqual(UpdatePhase.Failed, status.Phase);
+        Assert.IsTrue(status.CanUpdate);
+        Assert.IsTrue(status.CanCheck);
+        Assert.AreEqual("Couldn't update. Update.exe wasn't found. 0.1.9 is still available.", status.Detail(Clock));
+    }
+
+    [TestMethod]
     public void Should_not_download_when_nothing_was_found()
     {
         var status = UpdateStatus.Start("0.1.9", installed: true).Checking().Checked(null, Now);
