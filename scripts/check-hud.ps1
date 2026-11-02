@@ -207,7 +207,7 @@ function Other-App {
   # Another process in front, as an editor would be. (Windows 11's Notepad hands
   # off to a packaged process, so a plain WinForms window in its own process.)
   $form = 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = ''Other app''; $f.StartPosition = ''Manual''; $f.Location = New-Object Drawing.Point 200, 200; $f.Size = New-Object Drawing.Size 420, 260; [Windows.Forms.Application]::Run($f)'
-  $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden; $script:ours += $p.Id
+  $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden; $script:ours += $p
   $other = [IntPtr]::Zero
   # Its own window: one left by an earlier run that was stopped has the same title.
   for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::WindowOf($p.Id, 'Other app') }
@@ -221,7 +221,7 @@ function Start-Check($theme, $style, $extra) {
   if ($style) { $arguments += '--style', $style }
   if ($extra) { $arguments += $extra }
   Remove-Item (Join-Path $dir 'ready.json') -ErrorAction SilentlyContinue
-  $p = Start-Process $Exe -ArgumentList $arguments -PassThru; $script:ours += $p.Id
+  $p = Start-Process $Exe -ArgumentList $arguments -PassThru; $script:ours += $p
   $ready = Join-Path $dir 'ready.json'
   for ($i = 0; $i -lt 600 -and -not (Test-Path $ready) -and -not $p.HasExited; $i++) { Start-Sleep -Milliseconds 100 }
   if (-not (Test-Path $ready)) {
@@ -244,7 +244,7 @@ function Stop-Check($check) {
 $script:ours = @()
 function Safe-Press($x, $y) {
   $pid_ = [H]::PidAt($x, $y)
-  if ($script:ours -notcontains $pid_) { $at = [H]::RootAt($x, $y); throw ("refused a press at ({0},{1}): it would land on ""{2}"" (pid {3}), not the check's windows" -f $x, $y, [H]::Title($at), $pid_) }
+  if (@($script:ours | ForEach-Object { $_.Id }) -notcontains $pid_) { $at = [H]::RootAt($x, $y); throw ("refused a press at ({0},{1}): it would land on ""{2}"" (pid {3}), not the check's windows" -f $x, $y, [H]::Title($at), $pid_) }
 }
 # A click at (x, y); $script:under says which window was there as the button went down.
 function Click-At($x, $y) {
@@ -778,7 +778,8 @@ if ($Tests -contains 'theme') {
   }
 }
 } finally {
-  foreach ($id in $script:ours) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+  # The processes themselves, not their ids: an id freed by one that ended may be another's by now.
+  foreach ($p in $script:ours) { try { if (-not $p.HasExited) { $p.Kill() } } catch { } }
 }
 "== {0} failed, {1} unverified" -f $script:failures, $script:unverified
 if ($script:failures -gt 0) { exit 1 }

@@ -65,12 +65,17 @@ internal sealed record HudData(
             foreach (var tool in Tools)
             {
                 if (!tool.NotesOnly || tool.SignedOut) yield return tool;
-                else if (tool.Via is { } via && Tools.First(other => other.Via == via) == tool
-                         && Tools.Where(other => other.Via == via).All(other => other.NotesOnly && !other.SignedOut))
+                else if (tool.Via is { } via && Tools.First(other => other.Via == via) == tool && StandsIn(via))
                     yield return new Tool(via, Array.Empty<Line>(), Array.Empty<Note>(), null, false);
             }
         }
     }
+
+    /// Whether aggregator `via` stands in for its groups (`OnHud`): it has no
+    /// tool of its own (the login's limits or notes, already a row), and every
+    /// one of its groups is a group of notes alone that isn't signed out.
+    private bool StandsIn(string via) =>
+        Tools.All(other => other.Id != via) && Tools.Where(other => other.Via == via).All(other => other.NotesOnly && !other.SignedOut);
 
     /// The words omp's mapping starts a signed-out account's note with, as
     /// `HudReading.signedOut` reads them: the note the HUD's row says.
@@ -206,10 +211,13 @@ internal sealed record HudData(
         }).ToList(),
     };
 
-    /// Without the tools the person took off the HUD (Settings → HUD → Tools on the HUD).
+    /// Without the tools the person took off the HUD (Settings → HUD → Tools on
+    /// the HUD), nor the groups of notes alone their aggregator doesn't stand
+    /// in for in the whole reading: with a group that has limits taken off,
+    /// the rest mustn't become a row Settings doesn't list.
     internal HudData Without(IReadOnlySet<string> hidden) => hidden.Count == 0 ? this : this with
     {
-        Tools = Tools.Where(tool => !Off(hidden, tool.Id)).ToList(),
+        Tools = Tools.Where(tool => !Off(hidden, tool.Id) && (!tool.NotesOnly || tool.SignedOut || tool.Via is { } via && StandsIn(via))).ToList(),
         Problems = Problems.Where(problem => !Off(hidden, problem.Id)).ToList(),
     };
 
