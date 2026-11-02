@@ -23,13 +23,15 @@ The board is only fair if a day counts the same on Windows as on the Mac. So thi
 
 On Windows 10 (2004) or later, x64. Nothing else to install: the app carries its .NET, WinUI and Swift runtimes.
 
-1. From [Releases](https://github.com/tddworks/ClaudeBar-Windows/releases), download `ClaudeBar-Windows-<version>-x64.zip`. To check it, compare `Get-FileHash .\ClaudeBar-Windows-<version>-x64.zip` with the `.sha256` file beside it.
-2. Extract it where you keep apps, for example `%LOCALAPPDATA%\Programs`, and run `ClaudeBar\ClaudeBar.exe`.
-3. The preview isn't code-signed, so SmartScreen may say *Windows protected your PC*. Choose *More info*, then *Run anyway*.
+1. From [Releases](https://github.com/tddworks/ClaudeBar-Windows/releases), download `ClaudeBarWindows-win-Setup.exe`. To check it, compare `Get-FileHash .\ClaudeBarWindows-win-Setup.exe` with the `.sha256` file beside it.
+2. Run it. It installs ClaudeBar for your user only, without asking for admin, into `%LOCALAPPDATA%\ClaudeBarWindows`, adds it to the Start menu and starts it.
+3. The preview isn't code-signed, so SmartScreen may say *Windows protected your PC* about `Setup.exe`. Choose *More info*, then *Run anyway*. Updates don't ask again.
 
-**Update.** Quit ClaudeBar from its tray icon, extract the new zip over the old folder or into a new one, and run the new `ClaudeBar.exe`. The first time it runs, it points the hourly upload at its own `claudebar-upload.exe`, so the old folder can be deleted.
+**Update.** ClaudeBar checks for a new version when it starts and every 4 hours, never while you're in a full-screen app or game. When there is one, the window says so above the page and Windows notifies you once. *Update*, there or in Settings → Updates, downloads it (only what changed, when it can), restarts ClaudeBar on the new version and says *Updated to …*. *Check for updates* in Settings looks right away. Your membership, settings, key and hourly upload stay: they live outside the install folder, and the upload follows the new version.
 
-**Remove.** Leave the Leaderboard in Settings first: that deletes your username and uploaded days on the server, the key and the hourly task. Then quit, and delete the folder and `%LOCALAPPDATA%\ClaudeBar`. If Task Scheduler still lists *ClaudeBar Leaderboard upload*, delete it there too: leaving doesn't say when removing it failed.
+**Moving from the zip.** Before 0.1.8, ClaudeBar came as a zip. Quit it (its tray icon or the HUD's right-click menu, *Quit ClaudeBar*), then run `Setup.exe` once as above. The installed copy keeps everything in `%LOCALAPPDATA%\ClaudeBar` and the key in Credential Manager, and takes over the hourly upload and *Start with Windows*; then delete the zip's folder. A taskbar pin of the zip's copy points at that folder: pin the installed one instead. The zip is still published beside `Setup.exe` for now, but a zip copy can't update itself: Settings says so.
+
+**Remove.** To delete your data on the server too, leave the Leaderboard in Settings first: that deletes your username and uploaded days, the key and the hourly task. Then uninstall *ClaudeBar* from Settings → Apps → Installed apps, which removes the app, its Start menu entry, the hourly task and the *Start with Windows* entry, and keeps `%LOCALAPPDATA%\ClaudeBar` and the key: delete that folder too if you're done. A zip copy has no uninstaller: if you stay on the Leaderboard, first turn off *Start with Windows* in its Settings and delete *ClaudeBar Leaderboard upload* in Task Scheduler, since both point into its folder; then quit it and delete the folder.
 
 ## Build and run
 
@@ -86,9 +88,10 @@ A small window in a corner of the screen with each AI tool's limits, as ClaudeBa
 |---|---|
 | The membership: username, shared providers, shown or hidden, last upload, days the server refused, and which PC made the key (its SMBIOS UUID hashed with the key, never the UUID) | `%LOCALAPPDATA%\ClaudeBar\settings.json`, never the key |
 | The private key | Windows Credential Manager, a generic credential `com.tddworks.claudebar/leaderboard-signing-key` kept on this PC only |
-| The hourly upload | A Task Scheduler task, *ClaudeBar Leaderboard upload*, that runs `claudebar-upload.exe` every hour while you're signed in. Joining adds it; leaving removes it |
+| The hourly upload | A Task Scheduler task, *ClaudeBar Leaderboard upload*, that runs `claudebar-upload.exe` every hour while you're signed in. Joining adds it; leaving or uninstalling removes it; installing and each update point it at the new copy |
+| The app | `%LOCALAPPDATA%\ClaudeBarWindows`: `current` holds the running version, which an update replaces, and `packages` the downloaded update. Uninstalling removes the folder |
 | Logs | `%LOCALAPPDATA%\ClaudeBar\Logs\ClaudeBar.log`: outcomes only, never a key or a log's content |
-| The app's own settings: the tray icon, the HUD (shown or not, card or strip, its corner and screen, on top, the tools taken off it, its shortcut), whether starting with Windows was offered, the tools of the last reading (drawn while the first reading after a start runs), and each limit's last status, the crossings already notified and *Quiet until reset* | `%LOCALAPPDATA%\ClaudeBar\app.json` |
+| The app's own settings: the tray icon, the HUD (shown or not, card or strip, its corner and screen, on top, the tools taken off it, its shortcut), whether starting with Windows was offered, the tools of the last reading (drawn while the first reading after a start runs), each limit's last status, the crossings already notified and *Quiet until reset*, and the last version a notification said was available | `%LOCALAPPDATA%\ClaudeBar\app.json` |
 
 **A copied key.** A cloned disk, a restored image or a copied virtual machine can bring the settings file and the key to another PC. The PC notices: its hardware UUID doesn't match the one the key was made on, so it uploads nothing and the window says why ([design §2a](https://github.com/tddworks/ClaudeBar/blob/main/docs/features/leaderboard/design.md)). *Keep the key here* is for when the other PC is gone, or this is it after a repair: this PC uploads again under the same key. If both stay in use, they overwrite each other's days. This app can't yet make the copy its own device, as the Mac can; that comes with Devices settings, which it doesn't have yet. Until then, if both PCs stay in use, keeping the key here means they overwrite each other's days.
 

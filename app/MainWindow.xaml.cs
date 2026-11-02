@@ -150,12 +150,13 @@ public sealed partial class MainWindow : Window
         _hud.Start();
         _ = ReadUsage();
         _usage.Start();
+        StartUpdates();
     }
 
     /// A launch's arguments, this one's or a second launch's handed over, or a
     /// notification's: `--startup` (signed in: the window waits behind the HUD
     /// or the tray), `--hud` (show the HUD), `--refresh`, `--quiet=<limit>`,
-    /// `--upload`, `--settings`, `--board`, or just the window.
+    /// `--upload`, `--settings`, `--board`, `--update`, or just the window.
     internal void Open(string arguments)
     {
         var words = LaunchArguments.Words(arguments);
@@ -179,7 +180,8 @@ public sealed partial class MainWindow : Window
         else if (words.Contains("--startup") && shownElsewhere) return;
         AppWindow.Show();
         Activate();
-        if (words.Contains("--settings")) Navigate("settings");
+        if (words.Contains("--update")) _ = Guarded(UpdateFromLaunch);
+        else if (words.Contains("--settings")) Navigate("settings");
         else if (words.Contains("--board")) Navigate("leaderboard");
         if (_state is null)
         {
@@ -289,7 +291,6 @@ public sealed partial class MainWindow : Window
         _providers = (state["providers"]?.AsArray() ?? new JsonArray()).Select(provider => new Provider(
             provider!["id"]!.GetValue<string>(), provider["name"]!.GetValue<string>(),
             provider["light"]?.GetValue<string>() ?? "#8A8A8A", provider["dark"]?.GetValue<string>() ?? "#8A8A8A")).ToList();
-        VersionText.Text = $"ClaudeBar for Windows {state["version"]}";
         var joined = state["joined"]?.GetValue<bool>() == true;
         CopiedKeyBar.IsOpen = joined && state["copiedKey"]?.GetValue<bool>() == true;
         LeaderboardSettings.Visibility = joined ? Visibility.Visible : Visibility.Collapsed;

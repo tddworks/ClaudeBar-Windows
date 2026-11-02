@@ -12,7 +12,7 @@
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
-    <!-- Unpackaged until the packaging is chosen (MSIX or a signed exe). -->
+    <!-- Unpackaged: Setup.exe and the updates are Velopack's (docs/plans/2026-11-02-updates-design.md). -->
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
@@ -29,6 +29,8 @@
     <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.9" />
     <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" Version="2.5.1" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.MSIX" Version="1.7.260930100" />
+    <!-- The installer and updates; the same version as the vpk that packs the releases (.github/workflows/windows.yml). -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
   <ItemGroup>

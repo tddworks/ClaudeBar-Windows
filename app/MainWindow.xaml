@@ -71,6 +71,13 @@
                     <Button Content="Start with Windows" Click="OnAcceptStartup" />
                 </InfoBar.ActionButton>
             </InfoBar>
+            <!-- A newer version (docs/plans/2026-11-02-updates-design.md): open until updated or closed for that version. -->
+            <InfoBar x:Name="UpdateBar" Margin="20,4,20,8" IsOpen="False" IsClosable="True" Severity="Informational"
+                     Closed="OnUpdateBarClosed">
+                <InfoBar.ActionButton>
+                    <Button x:Name="UpdateBarButton" Content="Update" Click="OnUpdate" />
+                </InfoBar.ActionButton>
+            </InfoBar>
             <InfoBar x:Name="Notice" Margin="20,4,20,8" IsOpen="False" IsClosable="True" />
         </StackPanel>
 
@@ -383,6 +390,33 @@
                         </Grid>
                     </Border>
 
+                    <!-- Settings › Updates: the version, a check, and Update when there is one (updates design). -->
+                    <TextBlock Text="Updates" Style="{StaticResource GroupTitle}" />
+                    <Border Style="{StaticResource Card}">
+                        <Grid Padding="16,10" ColumnSpacing="14" RowSpacing="8" MinHeight="64">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <FontIcon Glyph="&#xE895;" FontSize="18" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock x:Name="UpdateVersionText" />
+                                <TextBlock x:Name="UpdateDetailText" Style="{StaticResource Secondary}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button x:Name="CheckUpdatesButton" Content="Check for updates" Click="OnCheckForUpdates" />
+                                <Button x:Name="UpdateButton" Content="Update" Click="OnUpdate" Visibility="Collapsed"
+                                        Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="Update ClaudeBar" />
+                            </StackPanel>
+                            <ProgressBar x:Name="UpdateProgress" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Maximum="100" Visibility="Collapsed" />
+                        </Grid>
+                    </Border>
+
                     <!-- Settings › HUD (the HUD's mockup, section 6): six settings, no more -->
                     <TextBlock Text="HUD" Style="{StaticResource GroupTitle}" />
                     <Border Style="{StaticResource Card}">
@@ -610,7 +644,6 @@
 
                     </StackPanel>
 
-                    <TextBlock x:Name="VersionText" Style="{StaticResource Tertiary}" HorizontalAlignment="Center" Margin="0,18,0,0" />
                 </StackPanel>
             </ScrollViewer>
         </Grid>

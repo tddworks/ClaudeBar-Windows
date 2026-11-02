@@ -42,7 +42,34 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 A release is a tag. Set the version in both `native/Sources/ClaudeBarWindows/Client.swift`
 (`Client.version`, which the app sends as `X-Client`) and `app/ClaudeBar.csproj`
 (`Version`), merge, then push `v<version>` on `main`. The same workflow checks the
-tag matches both, builds and tests as above, and a second job, the only one with
-write access, publishes `ClaudeBar-Windows-<version>-x64.zip` and its SHA-256 as a
-pre-release. Before tagging, run the build on a Windows PC and open the app: CI
-never launches it.
+tag matches both, builds and tests as above, and packs the app with Velopack
+([updates design](docs/plans/2026-11-02-updates-design.md)): `ClaudeBarWindows-win-Setup.exe`,
+the full package and a delta from the last release. A second job, the only one with
+write access, uploads them with `ClaudeBar-Windows-<version>-x64.zip` into a draft,
+adds a `.sha256` beside every file, and publishes it as a pre-release; installed
+copies find it at their next check. Before tagging, run the build on a Windows PC
+and open the app: CI never launches it.
+
+## Trying an update
+
+An update can be tried on a PC before anything is published, with
+[vpk](https://docs.velopack.io) at the version the app references (1.2.161) and a
+local feed:
+
+```powershell
+dotnet tool install -g vpk --version 1.2.161
+.\build.ps1
+$pack = '--packId', 'ClaudeBarWindows', '--packDir', 'out\win-x64', '--mainExe', 'ClaudeBar.exe', '--packTitle', 'ClaudeBar',
+        '--shortcuts', 'StartMenuRoot', '--noPortable', '--channel', 'win', '--outputDir', 'H:\feed'
+vpk pack @pack --packVersion 0.1.8-local.1
+H:\feed\ClaudeBarWindows-win-Setup.exe         # installs 0.1.8-local.1
+vpk pack @pack --packVersion 0.1.8-local.2     # the next version, with a delta from .1
+```
+
+Quit the installed copy, then start it with the feed set:
+`$env:CLAUDEBAR_UPDATE_FEED = 'H:\feed'; & "$env:LOCALAPPDATA\ClaudeBarWindows\current\ClaudeBar.exe"`.
+It reads the feed instead of GitHub, so *Check for updates* finds the next version and
+*Update* installs it. A pre-release version (`-local.1`) sorts below the release of
+the same number, so the next real release replaces it. This installs over the
+machine's real install, and its hooks move the hourly task: run Setup from a real
+release afterwards.

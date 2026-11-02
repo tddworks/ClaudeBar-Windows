@@ -29,12 +29,19 @@ internal static class Startup
         else key.DeleteValue(Name, throwOnMissingValue: false);
     }
 
-    /// A copy unzipped to another folder (an update) takes the entry over from
-    /// the old one, as the hourly upload's task does, rather than leave it on a
-    /// deleted path.
+    /// A copy in another folder (Setup's, after the zip's) takes the entry over
+    /// from the old one, as the hourly upload's task does, rather than leave it
+    /// on a deleted path.
     internal static void Adopt()
     {
         using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
         if (key?.GetValue(Name) is string command && command != Command) key.SetValue(Name, Command);
+    }
+
+    /// For the uninstall hook: the entry goes with this copy, unless it starts another.
+    internal static void Remove()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+        if (key?.GetValue(Name) is string command && command == Command) key.DeleteValue(Name, throwOnMissingValue: false);
     }
 }
