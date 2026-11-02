@@ -145,6 +145,7 @@ struct HudNotesTests {
 
         let spread = HudMonitor.spread([HudMonitor.Problem(id: "omp", kind: "failed", message: "omp usage timed out")], over: reading)
 
+        #expect(reading.tools.map(\.id) == ["omp/Codex", "omp/Kimi · API key", "omp/Claude · old"])
         #expect(spread.map(\.id) == ["omp/Codex"])
     }
 }

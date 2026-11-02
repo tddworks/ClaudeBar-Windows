@@ -37,7 +37,8 @@ internal sealed record HudData(
 
         /// A group with notes and no limit to draw: an account omp measures
         /// nothing for, a balance it writes as a note, one it signed out.
-        internal bool NotesOnly => false;
+        /// Only the Limits page shows it, unless it's signed out.
+        internal bool NotesOnly => Group is not null && Lines.Count == 0 && Notes.Count > 0;
     }
 
     /// A tool without live numbers: `reading` (not read yet), `signedOut` or
@@ -53,8 +54,9 @@ internal sealed record HudData(
 
     internal bool IsEmpty => Tools.Count == 0 && Problems.Count == 0;
 
-    /// The tools the HUD draws.
-    internal IEnumerable<Tool> OnHud => Tools;
+    /// The tools the HUD draws: every one but a group of notes alone that
+    /// isn't signed out (design, Notes and plans).
+    internal IEnumerable<Tool> OnHud => Tools.Where(tool => !tool.NotesOnly || tool.SignedOut);
 
     /// The problems shown on their own: a tool that still has numbers shows
     /// with them; one with no limit line to draw (balances only) has none.
@@ -68,8 +70,9 @@ internal sealed record HudData(
     /// What the HUD shows (design, What it shows): a row for each tool that
     /// needs the person, in their order (its headline not healthy or running
     /// hot, or its numbers not live), then a row for each tool without
-    /// numbers, then one for each tool whose limits have no share to draw
-    /// (`Headline` null); every other tool goes into one quiet row.
+    /// numbers (an account omp signed out among them), then one for each tool
+    /// whose limits have no share to draw (`Headline` null), but a group of
+    /// notes alone; every other tool goes into one quiet row.
     internal HudSummary Summary()
     {
         var rows = new List<HudSummary.Row>();
@@ -82,7 +85,7 @@ internal sealed record HudData(
             else fine.Add(tool);
         }
         rows.AddRange(Alone.Select(problem => new HudSummary.Row(null, null, problem)));
-        rows.AddRange(Tools.Where(tool => tool.Lines.Count == 0 && Problems.All(problem => problem.Id != tool.Id))
+        rows.AddRange(Tools.Where(tool => tool.Lines.Count == 0 && !tool.NotesOnly && Problems.All(problem => problem.Id != tool.Id))
             .Select(tool => new HudSummary.Row(tool, null, null)));
         var lowest = fine.OrderBy(tool => tool.HeadlineLine.PercentLeft).FirstOrDefault();
         var quiet = lowest is null ? null
@@ -113,7 +116,8 @@ internal sealed record HudData(
                 line["strip"]?.GetValue<bool>() == true,
                 Date(line["runsOutAt"]),
                 line["key"]?.GetValue<string>() ?? line["window"]?.GetValue<string>() ?? "")).ToList(),
-            Array.Empty<Note>(),
+            (tool["notes"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(note => new Note(
+                note["label"]?.GetValue<string>(), note["value"]?.GetValue<string>() ?? "", note["unit"]?.GetValue<string>() ?? "")).ToList(),
             Date(tool["outUntil"]),
             tool["runningHot"]?.GetValue<bool>() == true,
             (int)(tool["headline"]?.GetValue<double>() ?? 0),
@@ -121,10 +125,17 @@ internal sealed record HudData(
             (int)(tool["others"]?["attention"]?.GetValue<double>() ?? 0),
             Date(tool["readAt"]),
             tool["group"]?.GetValue<string>(),
-            tool["via"]?.GetValue<string>())).ToList();
+            tool["via"]?.GetValue<string>(),
+            tool["tier"]?.GetValue<string>(),
+            tool["signedOut"]?.GetValue<bool>() == true)).ToList();
         var problems = (reply["problems"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(problem => new Problem(
                 problem["id"]?.GetValue<string>() ?? "", problem["kind"]?.GetValue<string>() ?? "failed", problem["message"]?.GetValue<string>() ?? ""))
             .Where(problem => problem.Kind != "notSetUp").ToList();
+        // An account omp signed out is a tool without live numbers, as a
+        // signed-out login is, its notes saying what to do; a problem the
+        // reading already has for it (its aggregator's read failed) stays.
+        problems.AddRange(tools.Where(tool => tool.SignedOut && problems.All(problem => problem.Id != tool.Id))
+            .Select(tool => new Problem(tool.Id, "signedOut", string.Join("\n", tool.Notes.Select(HudText.NoteText)))).ToList());
         // The tools' own looks first, then the Leaderboard's providers for any they don't name.
         var looks = new List<Look>();
         foreach (var node in (reply["looks"] as JsonArray ?? new JsonArray()).Concat(reply["state"]?["providers"] as JsonArray ?? new JsonArray()).OfType<JsonObject>())

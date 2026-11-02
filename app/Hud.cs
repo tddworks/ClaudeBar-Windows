@@ -203,7 +203,7 @@ internal sealed class Hud : IDisposable
     private static void Remember(HudData data)
     {
         if (data.Tools.Count == 0) return;
-        Preferences.HudPending = data.Tools.Select(tool => (data.LookOf(tool.Id), (IReadOnlyList<string>)tool.Lines.Select(line => line.Window).ToList())).ToList();
+        Preferences.HudPending = data.OnHud.Select(tool => (data.LookOf(tool.Id), (IReadOnlyList<string>)tool.Lines.Select(line => line.Window).ToList())).ToList();
     }
 
     /// Notifies each limit that crossed into critical or depleted, or came

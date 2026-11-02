@@ -18,7 +18,7 @@ param(
   [string]$Exe = (Join-Path $PSScriptRoot '..\out\win-x64\ClaudeBar.exe'),
   [string]$Shots = (Join-Path $env:TEMP 'claudebar-hud-shots'),
   [string[]]$Themes = @('light', 'dark'),
-  [string[]]$Tests = @('focus', 'measure', 'click', 'style', 'collapse', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots', 'theme')
+  [string[]]$Tests = @('focus', 'measure', 'notes', 'click', 'style', 'collapse', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots', 'theme')
 )
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -421,6 +421,16 @@ foreach ($theme in $Themes) {
     "  foreground: " + (Fg)
     Measure-Hud $check.Hud $check.Scale "$theme-other-app"
     $other.Process.Kill()
+  }
+
+  if ($Tests -contains 'notes') {
+    # The sample's account omp signed out is a row of its own, saying so; its groups of other
+    # notes (a balance, nothing measured) are on the Limits page only. Read from UI Automation.
+    $root = [Windows.Automation.AutomationElement]::FromHandle($check.Hud)
+    $signed = Find-Named $root 'Claude * lab: signed out*'
+    $others = @(@('OpenRouter*', 'Qwen Cloud*') | Where-Object { Find-Named $root $_ })
+    "  {0} the account omp signed out has its own row: {1}" -f (Pass ($null -ne $signed)), $(if ($signed) { '"' + $signed.Current.Name + '"' } else { 'none' })
+    "  {0} the groups of other notes have none: {1}" -f (Pass ($others.Count -eq 0)), $(if ($others.Count) { $others -join ', ' } else { 'none found' })
   }
 
   if ($Tests -contains 'click') {

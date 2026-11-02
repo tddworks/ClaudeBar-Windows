@@ -67,7 +67,7 @@ public sealed class HudNotesTests
         });
 
         Assert.AreEqual("ULTRA", data.Tools[0].Tier);
-        Assert.AreEqual(0, data.Tools[0].Notes.Count);
+        Assert.IsEmpty(data.Tools[0].Notes);
         CollectionAssert.AreEqual(new[] { new HudData.Note("Usage limit resets", "2", "available"), new HudData.Note("Credits", "59,691", "credits") }, data.Tools[1].Notes.ToArray());
         Assert.AreEqual("PRO", data.Tools[1].Tier);
         Assert.AreEqual(new HudData.Note(null, "1 saved reset · next expires Nov 7", ""), data.Tools[2].Notes.Single());
@@ -86,7 +86,7 @@ public sealed class HudNotesTests
 
         var read = Read(new[] { tool }).Tools.Single();
 
-        Assert.AreEqual(0, read.Notes.Count);
+        Assert.IsEmpty(read.Notes);
         Assert.IsNull(read.Tier);
         Assert.IsFalse(read.SignedOut);
     }
@@ -118,7 +118,7 @@ public sealed class HudNotesTests
         var problem = data.Summary().Rows.Single().Problem!;
 
         Assert.AreEqual(("failed", "omp usage timed out"), (problem.Kind, problem.Message));
-        Assert.AreEqual(1, data.Problems.Count);
+        Assert.HasCount(1, data.Problems);
     }
 
     [TestMethod]
@@ -145,7 +145,7 @@ public sealed class HudNotesTests
 
         var summary = data.Summary();
 
-        Assert.AreEqual(0, summary.Rows.Count);
+        Assert.IsEmpty(summary.Rows);
         Assert.IsTrue(summary.Fine!.All);
         CollectionAssert.AreEqual(new[] { "claude" }, summary.Fine.Ids.ToArray());
         CollectionAssert.AreEqual(new[] { "claude" }, data.OnHud.Select(tool => tool.Id).ToArray(), "and out of the rows drawn while it reads");

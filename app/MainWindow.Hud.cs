@@ -44,10 +44,11 @@ public sealed partial class MainWindow
             LimitsList.Children.Add(new Border { Style = (Style)Root.Resources["Card"], Padding = new Thickness(16, 12, 16, 12), Child = empty });
             return;
         }
-        // In the HUD's order: the tools with numbers, the ones without, then those with no share to draw.
+        // In the HUD's order: the tools with numbers, the ones without, then those with no share to draw,
+        // then the groups of notes alone the HUD leaves out.
         foreach (var tool in data.Tools.Where(tool => tool.Lines.Count > 0)) LimitsList.Children.Add(LimitsCard(data, tool.Id, tool, data.Stale(tool.Id)));
-        foreach (var problem in data.Alone) LimitsList.Children.Add(LimitsCard(data, problem.Id, null, problem));
-        foreach (var tool in data.Tools.Where(tool => tool.Lines.Count == 0 && data.Problems.All(problem => problem.Id != tool.Id)))
+        foreach (var problem in data.Alone) LimitsList.Children.Add(LimitsCard(data, problem.Id, data.Tools.FirstOrDefault(tool => tool.Id == problem.Id), problem));
+        foreach (var tool in data.Tools.Where(tool => tool.Lines.Count == 0 && data.Problems.All(problem => problem.Id != tool.Id)).OrderBy(tool => tool.NotesOnly))
             LimitsList.Children.Add(LimitsCard(data, tool.Id, tool, null));
     }
 
@@ -63,9 +64,11 @@ public sealed partial class MainWindow
         // A group says what it was read through: `Codex · via Oh My Pi`.
         if (tool?.Via is { } via)
             header.Children.Add(new TextBlock { Text = $"· via {data.LookOf(via).Name}", Style = (Style)Root.Resources["Secondary"], VerticalAlignment = VerticalAlignment.Center });
-        AutomationProperties.SetName(header, data.Header(id));
+        // The login's plan, after its name, as the Mac's account card badges it.
+        if (tool?.Tier is { } tier) header.Children.Add(TierBadge(tier));
+        AutomationProperties.SetName(header, data.Header(id) + (tool?.Tier is { } plan ? $", {plan} plan" : ""));
         // Numbers that aren't live say since when.
-        var since = tool is not null && (tool.ReadAt ?? data.ReadAt) is { } from ? $" · numbers from {HudText.Clock(from, culture)}" : "";
+        var since = tool is { Lines.Count: > 0 } && (tool.ReadAt ?? data.ReadAt) is { } from ? $" · numbers from {HudText.Clock(from, culture)}" : "";
         var flag = problem?.Kind switch
         {
             "signedOut" => ("Signed out" + since, "TextFillColorSecondaryBrush"),
@@ -78,10 +81,15 @@ public sealed partial class MainWindow
         if (flag is ({ } words, { } brush))
             header.Children.Add(new TextBlock { Text = words, FontSize = 12, Foreground = Resource(brush), VerticalAlignment = VerticalAlignment.Center });
         card.Children.Add(header);
+        // A group's notes above its limits, as the Mac puts them; a login's own, with their labels, after.
+        var notes = tool?.Notes ?? Array.Empty<HudData.Note>();
+        foreach (var note in notes.Where(note => note.Label is null)) card.Children.Add(GroupNote(note));
         foreach (var line in tool?.Lines ?? Array.Empty<HudData.Line>()) card.Children.Add(LimitsRow(look, line, now, culture, stale: problem is not null));
-        if (tool is { Lines.Count: 0 } && problem is null)
+        foreach (var note in notes.Where(note => note.Label is not null)) card.Children.Add(LoginNote(note));
+        if (tool is { Lines.Count: 0, Notes.Count: 0 } && problem is null)
             card.Children.Add(new TextBlock { Text = "No limit with a share left to show.", Style = (Style)Root.Resources["Secondary"] });
-        if (problem is { Kind: "signedOut" or "failed" })
+        // What to do; an account omp signed out says it in its notes, shown above.
+        if (problem is { Kind: "signedOut" or "failed" } && !(problem.Kind == "signedOut" && tool?.SignedOut == true))
         {
             var note = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             note.Children.Add(new TextBlock { Text = problem.Message, Style = (Style)Root.Resources["Secondary"], VerticalAlignment = VerticalAlignment.Center, MaxWidth = 420 });
@@ -95,6 +103,34 @@ public sealed partial class MainWindow
             card.Children.Add(note);
         }
         return new Border { Style = (Style)Root.Resources["Card"], Padding = new Thickness(16, 12, 16, 12), Child = card };
+    }
+
+    /// A plan's badge: `ULTRA`, `MAX`, `PRO`, in the accent, as the Mac's account card has it.
+    private Border TierBadge(string tier) => new()
+    {
+        Background = Resource("AccentFillColorDefaultBrush"), CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 1, 6, 2),
+        VerticalAlignment = VerticalAlignment.Center,
+        Child = new TextBlock { Text = tier, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = Resource("TextOnAccentFillColorPrimaryBrush") },
+    };
+
+    /// A group's note, its text alone: `1 saved reset · next expires Nov 7`, `$12.50 left`.
+    private TextBlock GroupNote(HudData.Note note) =>
+        new() { Text = note.Value, Style = (Style)Root.Resources["Secondary"], TextWrapping = TextWrapping.Wrap, MaxWidth = 560, HorizontalAlignment = HorizontalAlignment.Left };
+
+    /// A login's own note, in the limits' first column: `Credits   59,691 credits`.
+    private Grid LoginNote(HudData.Note note)
+    {
+        var row = new Grid { ColumnSpacing = 12 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var label = new TextBlock { Text = note.Label, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        ToolTipService.SetToolTip(label, note.Label);
+        var value = new TextBlock { Text = note.Unit == "" ? note.Value : $"{note.Value} {note.Unit}", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(value, 1);
+        row.Children.Add(label);
+        row.Children.Add(value);
+        AutomationProperties.SetName(row, HudText.NoteText(note));
+        return row;
     }
 
     /// One limit: its full name, a bar with the even-pace tick, the share left,
@@ -293,11 +329,11 @@ public sealed partial class MainWindow
         finally { _showing = false; }
     }
 
-    /// Every tool the last reading named, in its order, by the name its card has.
+    /// Every tool the last reading named for the HUD, in its order, by the name its card has.
     private List<(string Id, string Name)> KnownTools()
     {
         if (_hud.Data is not { } data) return new List<(string, string)>();
-        return data.Tools.Select(tool => tool.Id).Concat(data.Problems.Select(problem => problem.Id)).Distinct().Select(id => (id, data.Header(id))).ToList();
+        return data.OnHud.Select(tool => tool.Id).Concat(data.Problems.Select(problem => problem.Id)).Distinct().Select(id => (id, data.Header(id))).ToList();
     }
 
     private void OnHudToggled(object sender, RoutedEventArgs e)
