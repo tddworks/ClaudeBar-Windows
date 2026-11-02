@@ -122,9 +122,7 @@ public final class HudMonitor {
     private func current() -> Answer {
         let lineup = monitor.lineup
         // Each login under its lineup id, so two logins of one product are two tools.
-        let snapshots = lineup.compactMap { login in
-            monitor.usage(of: login).map { UsageSnapshot(providerId: login.id, quotas: $0.quotas, capturedAt: $0.capturedAt) }
-        }
+        let snapshots = lineup.compactMap { login in monitor.usage(of: login).map { Self.renamed($0, to: login.id) } }
         let reading = HudReading(snapshots: snapshots, policy: monitor.statusPolicy)
         let problems = lineup.compactMap(problem(of:))
         let shown = Set(snapshots.map(\.providerId) + problems.map(\.id))
@@ -161,6 +159,13 @@ public final class HudMonitor {
         return Problem(id: login.id, kind: "reading", message: "")
     }
 
+    /// A login's usage under its lineup id (`codex.work`), with the plan and
+    /// the notes its card shows beside the limits.
+    static func renamed(_ snapshot: UsageSnapshot, to id: String) -> UsageSnapshot {
+        UsageSnapshot(providerId: id, quotas: snapshot.quotas, capturedAt: snapshot.capturedAt,
+                      accountTier: snapshot.accountTier, extensionMetrics: snapshot.extensionMetrics)
+    }
+
     /// The lineup's looks, each login's groups after it: a group in the
     /// colours of the product whose name it starts with (`Codex`, `Claude ·
     /// work`), or the login's own when ClaudeBar knows no such product, and
@@ -181,10 +186,11 @@ public final class HudMonitor {
     }
 
     /// A login's problem is each of its groups' while it has their numbers:
-    /// they were read together, so they're stale together.
+    /// they were read together, so they're stale together. A group of notes
+    /// alone has no numbers to stale, and keeps what its notes say.
     static func spread(_ problems: [Problem], over reading: HudReading) -> [Problem] {
         problems.flatMap { problem in
-            let tools = reading.tools.filter { $0.id == problem.id || $0.via == problem.id }
+            let tools = reading.tools.filter { ($0.id == problem.id || $0.via == problem.id) && !$0.notesOnly }
             return tools.isEmpty ? [problem] : tools.map { Problem(id: $0.id, kind: problem.kind, message: problem.message) }
         }
     }

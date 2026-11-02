@@ -39,6 +39,14 @@
             <Style x:Key="HudCritical" TargetType="TextBlock" BasedOn="{StaticResource HudSecondary}">
                 <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
             </Style>
+            <!-- The quiet row's check mark, in the primary colour at the body's size: a glyph's thin
+                 strokes never reach their colour. On light Mica it measured 2.53:1 in secondary at
+                 12 px, 4.25:1 in primary at 12 px, and 4.80:1 in primary at 14 px (scripts/check-hud.ps1). -->
+            <Style x:Key="HudIcon" TargetType="TextBlock" BasedOn="{StaticResource HudSecondary}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                <Setter Property="FontSize" Value="14" />
+            </Style>
             <!-- Only for the check's calibration (scripts/check-hud.ps1): never on the HUD otherwise. -->
             <Style x:Key="HudCalibrationTertiary" TargetType="TextBlock" BasedOn="{StaticResource HudSecondary}">
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />

@@ -18,7 +18,7 @@ param(
   [string]$Exe = (Join-Path $PSScriptRoot '..\out\win-x64\ClaudeBar.exe'),
   [string]$Shots = (Join-Path $env:TEMP 'claudebar-hud-shots'),
   [string[]]$Themes = @('light', 'dark'),
-  [string[]]$Tests = @('focus', 'measure', 'click', 'style', 'collapse', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots', 'theme')
+  [string[]]$Tests = @('focus', 'measure', 'notes', 'click', 'style', 'collapse', 'drag', 'topmost', 'taskbar', 'fullscreen', 'screens', 'contrast', 'calibrate', 'notify', 'shots', 'theme')
 )
 
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
@@ -53,6 +53,12 @@ public static class H {
   [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int i);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
+  // The top-level window titled `title` of process `pid`: another one may have the same title.
+  public static IntPtr WindowOf(int pid, string title) {
+    for (var h = FindWindowExW(IntPtr.Zero, IntPtr.Zero, null, title); h != IntPtr.Zero; h = FindWindowExW(IntPtr.Zero, h, null, title)) {
+      uint p; GetWindowThreadProcessId(h, out p); if (p == (uint)pid) return h; }
+    return IntPtr.Zero;
+  }
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string cls, string title);
   // Every top-level window of a class. A notification's CoreWindow isn't among
   // the UI Automation root's children, but FromHandle on it finds its buttons.
@@ -124,6 +130,8 @@ public static class H {
   }
   // The process of the top-level window at (x, y).
   public static int PidAt(int x, int y) { uint pid; GetWindowThreadProcessId(RootAt(x, y), out pid); return (int)pid; }
+  // The process of the window in front.
+  public static int ForegroundPid() { uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid); return (int)pid; }
   // The windows of processes other than `a` and `b` that took the foreground since `ticks` (UTC).
   public static string OthersSince(long ticks, int a, int b) {
     var found = new System.Collections.Generic.List<string>();
@@ -140,7 +148,7 @@ $Exe = (Resolve-Path $Exe).Path
 $quns = @{ 1 = 'NOT_PRESENT'; 2 = 'BUSY'; 3 = 'RUNNING_D3D_FULL_SCREEN'; 4 = 'PRESENTATION_MODE'; 5 = 'ACCEPTS_NOTIFICATIONS'; 6 = 'QUIET_TIME'; 7 = 'APP' }
 function Quns { $s = 0; [void][H]::SHQueryUserNotificationState([ref]$s); $quns[$s] }
 function Rect($h) { [H]::Frame($h) }
-function Fg { $f = [H]::GetForegroundWindow(); '{0} "{1}"' -f $f, [H]::Title($f) }
+function Fg { $f = [H]::GetForegroundWindow(); $p = [H]::ForegroundPid(); '{0} "{1}" {2} ({3})' -f $f, [H]::Title($f), [H]::ClassOf($f), (Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName }
 $script:failures = 0
 function Pass($ok) { if ($ok) { 'PASS' } else { $script:failures++; 'FAIL' } }
 $script:unverified = 0
@@ -199,9 +207,10 @@ function Other-App {
   # Another process in front, as an editor would be. (Windows 11's Notepad hands
   # off to a packaged process, so a plain WinForms window in its own process.)
   $form = 'Add-Type -AssemblyName System.Windows.Forms; $f = New-Object Windows.Forms.Form; $f.Text = ''Other app''; $f.StartPosition = ''Manual''; $f.Location = New-Object Drawing.Point 200, 200; $f.Size = New-Object Drawing.Size 420, 260; [Windows.Forms.Application]::Run($f)'
-  $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden; $script:ours += $p.Id
+  $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden; $script:ours += $p
   $other = [IntPtr]::Zero
-  for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::FindWindowW([NullString]::Value, 'Other app') }
+  # Its own window: one left by an earlier run that was stopped has the same title.
+  for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::WindowOf($p.Id, 'Other app') }
   [void][H]::Front($other); Start-Sleep -Milliseconds 800
   # Without it in front, the focus checks after this compare nothing: unverified, not passed.
   if ([H]::GetForegroundWindow() -ne $other) { Write-Host (Unverified "focus handed back to another process: the other app didn't come to the front ($(Fg))") }
@@ -212,7 +221,7 @@ function Start-Check($theme, $style, $extra) {
   if ($style) { $arguments += '--style', $style }
   if ($extra) { $arguments += $extra }
   Remove-Item (Join-Path $dir 'ready.json') -ErrorAction SilentlyContinue
-  $p = Start-Process $Exe -ArgumentList $arguments -PassThru; $script:ours += $p.Id
+  $p = Start-Process $Exe -ArgumentList $arguments -PassThru; $script:ours += $p
   $ready = Join-Path $dir 'ready.json'
   for ($i = 0; $i -lt 600 -and -not (Test-Path $ready) -and -not $p.HasExited; $i++) { Start-Sleep -Milliseconds 100 }
   if (-not (Test-Path $ready)) {
@@ -235,7 +244,7 @@ function Stop-Check($check) {
 $script:ours = @()
 function Safe-Press($x, $y) {
   $pid_ = [H]::PidAt($x, $y)
-  if ($script:ours -notcontains $pid_) { $at = [H]::RootAt($x, $y); throw ("refused a press at ({0},{1}): it would land on ""{2}"" (pid {3}), not the check's windows" -f $x, $y, [H]::Title($at), $pid_) }
+  if (@($script:ours | ForEach-Object { $_.Id }) -notcontains $pid_) { $at = [H]::RootAt($x, $y); throw ("refused a press at ({0},{1}): it would land on ""{2}"" (pid {3}), not the check's windows" -f $x, $y, [H]::Title($at), $pid_) }
 }
 # A click at (x, y); $script:under says which window was there as the button went down.
 function Click-At($x, $y) {
@@ -343,7 +352,11 @@ function Presses($count, $other, $check, [scriptblock]$press) {
       $clicked = (Get-Content (Join-Path $dir 'clicked.txt') -ErrorAction SilentlyContinue) -contains 'refresh'
       $after = Fg
       $ok = $clicked -and $before -eq $after
+      # The hook's events come in on its own thread, a moment late: a window that took the
+      # foreground just now may not be in yet, but if it's still in front, it's seen here.
+      Start-Sleep -Milliseconds 200
       $third = [H]::OthersSince($since, $other.Process.Id, $check.Process.Id)
+      if (-not $third -and [H]::GetForegroundWindow() -ne $other.Window -and [H]::ForegroundPid() -ne $check.Process.Id) { $third = $after }
       if (-not $ok -and $third -and $try -lt 3) { $again += "#$n (the foreground went to $third)"; continue }
       if (-not $ok) { $bad += "#$n $note clicked=$clicked before=$before after=$after" + $(if ($third) { " foreground also went to $third" } else { '' }) }
       break
@@ -395,6 +408,9 @@ function Find-Named($root, $pattern, [switch]$Button) {
 
 "== machine: " + (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' | ForEach-Object { "$($_.DisplayVersion) build $($_.CurrentBuild).$($_.UBR)" })
 "== screens: " + (([System.Windows.Forms.Screen]::AllScreens | ForEach-Object { "$($_.DeviceName) $($_.Bounds) primary=$($_.Primary)" }) -join '; ')
+# The check's processes go when it ends, also when a step throws (a refused press):
+# an 'Other app' left behind stays on screen, in front of the next run's windows.
+try {
 foreach ($theme in $Themes) {
   "== theme $theme"
   $check = Start-Check $theme $null
@@ -423,6 +439,16 @@ foreach ($theme in $Themes) {
     $other.Process.Kill()
   }
 
+  if ($Tests -contains 'notes') {
+    # The sample's account omp signed out is a row of its own, saying so; its groups of other
+    # notes (a balance, nothing measured) are on the Limits page only. Read from UI Automation.
+    $root = [Windows.Automation.AutomationElement]::FromHandle($check.Hud)
+    $signed = Find-Named $root 'Claude * lab: signed out*'
+    $others = @(@('OpenRouter*', 'Qwen Cloud*') | Where-Object { Find-Named $root $_ })
+    "  {0} the account omp signed out has its own row: {1}" -f (Pass ($null -ne $signed)), $(if ($signed) { '"' + $signed.Current.Name + '"' } else { 'none' })
+    "  {0} the groups of other notes have none: {1}" -f (Pass ($others.Count -eq 0)), $(if ($others.Count) { $others -join ', ' } else { 'none found' })
+  }
+
   if ($Tests -contains 'click') {
     $other = Other-App
     $root = [Windows.Automation.AutomationElement]::FromHandle($check.Hud)
@@ -436,7 +462,12 @@ foreach ($theme in $Themes) {
     # The footer's buttons show once the pointer is over the card: wait for them.
     $refresh = $null
     for ($i = 0; $i -lt 30 -and -not $refresh; $i++) { Start-Sleep -Milliseconds 100; $refresh = Find-Named $root 'Refresh the limits' -Button }
-    if (-not $refresh) { "  {0} no 'Refresh the limits' button on the HUD" -f (Pass $false) }
+    if (-not $refresh) {
+      # The buttons show only under the pointer: if another window is there (a notification), say which.
+      $px = [int]($h.L + 20 * $check.Scale); $py = [int]($h.B - 12 * $check.Scale); $at = [H]::RootAt($px, $py)
+      if ($at -ne $check.Hud) { Unverified ("the footer's buttons: the window at ($px,$py) is {0} ""{1}"" {2}, not the HUD" -f $at, [H]::Title($at), [H]::ClassOf($at)) }
+      else { "  {0} no 'Refresh the limits' button on the HUD" -f (Pass $false) }
+    }
     else {
       $br = $refresh.Current.BoundingRectangle
       $cx = [int]($br.X + $br.Width / 2); $cy = [int]($br.Y + $br.Height / 2)
@@ -492,9 +523,13 @@ foreach ($theme in $Themes) {
     # front first: a window that came up meanwhile (a chat, a console) may cover it.
     [void][H]::Front($other.Window); Start-Sleep -Milliseconds 400
     $h = Rect $check.Hud
-    Mouse-Click ([int]($h.L + 8 * $check.Scale)) ([int](($h.T + $h.B) / 2)) 8 0x10; Start-Sleep -Milliseconds 800
-    $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD'
-    "  {0} a right-click on the card opens its menu: 'Hide the HUD' shown={1}" -f (Pass ([bool]$menu)), [bool]$menu
+    $x = [int]($h.L + 8 * $check.Scale); $y = [int](($h.T + $h.B) / 2)
+    Mouse-Click $x $y 8 0x10
+    # Up to 3 s: on a loaded PC the menu takes longer than a moment to come up.
+    $menu = $null
+    for ($i = 0; $i -lt 30 -and -not $menu; $i++) { Start-Sleep -Milliseconds 100; $menu = Find-Named ([Windows.Automation.AutomationElement]::FromHandle($check.Hud)) 'Hide the HUD' }
+    $under = [H]::RootAt($x, $y)
+    "  {0} a right-click on the card opens its menu: 'Hide the HUD' shown={1}{2}" -f (Pass ([bool]$menu)), [bool]$menu, $(if ($menu) { '' } else { "; under the pointer: $under ""$([H]::Title($under))"", in front: $(Fg)" })
     # Closed as a person does, a click elsewhere (Esc goes to the window in front, not the HUD),
     # only on a point of the other app or the window behind the HUD that nothing covers.
     $spot = $null
@@ -741,6 +776,10 @@ if ($Tests -contains 'theme') {
     finally { Set-AppsTheme $was }
     if (-not $check.Process.HasExited) { Stop-Check $check }
   }
+}
+} finally {
+  # The processes themselves, not their ids: an id freed by one that ended may be another's by now.
+  foreach ($p in $script:ours) { try { if (-not $p.HasExited) { $p.Kill() } } catch { } }
 }
 "== {0} failed, {1} unverified" -f $script:failures, $script:unverified
 if ($script:failures -gt 0) { exit 1 }

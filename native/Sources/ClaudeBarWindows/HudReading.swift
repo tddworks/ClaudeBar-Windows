@@ -10,6 +10,13 @@ import Quotas
 /// A tool whose limits carry a `group` (an aggregator such as Oh My Pi,
 /// reading Claude, Codex and Kimi accounts) is a tool per group, as the
 /// Mac's popover gives each group its own section.
+///
+/// Beside the limits, what the Mac's card shows too: each section's notes
+/// (`UsageSnapshot.extensionMetrics`, a group's under that group, as
+/// `quotaGroups` puts them), the login's plan badge, and whether a note says
+/// omp signed the account out. A group with notes and no limit (an account
+/// omp measures nothing for, or signed out) is a tool too, after those with
+/// limits, as the Mac puts its note-only sections last.
 public struct HudReading: Equatable, Sendable, Encodable {
     public struct Line: Equatable, Sendable, Encodable {
         /// ClaudeBar's own persisted key for the limit (`QuotaType.quotaKey`:
@@ -44,6 +51,19 @@ public struct HudReading: Equatable, Sendable, Encodable {
         public let attention: Int
     }
 
+    /// A note the Mac's card shows beside a tool's limits
+    /// (`UsageSnapshot.extensionMetrics`): omp's saved resets, a balance, an
+    /// account it signed out; Codex's resets and credits.
+    public struct Note: Equatable, Sendable, Encodable {
+        /// What it counts, for a login's own note ("Usage limit resets"), the
+        /// Mac's metric card heading; nil for a group's, which the Mac shows
+        /// as its text alone ("1 saved reset · next expires Nov 7").
+        public let label: String?
+        public let value: String
+        /// "available", "credits"; empty when the value says it all.
+        public let unit: String
+    }
+
     public struct Tool: Equatable, Sendable, Encodable {
         /// The login's lineup id, or `<login>/<group>` for a group.
         public let id: String
@@ -61,6 +81,16 @@ public struct HudReading: Equatable, Sendable, Encodable {
         public let runningHot: Bool
         /// When its numbers were read.
         public let readAt: Date
+        /// Its notes, in ClaudeBar's order.
+        public let notes: [Note]
+        /// The login's plan, as its badge says it (`ULTRA`, `MAX`, `PRO`).
+        public let tier: String?
+        /// One of its notes says omp signed the account out.
+        public let signedOut: Bool
+
+        /// A group with notes and no limit to draw: an account omp measures
+        /// nothing for, a balance it writes as a note, one it signed out.
+        var notesOnly: Bool { group != nil && lines.isEmpty && !notes.isEmpty }
     }
 
     public let tools: [Tool]
@@ -71,7 +101,7 @@ public struct HudReading: Equatable, Sendable, Encodable {
         let now = Date()
         var worst = QuotaStatus.healthy
         tools = snapshots.flatMap { snapshot in
-            Self.sections(of: snapshot.quotas).map { group, all in
+            Self.sections(of: snapshot).map { group, all, notes in
                 // A balance with no ceiling has no share to draw; the window shows it.
                 let quotas = all.filter { !$0.isBalance && $0.percentLeft != nil }
                 let shortest = quotas.min { ($0.windowDuration ?? .infinity) < ($1.windowDuration ?? .infinity) }
@@ -98,25 +128,39 @@ public struct HudReading: Equatable, Sendable, Encodable {
                 return Tool(id: group.map { "\(snapshot.providerId)/\($0)" } ?? snapshot.providerId,
                             group: group, via: group == nil ? nil : snapshot.providerId, lines: lines, headline: headline,
                             others: Others(count: others.count, attention: others.filter { statuses[$0] != .healthy }.count),
-                            outUntil: out, runningHot: lines.contains(where: \.runningHot), readAt: snapshot.capturedAt)
+                            outUntil: out, runningHot: lines.contains(where: \.runningHot), readAt: snapshot.capturedAt,
+                            notes: notes, tier: snapshot.accountTier?.badgeText,
+                            signedOut: notes.contains { $0.value.hasPrefix(Self.signedOut) })
             }
         }
         self.worst = worst.name
     }
 
+    /// What omp's mapping writes for an account it signed out
+    /// (`omp-usage.js`: `Signed out · <cause> · run omp login`). The note is
+    /// all ClaudeBar says of it, so its words are the signal.
+    static let signedOut = "Signed out"
+
     /// A tool's limits by group, in the order the groups first appear (the
     /// Mac's `UsageSnapshot.quotaGroups`); those without a group are one
     /// section of their own, named by none. A tool with no limits is one section.
-    private static func sections(of quotas: [UsageQuota]) -> [(group: String?, quotas: [UsageQuota])] {
-        var sections: [(group: String?, quotas: [UsageQuota])] = []
-        for quota in quotas {
-            if let index = sections.firstIndex(where: { $0.group == quota.group }) {
-                sections[index].quotas.append(quota)
-            } else {
-                sections.append((quota.group, [quota]))
-            }
+    /// Each note joins its group's section (a group with notes alone comes
+    /// after those with limits, as `quotaGroups` orders it); a login's own
+    /// note, with no group, joins the section with none, which it makes when
+    /// every limit has a group.
+    private static func sections(of snapshot: UsageSnapshot) -> [(group: String?, quotas: [UsageQuota], notes: [Note])] {
+        var sections: [(group: String?, quotas: [UsageQuota], notes: [Note])] = []
+        func section(_ group: String?) -> Int {
+            if let index = sections.firstIndex(where: { $0.group == group }) { return index }
+            sections.append((group, [], []))
+            return sections.count - 1
         }
-        return sections.isEmpty ? [(nil, [])] : sections
+        for quota in snapshot.quotas { sections[section(quota.group)].quotas.append(quota) }
+        for metric in snapshot.extensionMetrics ?? [] {
+            // The Mac shows a group's note as its text alone, a login's own with its label.
+            sections[section(metric.group)].notes.append(Note(label: metric.group == nil ? metric.label : nil, value: metric.value, unit: metric.unit))
+        }
+        return sections.isEmpty ? [(nil, [], [])] : sections
     }
 
     /// A limit's title inside its group: its label without the words the group
