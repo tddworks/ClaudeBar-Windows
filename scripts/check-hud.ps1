@@ -53,6 +53,12 @@ public static class H {
   [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int i);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
+  // The top-level window titled `title` of process `pid`: another one may have the same title.
+  public static IntPtr WindowOf(int pid, string title) {
+    for (var h = FindWindowExW(IntPtr.Zero, IntPtr.Zero, null, title); h != IntPtr.Zero; h = FindWindowExW(IntPtr.Zero, h, null, title)) {
+      uint p; GetWindowThreadProcessId(h, out p); if (p == (uint)pid) return h; }
+    return IntPtr.Zero;
+  }
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string cls, string title);
   // Every top-level window of a class. A notification's CoreWindow isn't among
   // the UI Automation root's children, but FromHandle on it finds its buttons.
@@ -204,7 +210,7 @@ function Other-App {
   $p = Start-Process powershell -ArgumentList '-NoProfile', '-Command', $form -PassThru -WindowStyle Hidden; $script:ours += $p.Id
   $other = [IntPtr]::Zero
   # Its own window: one left by an earlier run that was stopped has the same title.
-  for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $p.Refresh(); $other = $p.MainWindowHandle }
+  for ($i = 0; $i -lt 100 -and $other -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $other = [H]::WindowOf($p.Id, 'Other app') }
   [void][H]::Front($other); Start-Sleep -Milliseconds 800
   # Without it in front, the focus checks after this compare nothing: unverified, not passed.
   if ([H]::GetForegroundWindow() -ne $other) { Write-Host (Unverified "focus handed back to another process: the other app didn't come to the front ($(Fg))") }

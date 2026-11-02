@@ -30,12 +30,16 @@ internal sealed class ForegroundTracker : IDisposable
         // UI Automation's Invoke can run a button's action before it activates the
         // HUD (2 of 120 presses, check-hud): the HUD in front within a second of
         // giving back is that same press, so the foreground goes back again, once.
-        else if (window == Hud && _gaveBack is { } at && Environment.TickCount64 - at < 1000)
+        // In front may be the HUD or its input site (InputSiteWindowClass, measured).
+        else if (IsHud(window) && _gaveBack is { } at && Environment.TickCount64 - at < 1000)
         {
             _gaveBack = null;
             Return();
         }
     }
+
+    private bool IsHud(IntPtr window) =>
+        window == Hud || Win32.GetAncestor(window, Win32.GA_ROOT) == Hud || Win32.GetAncestor(window, Win32.GA_ROOTOWNER) == Hud;
 
     /// Returns the foreground to the person's window, if there is one and it
     /// hasn't closed since.
