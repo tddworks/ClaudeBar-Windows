@@ -184,6 +184,34 @@ public sealed class HudNotesTests
     }
 
     [TestMethod]
+    public void Should_not_stand_in_for_an_aggregator_s_groups_when_it_has_a_tool_of_its_own()
+    {
+        var data = Read(new[]
+        {
+            Tool("omp", new[] { Line("7d", 60) }),
+            Tool("omp/OpenRouter", Array.Empty<JsonObject>(), new[] { Note("$12.50 left") }),
+        });
+
+        CollectionAssert.AreEqual(new[] { "omp" }, data.OnHud.Select(tool => tool.Id).ToArray(), "one row for omp, its own");
+        Assert.HasCount(1, data.OnHud.Single().Lines);
+        Assert.IsFalse(data.Summary().Rows.Any(row => row.Tool?.Id == "omp" && row.Headline is null), "not also one with no limits to show");
+    }
+
+    [TestMethod]
+    public void Should_not_stand_in_for_an_aggregator_s_groups_once_its_group_with_limits_is_taken_off_the_HUD()
+    {
+        var data = Read(new[]
+        {
+            Tool("omp/Codex", new[] { Line("7d", 70) }),
+            Tool("omp/OpenRouter", Array.Empty<JsonObject>(), new[] { Note("$12.50 left") }),
+        });
+
+        var shown = data.Without(new HashSet<string> { "omp/Codex" });
+
+        Assert.IsEmpty(shown.OnHud.ToList(), "Settings lists omp/Codex, not omp, so a row for omp couldn't be taken off");
+    }
+
+    [TestMethod]
     public void Should_keep_a_login_with_notes_and_no_limit_on_the_HUD_as_one_with_no_limits_to_show()
     {
         var data = Read(new[] { Tool("codex", Array.Empty<JsonObject>(), new[] { Note("Unlimited", "Credits") }) });
