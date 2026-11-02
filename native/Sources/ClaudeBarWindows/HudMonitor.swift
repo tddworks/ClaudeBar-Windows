@@ -122,9 +122,7 @@ public final class HudMonitor {
     private func current() -> Answer {
         let lineup = monitor.lineup
         // Each login under its lineup id, so two logins of one product are two tools.
-        let snapshots = lineup.compactMap { login in
-            monitor.usage(of: login).map { UsageSnapshot(providerId: login.id, quotas: $0.quotas, capturedAt: $0.capturedAt) }
-        }
+        let snapshots = lineup.compactMap { login in monitor.usage(of: login).map { Self.renamed($0, to: login.id) } }
         let reading = HudReading(snapshots: snapshots, policy: monitor.statusPolicy)
         let problems = lineup.compactMap(problem(of:))
         let shown = Set(snapshots.map(\.providerId) + problems.map(\.id))
@@ -159,6 +157,11 @@ public final class HudMonitor {
         }
         guard monitor.usage(of: login) == nil else { return nil }
         return Problem(id: login.id, kind: "reading", message: "")
+    }
+
+    /// A login's usage under its lineup id (`codex.work`).
+    static func renamed(_ snapshot: UsageSnapshot, to id: String) -> UsageSnapshot {
+        UsageSnapshot(providerId: id, quotas: snapshot.quotas, capturedAt: snapshot.capturedAt)
     }
 
     /// The lineup's looks, each login's groups after it: a group in the

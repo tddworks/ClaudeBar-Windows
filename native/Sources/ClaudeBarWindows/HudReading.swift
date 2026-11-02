@@ -44,6 +44,19 @@ public struct HudReading: Equatable, Sendable, Encodable {
         public let attention: Int
     }
 
+    /// A note the Mac's card shows beside a tool's limits
+    /// (`UsageSnapshot.extensionMetrics`): omp's saved resets, a balance, an
+    /// account it signed out; Codex's resets and credits.
+    public struct Note: Equatable, Sendable, Encodable {
+        /// What it counts, for a login's own note ("Usage limit resets"), the
+        /// Mac's metric card heading; nil for a group's, which the Mac shows
+        /// as its text alone ("1 saved reset · next expires Nov 7").
+        public let label: String?
+        public let value: String
+        /// "available", "credits"; empty when the value says it all.
+        public let unit: String
+    }
+
     public struct Tool: Equatable, Sendable, Encodable {
         /// The login's lineup id, or `<login>/<group>` for a group.
         public let id: String
@@ -61,6 +74,16 @@ public struct HudReading: Equatable, Sendable, Encodable {
         public let runningHot: Bool
         /// When its numbers were read.
         public let readAt: Date
+        /// Its notes, in ClaudeBar's order.
+        public let notes: [Note]
+        /// The login's plan, as its badge says it (`ULTRA`, `MAX`, `PRO`).
+        public let tier: String?
+        /// One of its notes says omp signed the account out.
+        public let signedOut: Bool
+
+        /// A group with notes and no limit to draw: an account omp measures
+        /// nothing for, a balance it writes as a note, one it signed out.
+        var notesOnly: Bool { false }
     }
 
     public let tools: [Tool]
@@ -98,7 +121,8 @@ public struct HudReading: Equatable, Sendable, Encodable {
                 return Tool(id: group.map { "\(snapshot.providerId)/\($0)" } ?? snapshot.providerId,
                             group: group, via: group == nil ? nil : snapshot.providerId, lines: lines, headline: headline,
                             others: Others(count: others.count, attention: others.filter { statuses[$0] != .healthy }.count),
-                            outUntil: out, runningHot: lines.contains(where: \.runningHot), readAt: snapshot.capturedAt)
+                            outUntil: out, runningHot: lines.contains(where: \.runningHot), readAt: snapshot.capturedAt,
+                            notes: [], tier: nil, signedOut: false)
             }
         }
         self.worst = worst.name

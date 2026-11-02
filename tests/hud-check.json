@@ -35,7 +35,10 @@
           "count": 1,
           "attention": 0
         },
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [],
+        "signedOut": false,
+        "tier": "ULTRA"
       },
       {
         "id": "codex",
@@ -70,7 +73,21 @@
           "count": 1,
           "attention": 0
         },
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [
+          {
+            "label": "Usage limit resets",
+            "value": "2",
+            "unit": "available"
+          },
+          {
+            "label": "Credits",
+            "value": "59,691",
+            "unit": "credits"
+          }
+        ],
+        "signedOut": false,
+        "tier": "PRO"
       },
       {
         "id": "omp/Claude",
@@ -129,7 +146,9 @@
         },
         "outUntil": null,
         "runningHot": false,
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [],
+        "signedOut": false
       },
       {
         "id": "omp/Kimi",
@@ -166,7 +185,9 @@
         },
         "outUntil": null,
         "runningHot": false,
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [],
+        "signedOut": false
       },
       {
         "id": "omp/Z.ai",
@@ -203,7 +224,9 @@
         },
         "outUntil": null,
         "runningHot": false,
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [],
+        "signedOut": false
       },
       {
         "id": "omp/Codex",
@@ -240,7 +263,14 @@
         },
         "outUntil": null,
         "runningHot": false,
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [
+          {
+            "value": "1 saved reset · next expires Nov 7",
+            "unit": ""
+          }
+        ],
+        "signedOut": false
       },
       {
         "id": "omp/Claude · work",
@@ -277,7 +307,9 @@
         },
         "outUntil": null,
         "runningHot": false,
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [],
+        "signedOut": false
       },
       {
         "id": "omp/Grok",
@@ -303,7 +335,72 @@
         },
         "outUntil": null,
         "runningHot": false,
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [],
+        "signedOut": false
+      },
+      {
+        "id": "omp/OpenRouter",
+        "group": "OpenRouter",
+        "via": "omp",
+        "lines": [],
+        "headline": null,
+        "others": {
+          "count": 0,
+          "attention": 0
+        },
+        "outUntil": null,
+        "runningHot": false,
+        "readAt": 1791900000,
+        "notes": [
+          {
+            "value": "$12.50 left",
+            "unit": ""
+          }
+        ],
+        "signedOut": false
+      },
+      {
+        "id": "omp/Qwen Cloud · API key",
+        "group": "Qwen Cloud · API key",
+        "via": "omp",
+        "lines": [],
+        "headline": null,
+        "others": {
+          "count": 0,
+          "attention": 0
+        },
+        "outUntil": null,
+        "runningHot": false,
+        "readAt": 1791900000,
+        "notes": [
+          {
+            "value": "No usage reported",
+            "unit": ""
+          }
+        ],
+        "signedOut": false
+      },
+      {
+        "id": "omp/Claude · lab",
+        "group": "Claude · lab",
+        "via": "omp",
+        "lines": [],
+        "headline": null,
+        "others": {
+          "count": 0,
+          "attention": 0
+        },
+        "outUntil": null,
+        "runningHot": false,
+        "readAt": 1791900000,
+        "notes": [
+          {
+            "value": "Signed out · Refresh token revoked · run omp login",
+            "unit": ""
+          }
+        ],
+        "signedOut": true
       },
       {
         "id": "cursor",
@@ -327,7 +424,9 @@
           "count": 0,
           "attention": 0
         },
-        "readAt": 1791893100
+        "readAt": 1791893100,
+        "notes": [],
+        "signedOut": false
       },
       {
         "id": "gemini",
@@ -351,7 +450,9 @@
           "count": 0,
           "attention": 0
         },
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [],
+        "signedOut": false
       },
       {
         "id": "copilot",
@@ -375,7 +476,9 @@
           "count": 0,
           "attention": 0
         },
-        "readAt": 1791900000
+        "readAt": 1791900000,
+        "notes": [],
+        "signedOut": false
       }
     ],
     "worst": "depleted"
@@ -442,6 +545,24 @@
       "name": "Grok",
       "light": "#1F1F1F",
       "dark": "#EBEBEB"
+    },
+    {
+      "id": "omp/OpenRouter",
+      "name": "OpenRouter",
+      "light": "#299E61",
+      "dark": "#4DD98C"
+    },
+    {
+      "id": "omp/Qwen Cloud · API key",
+      "name": "Qwen Cloud · API key",
+      "light": "#299E61",
+      "dark": "#4DD98C"
+    },
+    {
+      "id": "omp/Claude · lab",
+      "name": "Claude · lab",
+      "light": "#E2674A",
+      "dark": "#FA8C73"
     },
     {
       "id": "cursor",

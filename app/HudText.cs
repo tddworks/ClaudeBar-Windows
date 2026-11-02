@@ -83,6 +83,10 @@ internal static class HudText
         return text;
     }
 
+    /// A note in one line, as the Mac's card says it: a login's own with its
+    /// label and unit (`Credits: 59,691 credits`), a group's as its text alone.
+    internal static string NoteText(HudData.Note note) => "";
+
     /// How long ago the numbers were read: `just now`, `1m ago`, `2h ago`.
     /// The other limits of a tool, after its headline: `+12`, or `+2 low`
     /// when some of them aren't healthy; nothing when it has no others.

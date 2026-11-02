@@ -19,15 +19,25 @@ internal sealed record HudData(
     internal sealed record Line(string Window, int PercentLeft, DateTimeOffset? ResetsAt, double? WindowSeconds,
                                 string Status, bool RunningHot, double? Tick, bool Strip, DateTimeOffset? RunsOutAt = null, string Key = "");
 
+    /// A note the Mac's card shows beside a tool's limits: a login's own,
+    /// with its label and unit (`Credits`, `59,691`, `credits`), or a group's,
+    /// its text alone (`1 saved reset · next expires Nov 7`).
+    internal sealed record Note(string? Label, string Value, string Unit);
+
     /// A tool's limits in its own order, with the one that stops the person
     /// first (`Headline`, ClaudeBar's rule: the HUD never ranks them again),
     /// how many others there are and how many of those aren't healthy, and
-    /// when its numbers were read, if the reading says.
-    internal sealed record Tool(string Id, IReadOnlyList<Line> Lines, DateTimeOffset? OutUntil, bool RunningHot,
+    /// when its numbers were read, if the reading says; its notes, its plan's
+    /// badge (`ULTRA`), and whether its notes say omp signed it out.
+    internal sealed record Tool(string Id, IReadOnlyList<Line> Lines, IReadOnlyList<Note> Notes, DateTimeOffset? OutUntil, bool RunningHot,
                                 int Headline = 0, int OthersCount = 0, int OthersAttention = 0, DateTimeOffset? ReadAt = null,
-                                string? Group = null, string? Via = null)
+                                string? Group = null, string? Via = null, string? Tier = null, bool SignedOut = false)
     {
         internal Line HeadlineLine => Lines[Math.Clamp(Headline, 0, Lines.Count - 1)];
+
+        /// A group with notes and no limit to draw: an account omp measures
+        /// nothing for, a balance it writes as a note, one it signed out.
+        internal bool NotesOnly => false;
     }
 
     /// A tool without live numbers: `reading` (not read yet), `signedOut` or
@@ -41,8 +51,10 @@ internal sealed record HudData(
 
     internal static readonly HudData Empty = new(Array.Empty<Tool>(), "healthy", null, Array.Empty<Problem>(), Array.Empty<Look>());
 
-    /// Nothing to show: no tool signed in.
     internal bool IsEmpty => Tools.Count == 0 && Problems.Count == 0;
+
+    /// The tools the HUD draws.
+    internal IEnumerable<Tool> OnHud => Tools;
 
     /// The problems shown on their own: a tool that still has numbers shows
     /// with them; one with no limit line to draw (balances only) has none.
@@ -101,6 +113,7 @@ internal sealed record HudData(
                 line["strip"]?.GetValue<bool>() == true,
                 Date(line["runsOutAt"]),
                 line["key"]?.GetValue<string>() ?? line["window"]?.GetValue<string>() ?? "")).ToList(),
+            Array.Empty<Note>(),
             Date(tool["outUntil"]),
             tool["runningHot"]?.GetValue<bool>() == true,
             (int)(tool["headline"]?.GetValue<double>() ?? 0),
