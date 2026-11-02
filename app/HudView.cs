@@ -252,9 +252,7 @@ internal sealed class HudView
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var check = Text("\uE73E", "HudSecondary");
-        check.FontFamily = new FontFamily("Segoe Fluent Icons");
-        check.FontSize = 12;
+        var check = Text("\uE73E", "HudIcon");
         Place(row, check, 0);
         var names = fine.Ids.Select(id => data.LookOf(id).Name).ToList();
         var lowest = data.LookOf(fine.LowestId).Name;
@@ -550,9 +548,7 @@ internal sealed class HudView
             else if (summary.Fine is { } fine)
             {
                 var lowest = data.LookOf(fine.LowestId).Name;
-                var check = Text("\uE73E", "HudSecondary");
-                check.FontFamily = new FontFamily("Segoe Fluent Icons");
-                check.FontSize = 12;
+                var check = Text("\uE73E", "HudIcon");
                 parts.Children.Add(check);
                 parts.Children.Add(Text(fine.All ? "All fine" : "Fine", "HudBody"));
                 parts.Children.Add(Tabular(Text($"lowest {lowest} {fine.LowestPercent}%", "HudSecondary")));

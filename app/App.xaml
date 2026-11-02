@@ -39,6 +39,13 @@
             <Style x:Key="HudCritical" TargetType="TextBlock" BasedOn="{StaticResource HudSecondary}">
                 <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
             </Style>
+            <!-- The quiet row's check mark. Primary, not secondary: a 12 px glyph's thin
+                 strokes never reach their colour, and in secondary they measure 2.53:1 on light Mica. -->
+            <Style x:Key="HudIcon" TargetType="TextBlock" BasedOn="{StaticResource HudSecondary}">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                <Setter Property="FontSize" Value="12" />
+            </Style>
             <!-- Only for the check's calibration (scripts/check-hud.ps1): never on the HUD otherwise. -->
             <Style x:Key="HudCalibrationTertiary" TargetType="TextBlock" BasedOn="{StaticResource HudSecondary}">
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
