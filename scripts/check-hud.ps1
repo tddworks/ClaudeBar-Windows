@@ -402,6 +402,9 @@ function Find-Named($root, $pattern, [switch]$Button) {
 
 "== machine: " + (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' | ForEach-Object { "$($_.DisplayVersion) build $($_.CurrentBuild).$($_.UBR)" })
 "== screens: " + (([System.Windows.Forms.Screen]::AllScreens | ForEach-Object { "$($_.DeviceName) $($_.Bounds) primary=$($_.Primary)" }) -join '; ')
+# The check's processes go when it ends, also when a step throws (a refused press):
+# an 'Other app' left behind stays on screen, in front of the next run's windows.
+try {
 foreach ($theme in $Themes) {
   "== theme $theme"
   $check = Start-Check $theme $null
@@ -767,6 +770,9 @@ if ($Tests -contains 'theme') {
     finally { Set-AppsTheme $was }
     if (-not $check.Process.HasExited) { Stop-Check $check }
   }
+}
+} finally {
+  foreach ($id in $script:ours) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
 }
 "== {0} failed, {1} unverified" -f $script:failures, $script:unverified
 if ($script:failures -gt 0) { exit 1 }
