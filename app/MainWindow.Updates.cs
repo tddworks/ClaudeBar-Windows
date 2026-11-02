@@ -22,7 +22,8 @@ public sealed partial class MainWindow
         _updater = new Updater();
         _update = UpdateStatus.Start(_updater.Version, _updater.Installed);
         ShowUpdate();
-        if (Program.UpdatedTo is { } version) Tell($"Updated to {version}.", InfoBarSeverity.Success);
+        // Informational, not Success, which closes itself: the person may be looking elsewhere while it restarts.
+        if (Program.UpdatedTo is { } version) Tell($"Updated to {version}.", InfoBarSeverity.Informational);
         if (!_updater.Installed) return;
         _updateTimer = DispatcherQueue.CreateTimer();
         _updateTimer.IsRepeating = false;
