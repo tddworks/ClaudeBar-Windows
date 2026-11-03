@@ -22,7 +22,8 @@ This reads them where they live. A Linux build of ClaudeBar's package, `claudeba
   - `logins`: for each provider with logs, its days (`LoginDays`: the provider and its `DailyUsageStat`s), what `TokenLogs.days(in:)` returns.
   - `version` (the client's), `timeZone` (the distro's) and `timedOut`.
   - The spike prints the same parts flat, with the days already summed (`DailyTokens`) and each part's seconds; the first release sends `LoginDays`, so the uploader sums the distro's days with this PC's in one place.
-- **A deadline of its own** (`--deadline`, 60 s by default). When it passes, the probe answers with what it has read by then, each login still reading marked `reading`, and `timedOut: true`. The app kills `wsl.exe` only if no answer comes 30 s after that.
+- **A deadline of its own** (`--deadline`, 60 s by default), for the refresh only. When it passes, the probe answers with the HUD as read by then, each login still reading marked `reading`, and `timedOut: true`. The logs are read after that, whole, every time: `logins` is never cut by the deadline, so `timedOut` says nothing about it. If the logs aren't read 60 s after the deadline either, the probe ends its children and exits with no answer (exit 2), and a reading without an answer replaces nothing.
+- **Its children end with it.** Killing `wsl.exe` on Windows doesn't end the Linux side: measured, a hung probe and its pty kept running in the distro after its `wsl.exe` was killed, and kept the distro up, until `pkill` inside the distro. So the probe ends its CLIs itself before exiting (ClaudeBar's teardown: `SIGTERM`, then `SIGKILL`), and the app, when no answer comes 90 s after the deadline, runs `wsl.exe -d <distro> -e pkill -KILL -f <probe path>` before it kills `wsl.exe` and reports `failed`.
 - **What it writes in the distro.** ClaudeBar's file log, `~/.local/share/ClaudeBar/Logs/ClaudeBar.log`, and the folder a CLI runs in, `~/.local/share/ClaudeBar/Probe`, as ClaudeBar on Linux does. A CLI source writes what that CLI writes when it runs: Claude Code recorded the trust it was given for that folder in `~/.claude.json` (measured). Claude's API source refreshes `~/.claude/.credentials.json` when its token expires, as on the Mac.
 
 ### Build
@@ -115,7 +116,7 @@ So:
 ## The Leaderboard
 
 - **The uploader reads the running distros too.** `claudebar-upload.exe` runs the probe in each running distro that's on, and its `TokenLogs` returns this PC's logins followed by each distro's `logins`. ClaudeBar's `DailyTokens.summed` already adds every login of a provider per day, so a provider's day is its Windows tokens plus its WSL tokens. They're different files, so no request is counted twice. It's one device, with one key and the server's cap per day, unchanged.
-- **A day must never shrink.** An upload replaces a day it sends again. If a distro is stopped at the next hourly upload, a day sent with only the Windows tokens would replace one sent with both. So each distro's last `logins` are kept (`%LOCALAPPDATA%\ClaudeBar\wsl\<distro>.json`) and sent in its place while it isn't running; the next reading while it runs replaces them. Those days were still counted by ClaudeBar's package, in the distro (CONTRIBUTING rule 5).
+- **A day must never shrink.** An upload replaces a day it sends again. If a distro is stopped at the next hourly upload, a day sent with only the Windows tokens would replace one sent with both. So each distro's last `logins` are kept (`%LOCALAPPDATA%\ClaudeBar\wsl\<distro>.json`) and sent in its place while it isn't running. Only an answer replaces them, and an answer's `logins` are always whole (the deadline doesn't cut them, above); a failed or missing answer keeps them. Those days were still counted by ClaudeBar's package, in the distro (CONTRIBUTING rule 5).
 - **Days are the distro's.** The probe counts days in the distro's time zone, which WSL keeps equal to Windows' (`useWindowsTimezone`, true by default; measured `Asia/Seoul` beside Windows' Korea Standard Time). The probe says which zone it used; when it isn't Windows', Settings says so, and the days still count.
 - Sharing stays per provider: sharing Claude shares its Windows and its WSL tokens.
 
@@ -153,7 +154,7 @@ Token logs: the probe found Claude, Codex, Mistral, omp and OpenCode logs (`prov
 | The distro is stopped | `notRunning` on its logins, with the last numbers dimmed | HUD, Limits |
 | `wsl.exe` fails, or the probe can't start (no `libcurl.so.4`, a non-x64 distro, the drive not mounted) | `failed` on its logins: *ClaudeBar couldn't run in Ubuntu-26.04: <the error's first line>* | HUD, Limits, Settings |
 | The probe answers late | Its answer at the deadline; logins still reading say `failed`, *Took too long in WSL* | HUD, Limits |
-| No answer 30 s after the deadline | `wsl.exe` is killed; `failed` as above | HUD, Limits |
+| No answer 90 s after the deadline | The probe's Linux processes are killed in the distro, then `wsl.exe`; `failed` as above, and the kept days stay | HUD, Limits |
 | The JSON doesn't parse, or another version answered | `failed`, *ClaudeBar's WSL reader is from another version* | HUD, Limits |
 | The upload can't read a distro | It sends that distro's last kept days; the log says why | ClaudeBar.log |
 
@@ -161,7 +162,7 @@ Token logs: the probe found Claude, Codex, Mistral, omp and OpenCode logs (`prov
 
 - **Shared:** `ProbeReading` round trip; decoding the checked-in sample; the merge of a distro's answer into the lineup (ids, names, `notSetUp` and platform failures dropped, `notRunning` with the kept numbers).
 - **Windows:** `wsl -l -q` parsing (UTF-16LE without BOM, CRLF, empty output with exit 0 when none run), the excluded distros, the `TokenLogs` that adds the distros' logins, and the kept days while a distro is stopped.
-- **The probe, in CI on Linux:** it builds, runs on the runner, its `--json` decodes as `ProbeReading`, and a `PATH` with `/mnt/c/...` entries has them dropped.
+- **The probe, in CI on Linux:** it builds, runs on the runner, its `--json` decodes as `ProbeReading`, and a `PATH` with `/mnt/c/...` entries has them dropped. With a fixture CLI that never answers: the answer comes at the deadline with `timedOut: true` and whole `logins`, and once the probe has exited no process it started is left (`pgrep` finds none).
 - **ClaudeBar (the `commonPaths` fix):** `LinuxBinaryLocator` finds a tool in each version manager's folder, with the folders given to the locator (it already takes `toolFolders`), not by writing in a real home.
 - **On a PC:** with a distro running, the HUD shows its tools as `· WSL`, *Refresh* reads them again, a stopped distro shows `notRunning` without being started, and an upload's preview adds its days. With no screen step while the PC is in use.
 
