@@ -1,0 +1,95 @@
+name: WSL probe (spike)
+
+# The spike for docs/plans/2026-11-03-wsl-design.md: linux/ built for Linux,
+# statically with the Swift Static Linux SDK (musl) and, to compare, against
+# glibc. Runs on the spike branch only; the binaries are artifacts.
+
+on:
+  push:
+    branches: [spike/wsl-probe]
+    paths: ['linux/**', 'native/Sources/ClaudeBarWindows/**', '.github/workflows/wsl-probe.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: claudebar-probe (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: swift:6.3.3-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: musl-x86_64
+            sdk: x86_64-swift-linux-musl
+          - name: musl-aarch64
+            sdk: aarch64-swift-linux-musl
+          - name: glibc-x86_64
+            sdk: ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Tools
+        run: |
+          apt-get update -q && apt-get install -yq zip file binutils
+          swift --version
+
+      - name: Install the Static Linux SDK
+        if: matrix.sdk != ''
+        run: |
+          curl -fsSL -o /tmp/sdk.tar.gz https://download.swift.org/swift-6.3.3-release/static-sdk/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz
+          sha256sum /tmp/sdk.tar.gz
+          swift sdk install /tmp/sdk.tar.gz
+          swift sdk list
+
+      - name: Resolve
+        run: swift package resolve --package-path linux
+
+      - name: Build
+        run: |
+          start=$(date +%s)
+          if [ -n "${{ matrix.sdk }}" ]; then
+            swift build -c release --package-path linux --product claudebar-probe --swift-sdk ${{ matrix.sdk }}
+          else
+            swift build -c release --package-path linux --product claudebar-probe --static-swift-stdlib
+          fi
+          echo "build seconds: $(( $(date +%s) - start ))"
+
+      - name: Measure
+        run: |
+          bin=$(find linux/.build -path '*release/claudebar-probe' -type f | head -1)
+          echo "binary: $bin"
+          mkdir -p out
+          cp "$bin" out/claudebar-probe
+          file out/claudebar-probe
+          echo "raw bytes: $(stat -c %s out/claudebar-probe)"
+          cp out/claudebar-probe out/claudebar-probe-stripped
+          strip out/claudebar-probe-stripped 2>/dev/null || echo "strip: not for this architecture"
+          echo "stripped bytes: $(stat -c %s out/claudebar-probe-stripped)"
+          (cd out && zip -9 -q probe.zip claudebar-probe && echo "zipped bytes: $(stat -c %s probe.zip)")
+          (cd out && zip -9 -q probe-stripped.zip claudebar-probe-stripped && echo "stripped zipped bytes: $(stat -c %s probe-stripped.zip)")
+          echo "shared libraries:"
+          readelf -d out/claudebar-probe | grep NEEDED || echo "none"
+
+      - name: Run on the runner
+        if: matrix.name != 'musl-aarch64'
+        run: |
+          out/claudebar-probe --where
+          out/claudebar-probe --json
+
+      - name: Upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: claudebar-probe-${{ matrix.name }}
+          path: out/claudebar-probe

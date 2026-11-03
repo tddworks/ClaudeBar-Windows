@@ -1,0 +1,1 @@
+../../../native/Sources/ClaudeBarWindows/HudMonitor.swift
