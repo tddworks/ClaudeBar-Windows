@@ -1,0 +1,49 @@
+name: WSL probe environ check (spike)
+
+# For docs/plans/2026-11-03-wsl-design.md: /proc/<pid>/environ is the
+# environment a process was exec'd with, so a variable it sets later isn't
+# there, and one set by `env VAR=x` before exec is, in it and its children.
+
+on:
+  push:
+    branches: [spike/wsl-probe]
+    paths: ['.github/workflows/environ-check.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  environ:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: setenv after start vs env before exec
+        run: |
+          cat > t.c <<'EOF'
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <string.h>
+          int main(void) {
+              setenv("CLAUDEBAR_WSL_RUN", "late", 1);
+              printf("  getenv:  %s\n", getenv("CLAUDEBAR_WSL_RUN"));
+              char b[1 << 16]; FILE *f = fopen("/proc/self/environ", "r"); size_t n = fread(b, 1, sizeof b, f); int found = 0;
+              for (size_t i = 0; i < n; i += strlen(b + i) + 1)
+                  if (!strncmp(b + i, "CLAUDEBAR_WSL_RUN=", 18)) { printf("  environ: %s\n", b + i); found = 1; }
+              if (!found) puts("  environ: (absent)");
+              return 0;
+          }
+          EOF
+          gcc -o t t.c
+          echo "started plainly, setenv after start:"; ./t
+          echo "started with env CLAUDEBAR_WSL_RUN=x, then setenv:"; env CLAUDEBAR_WSL_RUN=x ./t
+      - name: children and a reparented grandchild inherit the exec-time marker
+        run: |
+          env CLAUDEBAR_WSL_RUN=x sh -c '
+            setsid sh -c "sleep 30 & echo \$! > gc.pid" &
+            sleep 1; c=$$; g=$(cat gc.pid)
+            echo "  probe stand-in $c: $(tr "\0" "\n" < /proc/$c/environ | grep CLAUDEBAR_WSL_RUN)"
+            echo "  grandchild $g (ppid $(ps -o ppid= -p $g | tr -d " "), sid $(ps -o sid= -p $g | tr -d " ")): $(tr "\0" "\n" < /proc/$g/environ | grep CLAUDEBAR_WSL_RUN)"
+            kill $g'
+          echo "a shell that exports the marker itself:"
+          sh -c 'export CLAUDEBAR_WSL_RUN=late; echo "  /proc/\$\$/environ: $(tr "\0" "\n" < /proc/$$/environ | grep -c CLAUDEBAR_WSL_RUN) lines"'
