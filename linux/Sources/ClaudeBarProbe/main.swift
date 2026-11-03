@@ -1,4 +1,5 @@
 import ClaudeBarShared
+import Diagnostics
 import DataSources
 import Foundation
 import Leaderboard
@@ -63,6 +64,7 @@ do {
     output["tokens"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(tokens))
     output["providersWithLogs"] = logs.providersWithLogs.sorted()
     output["detected"] = ProviderCatalog().detect().map(\.id).sorted()
+    output["logFile"] = AppLog.logFileURL.path
     output["timeZone"] = calendar.timeZone.identifier
     output["seconds"] = ["hud": hudSeconds, "tokens": tokensSeconds, "total": elapsed(since: started)]
     emit(output)
