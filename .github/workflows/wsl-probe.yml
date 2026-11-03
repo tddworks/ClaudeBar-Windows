@@ -42,7 +42,7 @@ jobs:
 
       - name: Tools
         run: |
-          apt-get update -q && apt-get install -yq zip file binutils
+          apt-get update -q && apt-get install -yq curl zip file binutils
           swift --version
 
       - name: Install the Static Linux SDK
