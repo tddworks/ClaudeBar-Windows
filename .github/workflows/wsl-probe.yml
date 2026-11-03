@@ -56,20 +56,23 @@ jobs:
       - name: Resolve
         run: swift package resolve --package-path linux
 
-      # Glibc-only imports, in two packages, patched in their checkouts instead
-      # of moving ClaudeBar's pins:
+      # Glibc-only code, in two packages, patched in their checkouts instead of
+      # moving ClaudeBar's pins. musl's C module is Musl:
       # - SwiftTerm 1.12.0, which ClaudeBar pins exactly, imports Glibc on any
       #   Linux. SwiftTerm 1.16.0 fixed it upstream (#612).
-      # - ClaudeBar's process code checks `canImport(Glibc)`, so under musl the
-      #   pty and the child's teardown would compile to nothing.
-      # musl's C module is Musl.
-      - name: Patch the Glibc imports for musl
+      # - ClaudeBar's process code checks `canImport(Glibc)` (so under musl the
+      #   pty and the child's teardown would compile to nothing), calls
+      #   `Glibc.open` and `Glibc.read`, and reads siginfo_t's glibc fields.
+      - name: Patch the Glibc code for musl
         if: matrix.sdk != ''
         run: |
           files=$(grep -rl 'Glibc' linux/.build/checkouts/SwiftTerm/Sources linux/.build/checkouts/ClaudeBar/Modules/*/Sources)
           for file in $files; do
             sed -i -e 's/canImport(Glibc)/(canImport(Glibc) || canImport(Musl))/g' \
-                   -e 's/^import Glibc$/#if canImport(Musl)\nimport Musl\n#else\nimport Glibc\n#endif/' "$file"
+                   -e 's/^import Glibc$/#if canImport(Musl)\nimport Musl\n#else\nimport Glibc\n#endif/' \
+                   -e 's/Glibc\.\(open\|read\)(/Musl.\1(/g' \
+                   -e 's/_sifields\._sigchld\.si_pid/__si_fields.__si_common.__first.__piduid.si_pid/g' \
+                   -e 's/_sifields\._sigchld\.si_status/__si_fields.__si_common.__second.__sigchld.si_status/g' "$file"
             echo "patched $file"
           done
 
