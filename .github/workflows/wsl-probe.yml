@@ -83,27 +83,31 @@ jobs:
           fi
           echo "build seconds: $(( $(date +%s) - start ))"
 
+      # The probe is the executable and its packages' resource bundles (the
+      # provider definitions are one), which Bundle.module finds beside it.
       - name: Measure
         run: |
           bin=$(find linux/.build -path '*release/claudebar-probe' -type f | head -1)
+          release=$(dirname "$bin")
           echo "binary: $bin"
-          mkdir -p out
-          cp "$bin" out/claudebar-probe
-          file out/claudebar-probe
-          echo "raw bytes: $(stat -c %s out/claudebar-probe)"
-          cp out/claudebar-probe out/claudebar-probe-stripped
-          strip out/claudebar-probe-stripped 2>/dev/null || echo "strip: not for this architecture"
-          echo "stripped bytes: $(stat -c %s out/claudebar-probe-stripped)"
-          (cd out && zip -9 -q probe.zip claudebar-probe && echo "zipped bytes: $(stat -c %s probe.zip)")
-          (cd out && zip -9 -q probe-stripped.zip claudebar-probe-stripped && echo "stripped zipped bytes: $(stat -c %s probe-stripped.zip)")
+          mkdir -p out/claudebar-probe
+          cp "$bin" out/claudebar-probe/claudebar-probe
+          cp -R "$release"/*.resources out/claudebar-probe/
+          file out/claudebar-probe/claudebar-probe
+          echo "raw binary bytes: $(stat -c %s out/claudebar-probe/claudebar-probe)"
+          strip out/claudebar-probe/claudebar-probe 2>/dev/null || echo "strip: not for this architecture"
+          echo "stripped binary bytes: $(stat -c %s out/claudebar-probe/claudebar-probe)"
+          echo "resource bundles: $(ls -d out/claudebar-probe/*.resources | wc -l), $(du -cb out/claudebar-probe/*.resources | tail -1 | cut -f1) bytes"
+          (cd out && zip -9 -q -r probe.zip claudebar-probe && echo "zipped folder bytes: $(stat -c %s probe.zip)")
           echo "shared libraries:"
-          readelf -d out/claudebar-probe | grep NEEDED || echo "none"
+          readelf -d out/claudebar-probe/claudebar-probe | grep NEEDED || echo "none"
 
       - name: Run on the runner
         if: matrix.name != 'musl-aarch64'
         run: |
-          out/claudebar-probe --where
-          out/claudebar-probe --json
+          mv linux/.build linux/.build-moved
+          out/claudebar-probe/claudebar-probe --where
+          out/claudebar-probe/claudebar-probe --json
 
       - name: Upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
