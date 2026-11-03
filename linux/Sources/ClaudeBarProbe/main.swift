@@ -17,6 +17,7 @@ import Providers
 //   ~/.claudebar/settings.json), to turn providers on or off.
 // --deadline <seconds>: answer with what has been read by then (default 60),
 //   with `timedOut: true`, if the refresh hasn't finished.
+// --days <n>: the days of tokens to read (default 30, what joining sends).
 
 let argv = Array(CommandLine.arguments.dropFirst())
 let arguments = Set(argv)
@@ -57,6 +58,7 @@ let started = ContinuousClock.now
 let calendar = DataSources.calendar()
 let now = Date()
 let deadline = option("--deadline").flatMap(Double.init) ?? 60
+let days = option("--days").flatMap(Int.init) ?? 30
 
 let settings = option("--settings").map { ClaudeBarSettings(url: URL(fileURLWithPath: $0)) } ?? ClaudeBarSettings()
 let hud = HudMonitor(settings: settings)
@@ -69,7 +71,7 @@ var answered = false
     let hudSeconds = elapsed(since: started)
     let tokensStarted = ContinuousClock.now
     let logs = ProviderTokenLogs()
-    let month = await logs.days(in: DateRange.last(30, endingOn: now, calendar: calendar))
+    let month = await logs.days(in: DateRange.last(days, endingOn: now, calendar: calendar))
     let tokens = DailyTokens.summed(month, providers: logs.providersWithLogs, calendar: calendar)
     let tokensSeconds = elapsed(since: tokensStarted)
     do {
