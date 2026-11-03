@@ -56,15 +56,22 @@ jobs:
       - name: Resolve
         run: swift package resolve --package-path linux
 
-      # SwiftTerm 1.12.0, which ClaudeBar pins exactly, imports Glibc on any
-      # Linux; musl's module is Musl. SwiftTerm 1.16.0 fixed it upstream (#612).
-      # The spike patches the checkout instead of moving ClaudeBar's pin.
-      - name: Patch SwiftTerm for musl
+      # Glibc-only imports, in two packages, patched in their checkouts instead
+      # of moving ClaudeBar's pins:
+      # - SwiftTerm 1.12.0, which ClaudeBar pins exactly, imports Glibc on any
+      #   Linux. SwiftTerm 1.16.0 fixed it upstream (#612).
+      # - ClaudeBar's process code checks `canImport(Glibc)`, so under musl the
+      #   pty and the child's teardown would compile to nothing.
+      # musl's C module is Musl.
+      - name: Patch the Glibc imports for musl
         if: matrix.sdk != ''
         run: |
-          file=linux/.build/checkouts/SwiftTerm/Sources/SwiftTerm/KittyGraphics.swift
-          sed -i 's/^import Glibc$/#if canImport(Musl)\nimport Musl\n#else\nimport Glibc\n#endif/' "$file"
-          sed -n 1,20p "$file"
+          files=$(grep -rl 'Glibc' linux/.build/checkouts/SwiftTerm/Sources linux/.build/checkouts/ClaudeBar/Modules/*/Sources)
+          for file in $files; do
+            sed -i -e 's/canImport(Glibc)/(canImport(Glibc) || canImport(Musl))/g' \
+                   -e 's/^import Glibc$/#if canImport(Musl)\nimport Musl\n#else\nimport Glibc\n#endif/' "$file"
+            echo "patched $file"
+          done
 
       - name: Build
         run: |
