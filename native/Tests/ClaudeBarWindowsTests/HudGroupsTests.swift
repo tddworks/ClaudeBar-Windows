@@ -2,6 +2,7 @@ import Foundation
 import Providers
 import Quotas
 import Testing
+@testable import ClaudeBarShared
 @testable import ClaudeBarWindows
 
 /// How an aggregator's groups reach the app (docs/plans/2026-10-13-hud-design.md,

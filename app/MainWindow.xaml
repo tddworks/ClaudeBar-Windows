@@ -526,6 +526,10 @@
                         </Grid>
                     </Border>
 
+                    <!-- Settings › Tools in WSL (docs/plans/2026-11-03-wsl-design.md): each distro, its switch, and what it read (MainWindow.Wsl.cs) -->
+                    <TextBlock Text="Tools in WSL" Style="{StaticResource GroupTitle}" />
+                    <StackPanel x:Name="WslList" Spacing="2" />
+
                     <TextBlock Text="Leaderboard" Style="{StaticResource GroupTitle}" />
                     <Border x:Name="NotJoinedSettings" Style="{StaticResource Card}">
                         <Grid Padding="16,10" ColumnSpacing="14" MinHeight="64">

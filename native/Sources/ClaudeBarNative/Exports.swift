@@ -1,3 +1,4 @@
+import ClaudeBarShared
 import ClaudeBarWindows
 import DataSources
 import DispatchSPI
@@ -313,16 +314,54 @@ private func run(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?,
 /// ClaudeBar's monitor over this PC's providers, made on the first HUD call.
 @MainActor private let hud = HudMonitor()
 
-/// What the HUD shows, from the snapshots the monitor holds now; the first
-/// call starts its background refresh. `{reading: HudReading, readAt,
-/// problems: [{id, kind, message}], looks: [{id, name, light, dark}], state}`,
-/// dates in seconds since 1970; `readAt` is null before any numbers.
+/// Each WSL distro's tools, probed at the HUD's cadence and merged after this PC's.
+@MainActor private let wsl = WslHud()
+
+/// What the HUD shows, from the snapshots the monitor holds now, with each
+/// WSL distro's tools after this PC's; the first call starts the background
+/// refresh and the distros' probes. `{reading: HudReading, readAt,
+/// problems: [{id, kind, message}], looks: [{id, name, light, dark}],
+/// wsl: {installed, distros: [{name, running, on, probing, answeredAt,
+/// reading: ProbeReading, error}]}, state}`, dates in seconds since 1970;
+/// `readAt` is null before any numbers. A distro's tools are
+/// `wsl:<distro>/<id>`; one that isn't running keeps its last numbers, with
+/// the problem `notRunning`.
 @c public func cbw_hud_reading(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
-    run(context, callback) { _ in try hud.answer().json() }
+    run(context, callback) { _ in
+        var reply = try wsl.answer(merging: hud.answer()).json()
+        reply["wsl"] = try wsl.json()
+        return reply
+    }
 }
 
-/// *Refresh*: refreshes every tool in the lineup, then replies as
-/// `cbw_hud_reading` does.
+/// *Refresh*: refreshes every tool in the lineup, and starts a probe in each
+/// running distro that's on, then replies as `cbw_hud_reading` does, without
+/// waiting for the probes.
 @c public func cbw_hud_refresh(_ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
-    run(context, callback) { _ in try await hud.refresh().json() }
+    run(context, callback) { _ in
+        wsl.refresh()
+        var reply = try wsl.answer(merging: await hud.refresh()).json()
+        reply["wsl"] = try wsl.json()
+        return reply
+    }
+}
+
+// MARK: - Tools in WSL
+
+/// What the app keeps for each distro (`app.json`'s `wsl`): the switch, and
+/// the last reading for while it isn't running, as
+/// `{"<distro>": {"on", "answeredAt", "reading"}}`. `{state}`.
+@c public func cbw_wsl_configure(_ kept: UnsafePointer<CChar>?, _ context: UnsafeMutableRawPointer?, _ callback: CBWCallback?) {
+    let text = string(kept)
+    run(context, callback) { _ in
+        wsl.configure(WslHud.kept(fromJSON: text))
+        return [:]
+    }
+}
+
+/// Before an uninstall: ends every probe in every running distro, in 20 s at
+/// most. Synchronous, on the caller's thread; the app's main queue isn't
+/// needed. The distros swept, or -1 when `wsl.exe` couldn't list them.
+@c public func cbw_wsl_end_all() -> Int32 {
+    WslHud.endAll()
 }

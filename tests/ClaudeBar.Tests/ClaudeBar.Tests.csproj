@@ -24,8 +24,12 @@
     <Compile Include="..\..\app\LaunchArguments.cs" Link="LaunchArguments.cs" />
     <Compile Include="..\..\app\UpdateFlow.cs" Link="UpdateFlow.cs" />
     <Compile Include="..\..\app\UploadTask.cs" Link="UploadTask.cs" />
+    <Compile Include="..\..\app\WslSettings.cs" Link="WslSettings.cs" />
+    <Compile Include="..\..\app\WslHold.cs" Link="WslHold.cs" />
     <!-- The sample the HUD check shows, read as the C interface sends it. -->
     <Content Include="..\hud-check.json" Link="hud-check.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\hud-check-fine.json" Link="hud-check-fine.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The probe's answer, as the Swift side reads it too (ProbeReadingTests). -->
+    <Content Include="..\wsl-probe.json" Link="wsl-probe.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

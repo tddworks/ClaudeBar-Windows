@@ -26,11 +26,22 @@ public static partial class Program
             .OnAfterUpdateFastCallback(_ => Uploads.FollowThisCopy())
             .OnBeforeUninstallFastCallback(_ =>
             {
+                // First, while the probe is still there: a deleted file keeps
+                // running in a distro (docs/plans/2026-11-03-wsl-design.md, An uninstall).
+                try { Native.cbw_wsl_end_all(); } catch (Exception) { }
                 Uploads.Remove();
                 Startup.Remove();
             })
             .OnRestarted(version => UpdatedTo = version.ToString())
             .Run();
+        // A check's entry, as --hud-check is (scripts/check-wsl.ps1 runs it):
+        // ends every probe in every running distro, as an uninstall does. Not
+        // in the Start menu or the jump list.
+        if (args.Contains("--wsl-end-all"))
+        {
+            Native.cbw_wsl_end_all();
+            return 0;
+        }
         WinRT.ComWrappersSupport.InitializeComWrappers();
         // The HUD's check (HudCheck.cs) runs beside the real ClaudeBar: it opens no membership.
         if (args.Contains("--hud-check"))

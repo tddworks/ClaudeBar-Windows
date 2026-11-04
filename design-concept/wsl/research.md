@@ -136,6 +136,15 @@ A copy of `/bin/sleep` in `H:\cbw-upd\current\linux\x64\`, run as `wsl.exe -d Ub
 
 Velopack 1.2.161 (`src/bins/src/commands/apply_windows_impl.rs` at tag `1.2.161`) stops the package's own processes (`force_stop_package`), then renames `current` to a backup, retrying 10 times a second apart, and otherwise stops with *Unable to start the update, because one or more running processes prevented it. Try again later, or if the issue persists, restart your computer.*, before anything has changed.
 
+## The phase 1 build on the PC (2026-11-04)
+
+`int/wsl` built on the PC with `.\build.ps1 -Probe` and CI's probe, then `scripts/check-wsl.ps1 -Start Ubuntu-26.04` and the runs below, each from a stopped distro that was stopped again after.
+
+- **The controlling terminal.** `wsl.exe` gives every Linux process a controlling terminal, even one started as the app starts it: no console (`CREATE_NO_WINDOW`), stdin a closed pipe, stdout and stderr pipes. There `/dev/tty` opened. `bash -l -i -c true` in a process group of its own was still running at 6 s and had to be killed, from the app's kind of launch and from a console alike; in a session of its own it exited in 0.11 s. An interactive bash opens `/dev/tty` for job control and, in a background group of it, stops itself with `SIGTTIN`. So the probe's environment import timed out at 3 s on every run; it now runs the shell with `POSIX_SPAWN_SETSID`, and imports (`imported`, no names: this distro's shell files export none the definitions name).
+- **The import's cost** (Task 19's check 8, five runs each): inside the distro 103–149 ms warm, and 1.5–1.9 s for the first login shell after the distro starts (3.8 s once, 3 s after it started); `wsl.exe -e <the import>` 0.19–0.28 s against `wsl.exe -e true` 0.11–0.17 s. So the first run after a start can still time out at 3 s: both first runs of the fixed probe did, and every later run imported.
+- **The probe, as the app runs it** (`--json --deadline 60`): 74–94 s on the first run after a start, then 71 s, then 23–35 s. The first runs' Claude CLI didn't finish in its timeout, and Codex's app-server and omp's `usage` answered *Request timed out*; warm, Claude says the account has API billing, not a plan, and Codex gets `401 invalid_jwt`, as in June. OpenCode Go and omp's five accounts read. Antigravity: *Reading a local server isn't available on Linux yet*. No days: the newest records are from June 2 (Claude, Codex) and August 7 (omp). Nothing skipped: the WSL roots are the distro's own. The answer decodes with `ProbeReading` and re-encodes equal.
+- **After each run** no process carried its marker; `ClaudeBar.exe --wsl-end-all` ended a stand-in marked `sleep 300` in 1.2–2.2 s; the probe ran from a folder with a space in its name (`…\Temp\claudebar check wsl\x64`).
+
 ## Not measured
 
 - A distro without `libcurl.so.4`, a custom `[automount] root` on a real distro, and an arm64 PC.

@@ -48,6 +48,15 @@ public sealed class HudTextTests
     }
 
     [TestMethod]
+    public void Should_say_WSL_isnt_running_with_the_time_of_the_numbers()
+    {
+        var at = new DateTimeOffset(2026, 11, 4, 14, 5, 0, TimeSpan.Zero).ToLocalTime();
+        Assert.AreEqual($"WSL isn't running · numbers from {HudText.Clock(at, CultureInfo.GetCultureInfo("en-GB"))}",
+                        HudText.NotRunning(at, CultureInfo.GetCultureInfo("en-GB")));
+        Assert.AreEqual("WSL isn't running", HudText.NotRunning(null, CultureInfo.GetCultureInfo("en-GB")));
+    }
+
+    [TestMethod]
     public void Should_read_the_check_s_sample_as_the_C_interface_sends_it()
     {
         var reply = (JsonObject)JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "hud-check.json")))!;

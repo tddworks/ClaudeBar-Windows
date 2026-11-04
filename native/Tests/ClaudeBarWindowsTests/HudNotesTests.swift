@@ -1,6 +1,7 @@
 import Foundation
 import Quotas
 import Testing
+@testable import ClaudeBarShared
 @testable import ClaudeBarWindows
 
 /// What the Mac's card shows beside a tool's limits, sent to the app too

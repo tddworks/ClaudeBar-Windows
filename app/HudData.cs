@@ -41,10 +41,11 @@ internal sealed record HudData(
         internal bool NotesOnly => Group is not null && Lines.Count == 0 && Notes.Count > 0;
     }
 
-    /// A tool without live numbers: `reading` (not read yet), `signedOut` or
-    /// `failed`, and what to do about it. A signed-out or failed tool may also
-    /// be in `Tools` with the numbers it had (`Stale`). Tools not set up on this
-    /// PC (`notSetUp`) are left out: the HUD doesn't show them.
+    /// A tool without live numbers: `reading` (not read yet), `signedOut`,
+    /// `failed`, or `notRunning` (a WSL distro that isn't running; its message
+    /// is empty, and the app says it with the numbers' time), and what to do
+    /// about it. Such a tool may also be in `Tools` with the numbers it had
+    /// (`Stale`). Tools not set up on this PC (`notSetUp`) are left out: the HUD doesn't show them.
     internal sealed record Problem(string Id, string Kind, string Message);
 
     /// A tool's name and colours (`#RRGGBB`), light and dark.
@@ -85,10 +86,10 @@ internal sealed record HudData(
     /// with them; one with no limit line to draw (balances only) has none.
     internal IEnumerable<Problem> Alone => Problems.Where(problem => Tools.All(tool => tool.Lines.Count == 0 || tool.Id != problem.Id));
 
-    /// Why a tool's numbers aren't live: signed out, or its last read failed,
-    /// while the numbers it had are still here.
+    /// Why a tool's numbers aren't live: signed out, its last read failed, or
+    /// its WSL distro isn't running, while the numbers it had are still here.
     internal Problem? Stale(string id) =>
-        Tools.Any(tool => tool.Id == id && tool.Lines.Count > 0) ? Problems.FirstOrDefault(problem => problem.Id == id && problem.Kind is "signedOut" or "failed") : null;
+        Tools.Any(tool => tool.Id == id && tool.Lines.Count > 0) ? Problems.FirstOrDefault(problem => problem.Id == id && problem.Kind is "signedOut" or "failed" or "notRunning") : null;
 
     /// What the HUD shows (design, What it shows): a row for each tool that
     /// needs the person, in their order (its headline not healthy or running
