@@ -1,0 +1,142 @@
+{
+  "days" : [
+    {
+      "cacheRead" : 780000,
+      "cacheWrite" : 56000,
+      "day" : "2026-11-03",
+      "input" : 1200,
+      "output" : 3400,
+      "provider" : "claude",
+      "unsplit" : 90
+    },
+    {
+      "cacheRead" : 420000,
+      "cacheWrite" : 31000,
+      "day" : "2026-11-04",
+      "input" : 800,
+      "output" : 2100,
+      "provider" : "claude",
+      "unsplit" : 40
+    }
+  ],
+  "diagnostics" : [
+
+  ],
+  "environmentImport" : {
+    "names" : [
+      "CLAUDE_CONFIG_DIR",
+      "CODEX_HOME",
+      "KIMI_SHARE_DIR",
+      "PI_CODING_AGENT_DIR",
+      "XDG_DATA_HOME"
+    ],
+    "state" : "imported"
+  },
+  "hud" : {
+    "looks" : [
+      {
+        "dark" : "#D97757",
+        "id" : "claude",
+        "light" : "#D97757",
+        "name" : "Claude"
+      },
+      {
+        "dark" : "#FFFFFF",
+        "id" : "codex",
+        "light" : "#000000",
+        "name" : "Codex"
+      },
+      {
+        "dark" : "#8A8A8A",
+        "id" : "omp",
+        "light" : "#8A8A8A",
+        "name" : "Oh My Pi"
+      }
+    ],
+    "problems" : [
+      {
+        "id" : "codex",
+        "kind" : "signedOut",
+        "message" : "Run codex login"
+      },
+      {
+        "id" : "omp",
+        "kind" : "reading",
+        "message" : ""
+      }
+    ],
+    "readAt" : 1762230000,
+    "reading" : {
+      "tools" : [
+        {
+          "headline" : 1,
+          "id" : "claude",
+          "lines" : [
+            {
+              "key" : "session",
+              "percentLeft" : 62,
+              "resetsAt" : 1762237200,
+              "runningHot" : false,
+              "status" : "healthy",
+              "strip" : true,
+              "tick" : 60,
+              "window" : "5h",
+              "windowSeconds" : 18000
+            },
+            {
+              "key" : "weekly",
+              "percentLeft" : 18,
+              "resetsAt" : 1762473600,
+              "runningHot" : true,
+              "runsOutAt" : 1762401600,
+              "status" : "warning",
+              "strip" : true,
+              "tick" : 40,
+              "window" : "7d",
+              "windowSeconds" : 604800
+            }
+          ],
+          "notes" : [
+
+          ],
+          "others" : {
+            "attention" : 0,
+            "count" : 1
+          },
+          "readAt" : 1762230000,
+          "runningHot" : true,
+          "signedOut" : false,
+          "tier" : "MAX"
+        }
+      ],
+      "worst" : "warning"
+    }
+  },
+  "skipped" : [
+    {
+      "kind" : "credentials",
+      "provider" : "codex",
+      "reason" : "shared",
+      "windowsPath" : "C:\\Users\\me\\.codex"
+    },
+    {
+      "kind" : "logs",
+      "provider" : "claude",
+      "reason" : "uncheckable"
+    }
+  ],
+  "timeZone" : "Asia/Seoul",
+  "timedOut" : false,
+  "tools" : [
+    {
+      "cli" : "/home/me/.local/bin/claude",
+      "id" : "claude",
+      "logs" : true
+    },
+    {
+      "id" : "omp",
+      "logs" : true
+    }
+  ],
+  "version" : "0.1.9"
+}

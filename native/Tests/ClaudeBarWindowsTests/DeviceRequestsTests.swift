@@ -1,6 +1,7 @@
 import Foundation
 import Leaderboard
 import Testing
+@testable import ClaudeBarShared
 @testable import ClaudeBarWindows
 
 /// Asking for a code is a round trip: one cancelled or replaced meanwhile can

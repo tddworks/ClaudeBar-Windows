@@ -1,3 +1,4 @@
+import ClaudeBarShared
 import ClaudeBarWindows
 import DataSources
 import DispatchSPI

@@ -14,9 +14,14 @@ import Quotas
 /// at once. The HUD changes no setting: every save here keeps nothing.
 public final class ClaudeBarSettings: MultiAccountSettingsRepository, @unchecked Sendable {
     public let url: URL
+    /// Providers turned off whatever the file says: in WSL, those whose
+    /// credentials Windows reads too, so the account isn't shown twice
+    /// (docs/plans/2026-11-03-wsl-design.md, Folders shared with Windows).
+    public let off: Set<String>
 
-    public init(url: URL = ClaudeBarSettings.defaultURL) {
+    public init(url: URL = ClaudeBarSettings.defaultURL, off: Set<String> = []) {
         self.url = url
+        self.off = off
     }
 
     public static var defaultURL: URL {
@@ -32,7 +37,8 @@ public final class ClaudeBarSettings: MultiAccountSettingsRepository, @unchecked
     // MARK: - What ClaudeBar keeps
 
     public func isEnabled(forProvider id: String, defaultValue: Bool) -> Bool {
-        read("providers.\(id).isEnabled") ?? defaultValue
+        if off.contains(id) { return false }
+        return read("providers.\(id).isEnabled") ?? defaultValue
     }
 
     public func customCardURL(forProvider id: String) -> String? { read("providers.\(id).customCardURL") }

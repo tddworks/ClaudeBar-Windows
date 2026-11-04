@@ -1,6 +1,7 @@
 import Foundation
 import Quotas
 import Testing
+@testable import ClaudeBarShared
 @testable import ClaudeBarWindows
 
 /// What the HUD shows for each tool's limits (docs/plans/2026-10-13-hud-design.md),

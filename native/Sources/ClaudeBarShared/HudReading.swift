@@ -17,8 +17,8 @@ import Quotas
 /// omp signed the account out. A group with notes and no limit (an account
 /// omp measures nothing for, or signed out) is a tool too, after those with
 /// limits, as the Mac puts its note-only sections last.
-public struct HudReading: Equatable, Sendable, Encodable {
-    public struct Line: Equatable, Sendable, Encodable {
+public struct HudReading: Equatable, Sendable, Codable {
+    public struct Line: Equatable, Sendable, Codable {
         /// ClaudeBar's own persisted key for the limit (`QuotaType.quotaKey`:
         /// `session`, `time:Claude 5h · work`): the same from one reading to
         /// the next, whatever its title, and naming the account where an
@@ -45,7 +45,7 @@ public struct HudReading: Equatable, Sendable, Encodable {
     }
 
     /// The tool's limits besides its headline, and how many of them need you.
-    public struct Others: Equatable, Sendable, Encodable {
+    public struct Others: Equatable, Sendable, Codable {
         public let count: Int
         /// Those that aren't healthy.
         public let attention: Int
@@ -54,7 +54,7 @@ public struct HudReading: Equatable, Sendable, Encodable {
     /// A note the Mac's card shows beside a tool's limits
     /// (`UsageSnapshot.extensionMetrics`): omp's saved resets, a balance, an
     /// account it signed out; Codex's resets and credits.
-    public struct Note: Equatable, Sendable, Encodable {
+    public struct Note: Equatable, Sendable, Codable {
         /// What it counts, for a login's own note ("Usage limit resets"), the
         /// Mac's metric card heading; nil for a group's, which the Mac shows
         /// as its text alone ("1 saved reset · next expires Nov 7").
@@ -64,7 +64,7 @@ public struct HudReading: Equatable, Sendable, Encodable {
         public let unit: String
     }
 
-    public struct Tool: Equatable, Sendable, Encodable {
+    public struct Tool: Equatable, Sendable, Codable {
         /// The login's lineup id, or `<login>/<group>` for a group.
         public let id: String
         /// The aggregator's section these limits belong to ("Codex", "Claude · work").
@@ -96,6 +96,13 @@ public struct HudReading: Equatable, Sendable, Encodable {
     public let tools: [Tool]
     /// The worst status of every line, for the taskbar dot.
     public let worst: String
+
+    /// A reading put together from tools already read: a distro's, merged
+    /// with this PC's (`WslLineup`).
+    init(tools: [Tool], worst: String) {
+        self.tools = tools
+        self.worst = worst
+    }
 
     public init(snapshots: [UsageSnapshot], policy: StatusPolicy) {
         let now = Date()

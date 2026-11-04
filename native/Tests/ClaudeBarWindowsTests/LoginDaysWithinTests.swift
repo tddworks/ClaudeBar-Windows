@@ -2,6 +2,7 @@ import Foundation
 import Leaderboard
 import Quotas
 import Testing
+@testable import ClaudeBarShared
 @testable import ClaudeBarWindows
 
 /// The join page's 7 days come from the 30 it already read, not a second read
