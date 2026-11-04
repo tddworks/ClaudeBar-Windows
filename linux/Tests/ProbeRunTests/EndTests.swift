@@ -23,7 +23,7 @@ extension ProbeRuns {
         }
 
         private func pid(_ user: ProbeUser, _ file: String) throws -> pid_t {
-            try #require(user.waitFor(file, seconds: 30), "\(file) never written")
+            try #require(user.waitFor(file, seconds: 30), "\(file) never written; \(user.whatRan())")
             usleep(100_000)
             return try #require(user.read(file).flatMap { pid_t($0) })
         }
