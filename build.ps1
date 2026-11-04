@@ -4,17 +4,27 @@ Builds ClaudeBar for Windows on Windows, for this PC's architecture:
      over ClaudeBar's package at the commit native/Package.swift pins;
   2. stages them with the Swift runtime DLLs they import and ClaudeBar's resource
      bundles (the provider definitions) into native-out/win-<arch>;
-  3. publishes the C# WinUI 3 app, self-contained, with those beside ClaudeBar.exe.
+  3. publishes the C# WinUI 3 app, self-contained, with those beside ClaudeBar.exe;
+  4. with -Probe, puts claudebar-probe, the WSL reader, and its resource bundles in
+     linux\x64 beside the app. It's a Linux build: CI's claudebar-probe-linux-x64
+     artifact, or `swift build -c release --package-path linux` in a distro, staged
+     as the workflow's probe job stages it.
 
-  .\build.ps1             # out\win-<arch>\ClaudeBar.exe
-  .\build.ps1 -SkipApp    # the Swift side only
+  .\build.ps1                     # out\win-<arch>\ClaudeBar.exe
+  .\build.ps1 -SkipApp            # the Swift side only
+  .\build.ps1 -Probe <folder>     # and out\win-<arch>\linux\x64\claudebar-probe
 #>
-param([switch] $SkipApp)
+param([switch] $SkipApp, [string] $Probe)
 
 $ErrorActionPreference = 'Continue'
 $root = $PSScriptRoot
 $arch = @{ AMD64 = 'x64'; ARM64 = 'arm64' }[(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').PROCESSOR_ARCHITECTURE]
 if (-not $arch) { throw 'unsupported architecture' }
+if ($Probe) {
+    # Checked before the long build, and named in full, since the build changes folders.
+    if (-not (Test-Path (Join-Path $Probe 'claudebar-probe') -PathType Leaf)) { throw "no claudebar-probe in $Probe" }
+    $Probe = (Resolve-Path $Probe).Path
+}
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $env:DOTNET_NOLOGO = '1'
 $dotnet = Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet10\dotnet.exe'
@@ -91,5 +101,17 @@ Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
 $clock.Restart()
 & $dotnet publish (Join-Path $root 'app\ClaudeBar.csproj') -c Release -r $rid "-p:Platform=$platform" -o $out; Assert-Exit 'dotnet publish'
 "dotnet publish: {0:N0} s" -f $clock.Elapsed.TotalSeconds
+
+# 4. claudebar-probe, the WSL reader, from a Linux build (CI's
+#    claudebar-probe-linux-x64 artifact, or a build in a distro), beside the app.
+if ($Probe) {
+    $linux = Join-Path $out 'linux\x64'
+    New-Item -ItemType Directory -Path $linux -Force | Out-Null
+    Copy-Item (Join-Path $Probe '*') $linux -Recurse
+    if (-not (Test-Path (Join-Path $linux 'claudebar-probe'))) { throw "no claudebar-probe in $Probe" }
+} else {
+    # ASCII only: Windows PowerShell 5.1 reads this file as ANSI.
+    'no -Probe: this build has no WSL reader; Settings, Tools in WSL, says so'
+}
 $files = Get-ChildItem $out -Recurse -File | Where-Object Extension -ne '.pdb'
 "published to $out : {0} files, {1:N1} MB" -f $files.Count, (($files | Measure-Object Length -Sum).Sum / 1MB)

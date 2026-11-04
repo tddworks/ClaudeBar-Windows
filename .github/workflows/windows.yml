@@ -16,8 +16,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # claudebar-probe (docs/plans/2026-11-03-wsl-design.md): ClaudeBar built for
+  # Linux, glibc x86_64, which the app runs inside a WSL distro. --init gives
+  # the container a PID 1 that reaps orphans, which the --end tests need.
+  probe:
+    name: Build and test the WSL probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: swift:6.3.3-noble
+      options: --init
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Tools
+        run: |
+          apt-get update -q && apt-get install -yq binutils
+          swift --version
+
+      - name: Test
+        run: swift test --package-path linux
+
+      - name: Build
+        run: swift build -c release --package-path linux --product claudebar-probe --static-swift-stdlib
+
+      # The probe and its resource bundles, which Bundle.module finds beside it.
+      - name: Stage
+        run: |
+          release=$(swift build -c release --package-path linux --show-bin-path)
+          mkdir -p linux-out/x64
+          cp "$release/claudebar-probe" linux-out/x64/
+          cp -R "$release"/*.resources linux-out/x64/
+          strip linux-out/x64/claudebar-probe
+          readelf -d linux-out/x64/claudebar-probe | grep NEEDED
+          du -sh linux-out/x64
+
+      - name: Upload the probe
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: claudebar-probe-linux-x64
+          path: linux-out/x64
+          if-no-files-found: error
+          retention-days: 7
+
   client:
     name: Build and test Windows client
+    # The Windows build ships the probe beside the app, so it waits for it.
+    needs: probe
     runs-on: windows-latest
     timeout-minutes: 45
     defaults:
@@ -39,17 +87,18 @@ jobs:
           git merge-base --is-ancestor "$env:GITHUB_SHA" origin/main
           if ($LASTEXITCODE -ne 0) { Write-Error 'the tagged commit is not on main'; exit 1 }
 
-      # A release is named by its tag, and the app names itself by Client.version
-      # (the X-Client header, the window) and the csproj's Version (the exe's file
-      # version). All three must agree before anything is built.
+      # A release is named by its tag, and the app names itself by
+      # ClientVersion.version (the X-Client header, the window, the WSL probe's
+      # answer) and the csproj's Version (the exe's file version). All three
+      # must agree before anything is built.
       - name: Check the tag matches the version
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           $tag = '${{ github.ref_name }}'.Substring(1)
-          $client = [regex]::Match((Get-Content -Raw native/Sources/ClaudeBarWindows/Client.swift), 'static let version = "([^"]+)"').Groups[1].Value
+          $client = [regex]::Match((Get-Content -Raw native/Sources/ClaudeBarShared/ClientVersion.swift), 'static let version = "([^"]+)"').Groups[1].Value
           $project = ([xml](Get-Content -Raw app/ClaudeBar.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
-          "tag $tag, Client.version $client, csproj $project"
-          if ($tag -ne $client -or $tag -ne $project) { Write-Error 'the tag, Client.version and the csproj Version differ'; exit 1 }
+          "tag $tag, ClientVersion.version $client, csproj $project"
+          if ($tag -ne $client -or $tag -ne $project) { Write-Error 'the tag, ClientVersion.version and the csproj Version differ'; exit 1 }
 
       # Match the toolchain used by ClaudeBar's Windows package CI.
       - name: Install Swift
@@ -70,11 +119,18 @@ jobs:
           dotnet --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Download the probe
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: claudebar-probe-linux-x64
+          path: linux-out/x64
+
       # build.ps1 loads MSVC into this process's environment. Keep the tests
-      # in the same step, so SwiftPM uses that environment too.
+      # in the same step, so SwiftPM uses that environment too. -Probe puts the
+      # WSL probe in out/win-x64/linux/x64, so the zip and the packages carry it.
       - name: Build app and test Swift client
         run: |
-          & .\build.ps1
+          & .\build.ps1 -Probe linux-out\x64
           if (-not $?) { exit 1 }
           swift test --package-path native
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -109,6 +165,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The WSL probe the package carries, beside ClaudeBar.exe.
+          Get-ChildItem out/win-x64/linux -Recurse -File | ForEach-Object { '{0}  {1:N0} bytes' -f $_.FullName.Substring((Resolve-Path out/win-x64).Path.Length + 1), $_.Length }
+          if (-not (Test-Path out/win-x64/linux/x64/claudebar-probe)) { Write-Error 'no WSL probe in out/win-x64'; exit 1 }
           dotnet tool install --tool-path .vpk vpk --version 1.2.161
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ('${{ github.ref }}'.StartsWith('refs/tags/v')) {
