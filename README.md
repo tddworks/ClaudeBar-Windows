@@ -42,12 +42,15 @@ On Windows 10 (2004) or later, x64, with:
 - the .NET 10 SDK.
 
 ```powershell
-.\build.ps1             # out\win-x64\ClaudeBar.exe, with claudebar-upload.exe and ClaudeBarNative.dll beside it
-.\build.ps1 -SkipApp    # the Swift side only
-cd native; swift test   # the Swift side's tests, from a shell with the MSVC environment loaded
+.\build.ps1                     # out\win-x64\ClaudeBar.exe, with claudebar-upload.exe and ClaudeBarNative.dll beside it
+.\build.ps1 -SkipApp            # the Swift side only
+.\build.ps1 -Probe <folder>     # and linux\x64\claudebar-probe, the WSL reader, beside the app
+cd native; swift test           # the Swift side's tests, from a shell with the MSVC environment loaded
 ```
 
 `build.ps1` builds the Swift side with SwiftPM, stages it with the Swift runtime DLLs and ClaudeBar's provider definitions, then publishes the WinUI 3 app self-contained around them. Run `out\win-x64\ClaudeBar.exe`.
+
+`claudebar-probe` is a Linux build, so `build.ps1` doesn't make it: `-Probe` takes a folder that has it, CI's `claudebar-probe-linux-x64` artifact (`gh run download <run> -n claudebar-probe-linux-x64 -D linux-out\x64`) or `swift build -c release --package-path linux` in a distro, staged as the workflow's `probe` job stages it. Without it, the build has no WSL reader, and Settings → Tools in WSL says so. The probe's tests run on Linux: `swift test --package-path linux` in `swift:6.3.3-noble`, with `docker run --init` (they need a PID 1 that reaps).
 
 PRs to `main` run this build and the Swift client tests on a fresh Windows
 x64 runner with Swift 6.3.3 and .NET 10. See [the CI check](CONTRIBUTING.md#checks-before-a-pr)
@@ -82,6 +85,19 @@ A small window in a corner of the screen with each AI tool's limits, as ClaudeBa
 
 `scripts/check-hud.ps1` checks these on a PC, on a sample reading (`ClaudeBar.exe --hud-check`, which keeps its settings in `%TEMP%`). It moves the mouse, clicks, brings windows to the front and switches the Windows apps theme (putting it back after), so run it on a PC nobody is using. It prints PASS, FAIL or UNVERIFIED per check and exits 0 only when every check ran and passed.
 
+## Tools in WSL
+
+Claude Code, Codex and the rest often run inside a WSL distro, with their sign-ins, logs and CLIs in its Linux home, where reading `%USERPROFILE%` finds nothing. So ClaudeBar runs itself there: `claudebar-probe`, ClaudeBar's package built for Linux, ships beside `ClaudeBar.exe` (`linux\x64`) and reads the distro's tools where ClaudeBar on Linux would ([design](docs/plans/2026-11-03-wsl-design.md), [research](design-concept/wsl/research.md)). Phase 1 puts them on the HUD, Limits and Settings; their days on the Leaderboard wait for two changes in ClaudeBar (phase 2, in the design).
+
+- **Only running distros are read,** at each HUD refresh, from `wsl.exe -l --running -q`, which starts nothing. A stopped distro keeps its last numbers, dimmed: *WSL isn't running · numbers from 14:05*. Docker Desktop's and Rancher Desktop's own distros are never read.
+- **On the HUD and Limits,** a distro's tools are tools of their own, beside this PC's: `Claude · WSL`, or `Claude · WSL Ubuntu-26.04` when more than one distro is read. A run takes about 25 s, most of it Claude's CLI, so this PC's tools show first.
+- **Settings → Tools in WSL** lists each distro, whether it's running, a switch (on once a reading finds a tool), and from its last reading each tool and where (its CLI's path, or *logs only*). A source both sides read, a WSL `~/.claude` that is the Windows folder, is left out and says *shared with Windows*, so nothing counts twice; one that can't be checked against Windows is left out too, and says *couldn't check against Windows*.
+- **Your shell's settings:** the probe asks your login shell, once per run, for the variables the provider definitions name (`CODEX_HOME`, `CLAUDE_CONFIG_DIR`, …), so a folder set in `.bashrc` is the one read. If the shell can't be read in 3 s, Settings says *Couldn't read your shell's settings*.
+- **Needs:** an x86_64 distro with glibc, `libcurl.so.4` and `libstdc++.so.6` (checked on Ubuntu 26.04 under WSL 2). Without them, the HUD and Settings say *ClaudeBar couldn't run in <distro>* with the reason. A CLI installed only through a version manager (nvm, Volta, fnm, mise, asdf) isn't found yet; its logs still are.
+- **Nothing outlives a run.** Every process a run starts carries a marker in its environment, and is ended with it, or by the app when no answer comes. Updating waits for a run in progress; uninstalling ends every run first.
+
+`scripts/check-wsl.ps1` checks this on a PC: the probe as the app runs it, that nothing is left after, `ClaudeBar.exe --wsl-end-all`, a folder with a space in its name, the cost of reading the shell, and, read from the screen's UI Automation tree without changing it, the HUD's WSL rows and *WSL isn't running*. It moves no mouse and raises no window, starts a distro only with `-Start <distro>`, and stops it again after.
+
 ## What it keeps, and where
 
 | What | Where |
@@ -91,7 +107,9 @@ A small window in a corner of the screen with each AI tool's limits, as ClaudeBa
 | The hourly upload | A Task Scheduler task, *ClaudeBar Leaderboard upload*, that runs `claudebar-upload.exe` every hour while you're signed in. Joining adds it; leaving or uninstalling removes it; installing and each update point it at the new copy |
 | The app | `%LOCALAPPDATA%\ClaudeBarWindows`: `current` holds the running version, which an update replaces, and `packages` the downloaded update. Uninstalling removes the folder |
 | Logs | `%LOCALAPPDATA%\ClaudeBar\Logs\ClaudeBar.log`: outcomes only, never a key or a log's content |
-| The app's own settings: the tray icon, the HUD (shown or not, card or strip, its corner and screen, on top, the tools taken off it, its shortcut), whether starting with Windows was offered, the tools of the last reading (drawn while the first reading after a start runs), each limit's last status, the crossings already notified and *Quiet until reset*, and the last version a notification said was available | `%LOCALAPPDATA%\ClaudeBar\app.json` |
+| Each run's list of this PC's folders, for the probe to compare with (*shared with Windows*) | `%LOCALAPPDATA%\ClaudeBar\wsl\windows-roots-<run>.json`, deleted when the run ends |
+| In a distro it reads | ClaudeBar's own log, and the folder it runs Claude's CLI in, under `~/.local/share/ClaudeBar`; Claude Code's trust entry for that folder in `~/.claude.json`. Nothing is copied into the distro: the probe runs from the app's folder |
+| The app's own settings: the tray icon, the HUD (shown or not, card or strip, its corner and screen, on top, the tools taken off it, its shortcut), whether starting with Windows was offered, the tools of the last reading (drawn while the first reading after a start runs), each limit's last status, the crossings already notified and *Quiet until reset*, the last version a notification said was available, and each WSL distro's switch and last reading (`wsl`) | `%LOCALAPPDATA%\ClaudeBar\app.json` |
 
 **A copied key.** A cloned disk, a restored image or a copied virtual machine can bring the settings file and the key to another PC. The PC notices: its hardware UUID doesn't match the one the key was made on, so it uploads nothing and the window says why ([design §2a](https://github.com/tddworks/ClaudeBar/blob/main/docs/features/leaderboard/design.md)). *Keep the key here* is for when the other PC is gone, or this is it after a repair: this PC uploads again under the same key. If both stay in use, they overwrite each other's days. This app can't yet make the copy its own device, as the Mac can; that comes with Devices settings, which it doesn't have yet. Until then, if both PCs stay in use, keeping the key here means they overwrite each other's days.
 
