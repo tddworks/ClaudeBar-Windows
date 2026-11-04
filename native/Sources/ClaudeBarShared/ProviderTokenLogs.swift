@@ -24,9 +24,12 @@ public final class ProviderTokenLogs: TokenLogs {
 
     private let logins: [Login]
 
-    public init(settings: any MultiAccountSettingsRepository = DefaultProviderSettings()) {
+    /// `except`: providers left out, in WSL those whose usage records Windows
+    /// reads too, so their days aren't counted twice
+    /// (docs/plans/2026-11-03-wsl-design.md, Folders shared with Windows).
+    public init(settings: any MultiAccountSettingsRepository = DefaultProviderSettings(), except: Set<String> = []) {
         logins = ProviderFactory.builtInDefinitions.values
-            .filter { $0.usageHistory != nil }
+            .filter { $0.usageHistory != nil && !except.contains($0.id) }
             .sorted { $0.id < $1.id }
             .compactMap { definition in
                 ProviderFactory.make(definition, settings: settings).usageHistory.map {

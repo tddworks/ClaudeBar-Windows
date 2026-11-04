@@ -3,7 +3,6 @@ import Providers
 import Quotas
 import Testing
 @testable import ClaudeBarShared
-@testable import ClaudeBarWindows
 
 /// The HUD's providers follow the person's settings where ClaudeBar keeps
 /// them, `~/.claudebar/settings.json`, read as ClaudeBar reads it.
@@ -65,5 +64,12 @@ struct ClaudeBarSettingsTests {
         #expect(settings.providerOrder().isEmpty)
         #expect(settings.hiddenQuotaKeys(forProvider: "claude").isEmpty)
         #expect(settings.isOn("cliFallbackEnabled", forProvider: "claude") == nil)
+    }
+
+    @Test func `should answer a provider in off as turned off, whatever the file says`() throws {
+        _ = try keep(#"{"providers": {"claude": {"isEnabled": true}}}"#)
+
+        #expect(!ClaudeBarSettings(url: url, off: ["claude"]).isEnabled(forProvider: "claude", defaultValue: true))
+        #expect(ClaudeBarSettings(url: url, off: ["claude"]).isEnabled(forProvider: "codex", defaultValue: true))
     }
 }
