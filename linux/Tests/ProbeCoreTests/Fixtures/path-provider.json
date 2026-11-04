@@ -1,0 +1,92 @@
+{
+  "profile": {
+    "id": "pathtool",
+    "name": "Path Tool",
+    "links": {
+      "dashboard": "https://example.com"
+    },
+    "look": {
+      "symbol": "terminal.fill",
+      "color": {
+        "light": [
+          0.2,
+          0.4,
+          0.6
+        ],
+        "dark": [
+          0.3,
+          0.5,
+          0.7
+        ]
+      }
+    }
+  },
+  "cli": "mytool",
+  "enabledByDefault": true,
+  "order": 900,
+  "defaultDataSource": "cli",
+  "dataSources": [
+    {
+      "kind": "cli",
+      "label": "CLI",
+      "summary": "Runs `mytool usage --json`",
+      "fetch": {
+        "command": {
+          "cli": "mytool",
+          "args": [
+            "usage",
+            "--json"
+          ],
+          "timeout": 30
+        }
+      },
+      "cache": {
+        "ttl": 300
+      },
+      "mapping": {
+        "script": {
+          "file": "omp-usage.js"
+        }
+      },
+      "errors": {
+        "cli.missing": {
+          "cliNotFound": "mytool"
+        }
+      }
+    }
+  ],
+  "usageHistory": {
+    "records": {
+      "files": "${MY_TOOL_HOME:-~/.mytool}/usage.jsonl",
+      "format": "jsonLines",
+      "shapes": [
+        {
+          "where": {
+            "path": "$.message.role",
+            "equals": "assistant"
+          },
+          "at": "$.timestamp",
+          "id": [
+            "$.id",
+            "$.timestamp"
+          ],
+          "tokens": {
+            "input": "$.message.usage.input",
+            "output": "$.message.usage.output",
+            "cacheWrite": "$.message.usage.cacheWrite",
+            "cacheRead": "$.message.usage.cacheRead"
+          },
+          "cost": "$.message.usage.cost.total"
+        }
+      ]
+    },
+    "sessionGap": 1800
+  },
+  "settings": [
+    {
+      "id": "searchPath",
+      "label": "Search path",
+      "default": "${PATH}"
+    }
+  ]
+}
