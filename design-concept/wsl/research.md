@@ -145,6 +145,14 @@ Velopack 1.2.161 (`src/bins/src/commands/apply_windows_impl.rs` at tag `1.2.161`
 - **The probe, as the app runs it** (`--json --deadline 60`): 74–94 s on the first run after a start, then 71 s, then 23–35 s. The first runs' Claude CLI didn't finish in its timeout, and Codex's app-server and omp's `usage` answered *Request timed out*; warm, Claude says the account has API billing, not a plan, and Codex gets `401 invalid_jwt`, as in June. OpenCode Go and omp's five accounts read. Antigravity: *Reading a local server isn't available on Linux yet*. No days: the newest records are from June 2 (Claude, Codex) and August 7 (omp). Nothing skipped: the WSL roots are the distro's own. The answer decodes with `ProbeReading` and re-encodes equal.
 - **After each run** no process carried its marker; `ClaudeBar.exe --wsl-end-all` ended a stand-in marked `sleep 300` in 1.2–2.2 s; the probe ran from a folder with a space in its name (`…\Temp\claudebar check wsl\x64`).
 
+## v0.1.10 installed on the PC (2026-11-05)
+
+`Ubuntu-26.04` started at 02:59:57 and left running, with its switch on, so the app probed it at the HUD's ten-minute cadence. WSL 3.0.3.0, no `.wslconfig`.
+
+- **Every tick started the CLIs cold.** The ticks at 03:08, 03:18 and 03:28 all answered *Command did not complete within the timeout* for Claude (its CLI's 20 s) and *Request timed out* for Codex (its app-server's 15 s). *Try again* at 03:20, 80 s after a run, answered as the warm runs above: API billing, and `401 invalid_jwt`.
+- **WSL takes the page cache back within a minute or two.** `Cached` in `/proc/meminfo` fell from 500 MB to 230 MB in the minute after a run, and stayed low until the next tick. With the cache dropped (`echo 3 > /proc/sys/vm/drop_caches`), `claude --version` took 4.5 s and `codex --version` 3.7 s; again right after, 0.01 s each. Claude's binary is 317 MB (`~/.local/share/claude/versions/2.1.317`), Codex's 217 MB.
+- **Read through, they answer.** `cat`-ing the two binaries to `/dev/null` took 4.7 s and 2.5 s; the 03:38 tick, started with them read, answered API billing and `401`. So the probe now reads each located CLI through, in parallel and for 10 s at most, before the refresh (`Readahead`).
+
 ## Not measured
 
 - A distro without `libcurl.so.4`, a custom `[automount] root` on a real distro, and an arm64 PC.

@@ -8,8 +8,9 @@ import Providers
 import Quotas
 
 /// One run of `--json` or `--logs-only` (design, *The probe*), in the plan's
-/// order: the drives, `PATH`, the environment import, the roots, the HUD
-/// raced against the deadline, the days whole, then the answer.
+/// order: the drives, `PATH`, the environment import, the roots, the CLIs
+/// read through, the HUD raced against the deadline, the days whole, then
+/// the answer.
 @MainActor
 public enum Probe {
     /// Why a run stops without an answer: `claudebar-probe: <reason>`, and its exit code.
@@ -64,10 +65,14 @@ public enum Probe {
         let off = Set(roots.skipped.filter { $0.kind == .credentials }.map(\.provider))
         let except = Set(roots.skipped.filter { $0.kind == .logs }.map(\.provider))
 
-        // The HUD, at most until the deadline.
+        // The HUD, at most until the deadline, its CLIs read through first (Readahead).
         var hud: HudMonitor.Answer?
         var timedOut = false
         if arguments.mode == .json {
+            let ahead = Readahead.read(Readahead.clis(definitions.map(\.cli), locate: DataSources.locate), within: .seconds(10))
+            if !ahead.unfinished.isEmpty {
+                diagnostics.append("read ahead of the CLIs stopped at 10 s, before the end of \(ahead.unfinished.joined(separator: ", "))")
+            }
             (hud, timedOut) = await refreshed(HudMonitor(settings: ClaudeBarSettings(off: off)), deadline: arguments.deadline)
         }
 
