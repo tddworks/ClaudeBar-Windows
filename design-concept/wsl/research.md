@@ -145,6 +145,23 @@ Velopack 1.2.161 (`src/bins/src/commands/apply_windows_impl.rs` at tag `1.2.161`
 - **The probe, as the app runs it** (`--json --deadline 60`): 74–94 s on the first run after a start, then 71 s, then 23–35 s. The first runs' Claude CLI didn't finish in its timeout, and Codex's app-server and omp's `usage` answered *Request timed out*; warm, Claude says the account has API billing, not a plan, and Codex gets `401 invalid_jwt`, as in June. OpenCode Go and omp's five accounts read. Antigravity: *Reading a local server isn't available on Linux yet*. No days: the newest records are from June 2 (Claude, Codex) and August 7 (omp). Nothing skipped: the WSL roots are the distro's own. The answer decodes with `ProbeReading` and re-encodes equal.
 - **After each run** no process carried its marker; `ClaudeBar.exe --wsl-end-all` ended a stand-in marked `sleep 300` in 1.2–2.2 s; the probe ran from a folder with a space in its name (`…\Temp\claudebar check wsl\x64`).
 
+## Cold CLIs at the HUD's cadence (2026-11-05)
+
+v0.1.11 installed, WSL 3.0.3.0, no `.wslconfig`. With Ubuntu running, Claude · WSL and Codex · WSL answered *Command did not complete within the timeout* and *Request timed out* on most ticks and on the first read after a start; a read a minute after another answered as the CLIs do (API billing; `401 invalid_jwt`). Measured on the PC with CI's probe of v0.1.11 run as the app runs it, and a Python pty harness that starts the CLIs as ClaudeBar does (Claude `/usage` with the definition's arguments in `ClaudeBar/Probe`; Codex `app-server`, `initialize` then `account/rateLimits/read`):
+
+| | Claude: first output | Codex: `initialize` answered |
+|---|---|---|
+| page cache dropped, each alone | 18.1 s | 11.5 s |
+| page cache dropped, both at once | 24.0 s | 18.5 s |
+| five minutes idle, nothing dropped by hand, both at once | 19.5 s | 14.4 s |
+| warm | 0.8 s | 2.3 s |
+
+- **The deadlines that fire** are the definitions': Claude's `cli` 20 s (its screen still blank, which the runner reports as a timeout) and Codex's `jsonRpc` 15 s. The probe's log for a cold run: `codex account/rateLimits/read did not answer within 15s`, then `claude cli failed (Command did not complete within the timeout.)` 22.5 s after it started. omp's `usage --json` (30 s) timed out once, on a first run after a start.
+- **The probe**, 20 s after a start: 74 s, both timed out; on a booted distro with the page cache dropped: 66 s, both timed out; warm: 23 s, both answered. A probe run ten minutes after another still answered while a ps sampler ran every 0.5 s, most likely because the sampler kept the distro from idling; with nothing running, five minutes idle were enough to make the CLIs cold (the table).
+- **Why it's cold:** Claude's CLI is a 316 MiB file and Codex's 216 MiB; `cat` reads them in 4.8 s and 3.4 s cold, 0.01 s warm. Reading both through first (9.3 s) left Claude 9.2 s before its first output and Codex 6.8 s: Claude's plugins and SessionStart hooks load from the same disk. PR #33's read-ahead stopped short for that reason.
+- **Not the cause:** the network (25–35 ms to `api.anthropic.com`, `chatgpt.com`, `auth.openai.com`, cold or warm; DNS through WSL's resolver, no proxy variables) and how the CLIs are started (the harness, outside the probe and its session, gets the same times). Running the providers together adds about a third; alone, Claude first showed something at 18.1 s and was still running its SessionStart hooks at 21.7 s, so running them one at a time wouldn't do. The distro takes 48–65 s to finish booting (`landscape-client` 57 s), which slows the first read after a start further.
+- **The fix** is ClaudeBar's: a CLI still loading hasn't stalled ([#685](https://github.com/tddworks/ClaudeBar/issues/685)). The probe gives each CLI 30 s more to start (*The probe* in the design).
+
 ## Not measured
 
 - A distro without `libcurl.so.4`, a custom `[automount] root` on a real distro, and an arm64 PC.

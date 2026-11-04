@@ -18,6 +18,13 @@ public enum Probe {
         public let reason: String
     }
 
+    /// Seconds a CLI may take to start, on top of its timeout. Cold, Claude
+    /// showed nothing for up to 24 s and Codex's app-server answered after up
+    /// to 19 s (research, *Cold CLIs at the HUD's cadence*); 30 s covers both.
+    /// A Claude CLI that never starts is still stopped at 50 s and Codex's at
+    /// 45 s, inside the 60 s deadline.
+    static let startAllowance: TimeInterval = 30
+
     public static func run(_ arguments: ProbeArguments, marker id: String) async throws(Stop) -> ProbeReading {
         guard let rootsFile = arguments.windowsRoots else { throw Stop(code: 1, reason: "no --windows-roots") }
         var diagnostics: [String] = []
@@ -64,11 +71,15 @@ public enum Probe {
         let off = Set(roots.skipped.filter { $0.kind == .credentials }.map(\.provider))
         let except = Set(roots.skipped.filter { $0.kind == .logs }.map(\.provider))
 
-        // The HUD, at most until the deadline.
+        // The HUD, at most until the deadline. WSL takes an idle distro's page
+        // cache back, so at the HUD's cadence each CLI starts from the disk,
+        // past its timeout: the CLIs get `startAllowance` more to start.
         var hud: HudMonitor.Answer?
         var timedOut = false
         if arguments.mode == .json {
-            (hud, timedOut) = await refreshed(HudMonitor(settings: ClaudeBarSettings(off: off)), deadline: arguments.deadline)
+            (hud, timedOut) = await FetchContext.$startAllowance.withValue(startAllowance) {
+                await refreshed(HudMonitor(settings: ClaudeBarSettings(off: off)), deadline: arguments.deadline)
+            }
         }
 
         // The days, whole, after the refresh or the deadline.
