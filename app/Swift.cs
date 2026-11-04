@@ -34,6 +34,10 @@ internal static unsafe partial class Native
     [LibraryImport(Lib)] internal static partial void cbw_cancel_device(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cbw_hud_reading(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
     [LibraryImport(Lib)] internal static partial void cbw_hud_refresh(nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial void cbw_wsl_configure(string kept, nint context, delegate* unmanaged[Cdecl]<nint, byte*, void> callback);
+    /// Before an uninstall: ends every probe in every running distro. Synchronous, on the caller's thread.
+    [LibraryImport(Lib)] internal static partial int cbw_wsl_end_all();
 }
 
 /// ClaudeBar's leaderboard and the HUD's limits, as Tasks. Each call replies once with JSON that
@@ -85,10 +89,17 @@ internal static unsafe class Swift
     internal static Task<JsonObject> CancelDevice() { var (task, context) = Begin(); Native.cbw_cancel_device(context, &OnReply); return task; }
 
     /// The HUD's reading (HudData): every signed-in tool's limits, from the
-    /// numbers ClaudeBar's monitor holds now. The first call starts the monitor.
+    /// numbers ClaudeBar's monitor holds now, each running WSL distro's after
+    /// this PC's, and `wsl`, the distros (WslSettings). The first call starts the monitor.
     internal static Task<JsonObject> HudReading() { var (task, context) = Begin(); Native.cbw_hud_reading(context, &OnReply); return task; }
     /// *Refresh*: reads every tool again, then replies as `HudReading` does.
     internal static Task<JsonObject> HudRefresh() { var (task, context) = Begin(); Native.cbw_hud_refresh(context, &OnReply); return task; }
+    /// What app.json keeps for each WSL distro (`Preferences.Wsl`): its switch,
+    /// and its last reading for while it isn't running.
+    internal static Task<JsonObject> WslConfigure(JsonObject kept)
+    {
+        var (task, context) = Begin(); Native.cbw_wsl_configure(kept.ToJsonString(), context, &OnReply); return task;
+    }
 
     private static (Task<JsonObject>, nint) Begin()
     {

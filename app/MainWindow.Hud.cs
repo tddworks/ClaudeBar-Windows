@@ -74,6 +74,8 @@ public sealed partial class MainWindow
             "signedOut" => ("Signed out" + since, "TextFillColorSecondaryBrush"),
             "failed" => ("Couldn't read" + since, "TextFillColorSecondaryBrush"),
             "reading" => ("Reading…", "TextFillColorSecondaryBrush"),
+            // A stopped distro: its own last reading's time, never this PC's; nothing to do but start it.
+            "notRunning" => (HudText.NotRunning(tool is { Lines.Count: > 0 } ? tool.ReadAt : null, culture), "TextFillColorSecondaryBrush"),
             _ when tool?.OutUntil is { } back => ($"Out until {HudText.Clock(back, culture)}", "SystemFillColorCriticalBrush"),
             _ when tool?.RunningHot == true => ("Running hot", "SystemFillColorCautionBrush"),
             _ => ((string, string)?)null,
@@ -202,11 +204,13 @@ public sealed partial class MainWindow
         ShowLimits();
     }
 
-    /// A new reading, or the read failed: the page, the dot, and the offer to start with Windows.
+    /// A new reading, or the read failed: the page, the dot, Settings → Tools
+    /// in WSL, and the offer to start with Windows.
     private void OnHudChanged()
     {
         ShowLimits();
         ShowHudSettings();
+        ShowWsl();
         var data = _hud.Data;
         if (data is null) return;
         var worst = data.Worst;

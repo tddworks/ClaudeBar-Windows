@@ -89,6 +89,7 @@ public sealed partial class MainWindow : Window
             BuildMiniPodium();
             BuildPills();
             ShowLimits();
+            ShowWsl();
             ShowUsage();
             if (BoardPage.Visibility == Visibility.Visible) _ = LoadBoard(keepList: false);
         };
@@ -138,6 +139,7 @@ public sealed partial class MainWindow : Window
             Win32.UnregisterHotKey(handle, ShortcutId);
         };
         ShowHudSettings();
+        ShowWsl();
         Navigate("limits");
     }
 
@@ -147,6 +149,9 @@ public sealed partial class MainWindow : Window
     {
         _ = Guarded(async () => Show(await Swift.State()));
         Startup.Adopt();
+        // Before the HUD's first read: both reply on the UI thread in call
+        // order, so Swift has each distro's switch and last reading first.
+        _ = Swift.WslConfigure(Preferences.Wsl);
         _hud.Start();
         _ = ReadUsage();
         _usage.Start();

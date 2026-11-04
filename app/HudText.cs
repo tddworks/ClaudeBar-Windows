@@ -88,6 +88,15 @@ internal static class HudText
     internal static string NoteText(HudData.Note note) =>
         note.Label is null ? note.Value : $"{note.Label}: {note.Value}" + (note.Unit == "" ? "" : $" {note.Unit}");
 
+    /// A stopped distro's tool, whose numbers are its last reading's
+    /// (docs/plans/2026-11-03-wsl-design.md): `WSL isn't running · numbers from 14:05`.
+    internal static string NotRunning(DateTimeOffset? readAt, CultureInfo culture) =>
+        readAt is { } at ? $"WSL isn't running · numbers from {Clock(at, culture)}" : "WSL isn't running";
+
+    /// The same, as Narrator says it: `Claude · WSL: WSL isn't running. These are its numbers from 14:05.`
+    internal static string NotRunningSentence(string tool, DateTimeOffset? readAt, CultureInfo culture) =>
+        readAt is { } at ? $"{tool}: WSL isn't running. These are its numbers from {Clock(at, culture)}." : $"{tool}: WSL isn't running.";
+
     /// How long ago the numbers were read: `just now`, `1m ago`, `2h ago`.
     /// The other limits of a tool, after its headline: `+12`, or `+2 low`
     /// when some of them aren't healthy; nothing when it has no others.
