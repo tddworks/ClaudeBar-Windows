@@ -15,7 +15,7 @@ struct ProbeReadingTests {
     @Test func `should read the checked-in sample, so a field renamed on one side fails`() throws {
         let reading = try ProbeReading.decoder().decode(ProbeReading.self, from: Data(contentsOf: sample))
 
-        #expect(reading.version == "0.1.9")
+        #expect(reading.version == ClientVersion.version, "tests/wsl-probe.json says the version the app runs, or WslProbe turns it away")
         #expect(reading.days.map(\.day) == ["2026-11-03", "2026-11-04"])
         #expect(reading.hud?.reading.tools.map(\.id) == ["claude"])
         #expect(reading.skipped.map(\.reason) == [.shared, .uncheckable])
