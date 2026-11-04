@@ -126,6 +126,23 @@ extension ProbeRuns {
         }
 
         @Test
+        func `should read a CLI that takes longer than its timeout to start, as one read from a cold disk does`() throws {
+            // WSL takes an idle distro's page cache back, so at the HUD's cadence
+            // Claude's and Codex's CLIs start from the disk, past their timeouts
+            // (tddworks/ClaudeBar#685). This one answers after 4 s; its definition gives it 2.
+            let user = try ProbeUser()
+            try user.write(".claudebar/providers/slowtool.json", SlowTool.json)
+            try user.write(".local/bin/slowtool", "#!/bin/sh\nsleep 4\necho '{\"used\":30}'\n", executable: true)
+
+            let result = try user.run(["--json", "--windows-roots", try user.rootsFile(), "--deadline", "30"], marker: ProbeUser.runId())
+
+            #expect(result.status == 0, "\(result.stderr)")
+            let reading = try result.reading()
+            #expect(reading.hud?.problems.first { $0.id == "slowtool" } == nil)
+            #expect(reading.hud?.looks.contains { $0.id == "slowtool" } == true)
+        }
+
+        @Test
         func `should fail on a roots file it can't read`() throws {
             let user = try ProbeUser()
 
@@ -136,5 +153,22 @@ extension ProbeRuns {
             #expect(result.stderr.hasPrefix("claudebar-probe: couldn't read the Windows roots file"))
         }
     }
+}
+
+/// A person's own definition whose CLI gets 2 s.
+private enum SlowTool {
+    static let json = """
+        {
+          "profile": { "id": "slowtool", "name": "Slow Tool", "links": { "dashboard": "https://example.com" },
+                       "look": { "symbol": "terminal.fill", "color": { "light": [0.2, 0.4, 0.6], "dark": [0.3, 0.5, 0.7] } } },
+          "cli": "slowtool",
+          "enabledByDefault": true,
+          "order": 900,
+          "defaultDataSource": "cli",
+          "dataSources": [ { "kind": "cli", "label": "CLI", "summary": "Runs slowtool",
+                             "fetch": { "command": { "cli": "slowtool", "args": ["usage"], "timeout": 2 } },
+                             "mapping": { "json": { "quotas": [ { "kind": "weekly", "usedPercent": "used" } ] } } } ]
+        }
+        """
 }
 #endif
