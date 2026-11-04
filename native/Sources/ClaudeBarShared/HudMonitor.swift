@@ -18,7 +18,7 @@ public final class HudMonitor {
     /// `signedOut`, or `failed` (its last refresh failed; any numbers it
     /// showed before stay in the reading). `message` is the text a person
     /// reads: what setting it up takes, or what failed.
-    public struct Problem: Equatable, Sendable, Encodable {
+    public struct Problem: Equatable, Sendable, Codable {
         public let id: String
         public let kind: String
         public let message: String
@@ -27,14 +27,14 @@ public final class HudMonitor {
     /// How the app draws a login: the name the lineup prints and its
     /// product's colour in a light and a dark theme (`#RRGGBB`). A group
     /// (`omp/Codex`) is drawn as the product it names.
-    public struct Look: Equatable, Sendable, Encodable {
+    public struct Look: Equatable, Sendable, Codable {
         public let id: String
         public let name: String
         public let light: String
         public let dark: String
     }
 
-    public struct Answer: Equatable, Sendable {
+    public struct Answer: Equatable, Sendable, Codable {
         public let reading: HudReading
         /// When the newest numbers in the reading were read.
         public let readAt: Date?

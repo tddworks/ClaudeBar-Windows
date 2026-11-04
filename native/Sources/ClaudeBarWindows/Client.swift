@@ -6,8 +6,9 @@ import Leaderboard
 /// client's settings file and token logs, and the version it names itself by.
 @MainActor
 public final class Client {
-    /// How this client names itself on every request (`X-Client`).
-    nonisolated public static let version = "0.1.9"
+    /// How this client names itself on every request (`X-Client`), as
+    /// `ClientVersion` sets it.
+    nonisolated public static var version: String { ClientVersion.version }
     nonisolated public static var xClient: String { "claudebar-windows/\(version)" }
 
     public let api: any LeaderboardAPI
