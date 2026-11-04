@@ -74,6 +74,8 @@ public sealed partial class MainWindow
             "signedOut" => ("Signed out" + since, "TextFillColorSecondaryBrush"),
             "failed" => ("Couldn't read" + since, "TextFillColorSecondaryBrush"),
             "reading" => ("Reading…", "TextFillColorSecondaryBrush"),
+            // A stopped distro: its own last reading's time, never this PC's; nothing to do but start it.
+            "notRunning" => (HudText.NotRunning(tool is { Lines.Count: > 0 } ? tool.ReadAt : null, culture), "TextFillColorSecondaryBrush"),
             _ when tool?.OutUntil is { } back => ($"Out until {HudText.Clock(back, culture)}", "SystemFillColorCriticalBrush"),
             _ when tool?.RunningHot == true => ("Running hot", "SystemFillColorCautionBrush"),
             _ => ((string, string)?)null,

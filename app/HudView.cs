@@ -154,7 +154,8 @@ internal sealed class HudView
     /// One tool by its headline: `● Claude  5h  [bar]  12%  · 1h 40m  +2 low`.
     /// Out: `out · back 4:10 PM`, in the critical colour. Running hot: when it
     /// runs out at this pace, in the caution colour, for the countdown. Its
-    /// numbers not live (signed out, or the read failed): dimmed, and since when.
+    /// numbers not live (signed out, the read failed, its WSL distro not
+    /// running): dimmed, and since when.
     private HudRow ToolRow(HudData data, HudSummary.Row summary, Input input)
     {
         var tool = summary.Tool!;
@@ -167,10 +168,12 @@ internal sealed class HudView
         string sentence;
         if (stale is not null)
         {
-            // The numbers it had, dimmed, and why they aren't live.
-            var words = stale.Kind == "signedOut" ? "signed out" : "couldn't read";
-            var from = tool.ReadAt ?? data.ReadAt;
-            var since = from is { } at ? $" · numbers from {HudText.Clock(at, _culture)}" : "";
+            // The numbers it had, dimmed, and why they aren't live. A stopped
+            // distro's are from its own last reading, never this PC's.
+            var notRunning = stale.Kind == "notRunning";
+            var from = notRunning ? tool.ReadAt : tool.ReadAt ?? data.ReadAt;
+            var words = notRunning ? HudText.NotRunning(from, _culture) : stale.Kind == "signedOut" ? "signed out" : "couldn't read";
+            var since = !notRunning && from is { } at ? $" · numbers from {HudText.Clock(at, _culture)}" : "";
             // A grid, not a stack panel: the words get what's left of the row and end in an ellipsis.
             var parts = new Grid { ColumnSpacing = 8 };
             parts.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -182,8 +185,9 @@ internal sealed class HudView
             parts.Children.Add(percent);
             parts.Children.Add(why);
             Place(row, parts, 3, span: 3);
-            sentence = $"{look.Name}: {words}{(from is { } read ? $". Numbers from {HudText.Clock(read, _culture)}" : "")}. " + HudText.Sentence(look.Name, line, input.Now, _culture);
-            ToolTipService.SetToolTip(row, stale.Message);
+            sentence = (notRunning ? HudText.NotRunningSentence(look.Name, from, _culture)
+                : $"{look.Name}: {words}{(from is { } read ? $". Numbers from {HudText.Clock(read, _culture)}" : "")}.") + " " + HudText.Sentence(look.Name, line, input.Now, _culture);
+            if (stale.Message != "") ToolTipService.SetToolTip(row, stale.Message);
         }
         else if (line.Status == "depleted")
         {
@@ -228,7 +232,7 @@ internal sealed class HudView
     private HudRow DownRow(HudData.Look look, HudData.Problem problem, bool dark)
     {
         var row = Row(look, dark, hollow: true, look.Name, "HudStrongSecondary", nameSpan: 3);
-        var words = problem.Kind switch { "signedOut" => "signed out", "reading" => "reading…", _ => "couldn't read" };
+        var words = problem.Kind switch { "signedOut" => "signed out", "reading" => "reading…", "notRunning" => HudText.NotRunning(null, _culture), _ => "couldn't read" };
         Place(row, Text(words, Tail("HudSecondary")), 4, span: 3);
         AutomationProperties.SetName(row, problem.Message == "" ? $"{look.Name}: {words.TrimEnd('…')}" : $"{look.Name}: {words.TrimEnd('…')}. {problem.Message}");
         if (problem.Message != "") ToolTipService.SetToolTip(row, problem.Message);
@@ -563,7 +567,7 @@ internal sealed class HudView
                 var stale = data.Stale(tool.Id);
                 var status = tool.HeadlineLine.Status;
                 if (lead is null && stale is null && status == "healthy" && !tool.HeadlineLine.RunningHot) continue;
-                var words = stale is not null ? (stale.Kind == "signedOut" ? "signed out" : "couldn't read")
+                var words = stale is not null ? stale.Kind switch { "signedOut" => "signed out", "notRunning" => "not running", _ => "couldn't read" }
                     : status switch { "warning" => "low", "critical" => "critical", "depleted" => "out", _ => tool.HeadlineLine.RunningHot ? "running hot" : "fine" };
                 dots.Children.Add(StatusDot(stale is not null ? "HudDotDown" : status switch
                 {
@@ -576,7 +580,7 @@ internal sealed class HudView
             foreach (var problem in data.Alone)
             {
                 var name = data.LookOf(problem.Id).Name;
-                var words = problem.Kind switch { "signedOut" => "signed out", "reading" => "reading", _ => "couldn't read" };
+                var words = problem.Kind switch { "signedOut" => "signed out", "reading" => "reading", "notRunning" => "not running", _ => "couldn't read" };
                 dots.Children.Add(StatusDot("HudDotDown", $"{name}: {words}"));
                 others.Add($"{name} {words}");
             }
