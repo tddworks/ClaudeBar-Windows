@@ -55,10 +55,11 @@ public final class WslHud {
         self.now = now
     }
 
-    /// The switches and kept readings; a running distro whose switch turns on
-    /// is probed now, not at the next tick.
+    /// The switches and kept readings; a running distro whose switch is set
+    /// on, from off or from never set (Settings shows that one off until a
+    /// reading finds a tool), is probed now, not at the next tick.
     public func configure(_ kept: [String: Kept]) {
-        let turnedOn = kept.contains { name, entry in entry.on != false && self.kept[name]?.on == false }
+        let turnedOn = kept.contains { name, entry in entry.on == true && self.kept[name]?.on != true }
         self.kept = kept
         if turnedOn && loop != nil { refresh() }
     }
