@@ -204,11 +204,13 @@ public sealed partial class MainWindow
         ShowLimits();
     }
 
-    /// A new reading, or the read failed: the page, the dot, and the offer to start with Windows.
+    /// A new reading, or the read failed: the page, the dot, Settings → Tools
+    /// in WSL, and the offer to start with Windows.
     private void OnHudChanged()
     {
         ShowLimits();
         ShowHudSettings();
+        ShowWsl();
         var data = _hud.Data;
         if (data is null) return;
         var worst = data.Worst;

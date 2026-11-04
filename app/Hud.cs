@@ -20,6 +20,7 @@ internal sealed class Hud : IDisposable
     private readonly DispatcherQueueTimer _tick;
     private HudData? _data;
     private string? _lastReading;
+    private string? _lastWsl;
     private bool _offline;
     private bool _reading;
     /// Nothing found was shown once this run; after that the HUD waits for a tool.
@@ -115,6 +116,7 @@ internal sealed class Hud : IDisposable
         catch (Exception error) { reply = new JsonObject { ["error"] = error.Message }; }
         finally { _reading = false; }
         Error = reply["error"]?.GetValue<string>();
+        var wslChanged = KeepWsl(reply["wsl"] as JsonObject);
         if (HudData.Parse(reply) is not { } data)
         {
             var offline = _data is not null;
@@ -130,6 +132,7 @@ internal sealed class Hud : IDisposable
         if (!_offline && text == _lastReading)
         {
             if (refresh) Render();
+            if (wslChanged) Changed?.Invoke();
             return;
         }
         _offline = false;
@@ -143,6 +146,27 @@ internal sealed class Hud : IDisposable
 
     /// Why the last read failed, if it did.
     internal string? Error { get; private set; }
+
+    /// The last reply's "wsl" (WslSettings): each distro, whether it runs, and its last reading.
+    internal JsonObject? Wsl { get; private set; }
+
+    /// The distros the last reply listed, whose mutexes an update waits for.
+    internal IReadOnlyList<string> WslDistros => WslSettings.Names(Wsl);
+
+    /// Keeps the reply's "wsl", and each distro's newer answer in app.json for
+    /// the next start; true when it changed, for Settings to draw it again.
+    private bool KeepWsl(JsonObject? wsl)
+    {
+        if (wsl is null) return false;
+        var text = wsl.ToJsonString();
+        if (text == _lastWsl) return false;
+        _lastWsl = text;
+        Wsl = wsl;
+        var kept = Preferences.Wsl;
+        var next = WslSettings.Kept(kept, wsl);
+        if (next.ToJsonString() != kept.ToJsonString()) Preferences.Wsl = next;
+        return true;
+    }
 
     internal void SetShown(bool shown)
     {
