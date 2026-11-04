@@ -111,6 +111,19 @@ public sealed class WslHoldTests
         lease.Dispose();
     }
 
+    [TestMethod]
+    public async Task Should_fail_and_free_what_it_took_when_a_distro_s_mutex_can_t_be_made()
+    {
+        var (first, taken) = (Distro(), Distro());
+        // Another kind of object under the mutex's name: Windows won't open it as a mutex.
+        using var other = new EventWaitHandle(false, EventResetMode.ManualReset, WslHold.MutexName(taken));
+
+        await Assert.ThrowsExactlyAsync<WaitHandleCannotBeOpenedException>(() =>
+            WslHold.TakeAll(new[] { first, taken }, TimeSpan.FromSeconds(1)).WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.IsTrue(await Free(first));
+    }
+
     private static string Distro() => $"Test-{Guid.NewGuid():N}";
 
     /// Whether a probe could take the distro's mutex now, on a thread of its own; it lets go at once.

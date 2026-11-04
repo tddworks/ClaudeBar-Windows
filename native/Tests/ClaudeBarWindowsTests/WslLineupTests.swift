@@ -162,4 +162,13 @@ struct WslLineupTests {
     @Test func `should leave a stopped distro with nothing kept out`() {
         #expect(WslLineup.merge(windows, with: [stopped("Ubuntu-26.04", kept: nil)]) == windows)
     }
+
+    @Test func `should show a stopped distro as not running even when its last run failed`() {
+        let failure = "ClaudeBar couldn't run in Ubuntu-26.04: no answer in 150 s"
+        let kept = WslDistro(name: "Ubuntu-26.04", running: false, reading: probe(answer([claude])), answeredAt: at1400, failure: failure)
+        let none = WslDistro(name: "Ubuntu-26.04", running: false, reading: nil, answeredAt: nil, failure: failure)
+
+        #expect(WslLineup.merge(windows, with: [kept]).problems == [.init(id: "wsl:Ubuntu-26.04/claude", kind: "notRunning", message: "")])
+        #expect(WslLineup.merge(windows, with: [none]) == windows)
+    }
 }

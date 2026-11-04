@@ -154,6 +154,41 @@ struct WslHudTests {
         #expect(await counter.all == 1)
     }
 
+    @Test func `should probe a running distro as soon as its switch turns on`() async {
+        let probe = FakeProbing([:], reading: reading)
+        let wsl = hud(probe)
+        wsl.configure(["Ubuntu-26.04": WslHud.Kept(on: false, reading: reading, answeredAt: Date())])
+        _ = wsl.answer(merging: windows)
+        await wsl.settled()
+        #expect(probe.calls.isEmpty)
+
+        wsl.configure(["Ubuntu-26.04": WslHud.Kept(on: true, reading: reading, answeredAt: Date())])
+        await wsl.settled()
+
+        #expect(probe.calls == ["Ubuntu-26.04"])
+    }
+
+    @Test func `should keep the running distros when the running list fails, and probe nothing on it`() async {
+        let clock = Clock()
+        let running = RunningList(["Ubuntu-26.04"])
+        let probe = FakeProbing([:], reading: reading)
+        let wsl = WslHud(probe: probe, list: { $0 ? running.value : ["Ubuntu-26.04"] }, interval: .seconds(3600), now: { clock.now })
+        _ = wsl.answer(merging: windows)
+        await wsl.settled()
+
+        running.value = nil
+        wsl.refresh()
+        await wsl.settled()
+        clock.now += 31
+        _ = wsl.answer(merging: windows)
+        await wsl.settled()
+        let answer = wsl.answer(merging: windows)
+
+        #expect(probe.calls == ["Ubuntu-26.04"])
+        #expect(!shown(answer, in: "Ubuntu-26.04").isEmpty)
+        #expect(!answer.problems.contains { $0.kind == "notRunning" })
+    }
+
     @Test func `should end every run in each running distro before an uninstall, not in Docker's`() {
         let wsl = FakeWsl(rootsFolder: FileManager.default.temporaryDirectory, answer: .never, running: ["Ubuntu-26.04", "docker-desktop"])
 
@@ -243,6 +278,17 @@ private final class Clock: @unchecked Sendable {
     var now: Date {
         get { lock.withLock { value } }
         set { lock.withLock { value = newValue } }
+    }
+}
+
+/// `wsl.exe -l --running -q`'s answer, changed by the test; nil when it fails.
+private final class RunningList: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: [String]?
+    init(_ current: [String]?) { self.current = current }
+    var value: [String]? {
+        get { lock.withLock { current } }
+        set { lock.withLock { current = newValue } }
     }
 }
 
