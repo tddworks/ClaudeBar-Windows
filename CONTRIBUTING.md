@@ -41,7 +41,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 A release is a tag. Set the version in both `native/Sources/ClaudeBarShared/ClientVersion.swift`
 (`ClientVersion.version`, which the app sends as `X-Client` and `claudebar-probe` answers
-with) and `app/ClaudeBar.csproj` (`Version`), merge, then push `v<version>` on `main`.
+with), `app/ClaudeBar.csproj` (`Version`) and the sample answer `tests/wsl-probe.json`
+(`version`, since the app turns away a probe of another version), merge, then push `v<version>` on `main`.
 The same workflow checks the tag matches both, builds and tests as above, and packs the app with Velopack
 ([updates design](docs/plans/2026-11-02-updates-design.md)): `ClaudeBarWindows-win-Setup.exe`,
 the full package and a delta from the last release. A second job, the only one with
