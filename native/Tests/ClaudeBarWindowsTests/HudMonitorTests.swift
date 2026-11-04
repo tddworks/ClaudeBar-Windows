@@ -7,6 +7,7 @@ import Monitoring
 import Providers
 import Quotas
 import Testing
+@testable import ClaudeBarShared
 @testable import ClaudeBarWindows
 
 /// The HUD's reading over ClaudeBar's own monitor, from real providers whose

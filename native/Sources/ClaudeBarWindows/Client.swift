@@ -1,3 +1,4 @@
+import ClaudeBarShared
 import Foundation
 import Leaderboard
 

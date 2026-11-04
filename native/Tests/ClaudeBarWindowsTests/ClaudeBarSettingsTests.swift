@@ -2,6 +2,7 @@ import Foundation
 import Providers
 import Quotas
 import Testing
+@testable import ClaudeBarShared
 @testable import ClaudeBarWindows
 
 /// The HUD's providers follow the person's settings where ClaudeBar keeps

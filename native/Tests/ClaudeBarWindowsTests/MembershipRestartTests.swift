@@ -2,6 +2,7 @@ import Foundation
 import Leaderboard
 import Quotas
 import Testing
+@testable import ClaudeBarShared
 @testable import ClaudeBarWindows
 
 /// What a restart, or the hourly uploader's own process, finds: the
