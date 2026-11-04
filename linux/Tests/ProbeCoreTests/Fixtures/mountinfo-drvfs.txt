@@ -1,0 +1,3 @@
+23 1 0:20 / / rw,noatime - lxfs rootfs rw
+47 23 0:44 / /mnt/c rw,noatime - drvfs C:\134 rw,uid=1000,gid=1000,case=off
+48 23 0:45 / /mnt/my\040drive rw,noatime - 9p D:\134My\040Data rw,aname=drvfs;path=D:\My\040Data\;uid=1000;gid=1000,trans=fd,rfd=6,wfd=6
