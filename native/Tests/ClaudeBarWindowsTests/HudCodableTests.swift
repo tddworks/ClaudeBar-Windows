@@ -16,18 +16,15 @@ struct HudCodableTests {
                                        problems: [HudMonitor.Problem(id: "codex", kind: "signedOut", message: "Run codex login")],
                                        looks: [HudMonitor.Look(id: "claude", name: "Claude", light: "#D97757", dark: "#D97757")])
 
-        let data = try encoder.encode(answer)
+        let data = try ProbeReading.encoder().encode(answer)
 
-        #expect(try decoder.decode(HudMonitor.Answer.self, from: data) == answer)
+        #expect(try ProbeReading.decoder().decode(HudMonitor.Answer.self, from: data) == answer)
     }
 
     @Test func `should write dates as seconds since 1970, as cbw_hud_reading does`() throws {
         let answer = HudMonitor.Answer(reading: HudReading(snapshots: [], policy: .absolute),
                                        readAt: Date(timeIntervalSince1970: 1_762_230_000), problems: [], looks: [])
-        let object = try JSONSerialization.jsonObject(with: encoder.encode(answer)) as? [String: Any]
+        let object = try JSONSerialization.jsonObject(with: ProbeReading.encoder().encode(answer)) as? [String: Any]
         #expect(object?["readAt"] as? Double == 1_762_230_000)
     }
-
-    private var encoder: JSONEncoder { let e = JSONEncoder(); e.dateEncodingStrategy = .secondsSince1970; return e }
-    private var decoder: JSONDecoder { let d = JSONDecoder(); d.dateDecodingStrategy = .secondsSince1970; return d }
 }
