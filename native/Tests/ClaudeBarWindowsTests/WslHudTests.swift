@@ -168,6 +168,37 @@ struct WslHudTests {
         #expect(probe.calls == ["Ubuntu-26.04"])
     }
 
+    /// As on the PC: the distro started after the last refresh, and its switch,
+    /// never set, showed off in Settings because no reading had found a tool.
+    @Test func `should probe a running distro as soon as its switch is first set on`() async {
+        let running = RunningList([])
+        let probe = FakeProbing([:], reading: reading)
+        let wsl = WslHud(probe: probe, list: { $0 ? running.value : ["Ubuntu-26.04"] }, interval: .seconds(3600))
+        _ = wsl.answer(merging: windows)
+        await wsl.settled()
+        #expect(probe.calls.isEmpty)
+
+        running.value = ["Ubuntu-26.04"]
+        wsl.configure(["Ubuntu-26.04": WslHud.Kept(on: true, reading: nil, answeredAt: nil)])
+        await wsl.settled()
+
+        #expect(probe.calls == ["Ubuntu-26.04"])
+    }
+
+    @Test func `should not probe again when the switches come back unchanged`() async {
+        let probe = FakeProbing([:], reading: reading)
+        let wsl = hud(probe)
+        wsl.configure(["Ubuntu-26.04": WslHud.Kept(on: true, reading: reading, answeredAt: Date())])
+        _ = wsl.answer(merging: windows)
+        await wsl.settled()
+        #expect(probe.calls == ["Ubuntu-26.04"])
+
+        wsl.configure(["Ubuntu-26.04": WslHud.Kept(on: true, reading: reading, answeredAt: Date())])
+        await wsl.settled()
+
+        #expect(probe.calls == ["Ubuntu-26.04"])
+    }
+
     @Test func `should keep the running distros when the running list fails, and probe nothing on it`() async {
         let clock = Clock()
         let running = RunningList(["Ubuntu-26.04"])
