@@ -14,7 +14,8 @@ internal static class WslHold
     /// Takes each distro's mutex in turn, waiting `timeout` in all; done when
     /// each is taken or the time is up. A mutex is owned by the thread that
     /// took it, so one thread takes them all and keeps them until the lease
-    /// is released, or the process exits, which releases them too.
+    /// is released, or the process exits, which releases them too. A mutex
+    /// Windows won't make fails the task, with each one taken let go first.
     internal static Task<Lease> TakeAll(IReadOnlyList<string> distros, TimeSpan timeout)
     {
         var taken = new TaskCompletionSource<Lease>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -64,19 +65,33 @@ internal static class WslHold
         {
             var held = new List<Mutex>();
             var until = DateTime.UtcNow + timeout;
-            foreach (var distro in distros)
+            Exception? failed = null;
+            try
             {
-                var mutex = new Mutex(false, MutexName(distro));
-                _mutexes.Add(mutex);
-                bool owned;
-                try { owned = mutex.WaitOne(Max(until - DateTime.UtcNow, TimeSpan.Zero)); }
-                catch (AbandonedMutexException) { owned = true; }
-                if (!owned) continue;
-                held.Add(mutex);
-                _held.Add(distro);
+                foreach (var distro in distros)
+                {
+                    var mutex = new Mutex(false, MutexName(distro));
+                    _mutexes.Add(mutex);
+                    bool owned;
+                    try { owned = mutex.WaitOne(Max(until - DateTime.UtcNow, TimeSpan.Zero)); }
+                    catch (AbandonedMutexException) { owned = true; }
+                    if (!owned) continue;
+                    held.Add(mutex);
+                    _held.Add(distro);
+                }
             }
-            taken.SetResult(this);
-            _release.Wait();
+            // A mutex Windows won't make (its name taken by another kind of
+            // object): let go of those taken, then fail the lease with it.
+            catch (Exception error)
+            {
+                failed = error;
+                _release.Set();
+            }
+            if (failed is null)
+            {
+                taken.SetResult(this);
+                _release.Wait();
+            }
             try
             {
                 foreach (var mutex in held) mutex.ReleaseMutex();
@@ -85,6 +100,7 @@ internal static class WslHold
             finally
             {
                 foreach (var mutex in _mutexes) mutex.Dispose();
+                if (failed is not null) taken.SetException(failed);
             }
         }
 

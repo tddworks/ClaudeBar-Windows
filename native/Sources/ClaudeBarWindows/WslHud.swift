@@ -55,8 +55,12 @@ public final class WslHud {
         self.now = now
     }
 
+    /// The switches and kept readings; a running distro whose switch turns on
+    /// is probed now, not at the next tick.
     public func configure(_ kept: [String: Kept]) {
+        let turnedOn = kept.contains { name, entry in entry.on != false && self.kept[name]?.on == false }
         self.kept = kept
+        if turnedOn && loop != nil { refresh() }
     }
 
     /// `app.json`'s `wsl`: `{"<distro>": {"on", "answeredAt", "reading"}}`.
@@ -82,8 +86,8 @@ public final class WslHud {
         if let listedAt = runningListedAt, now().timeIntervalSince(listedAt) > Self.runningListAge, !relisting {
             relisting = true
             track { [list] in
-                let found = await list(true)
-                self.running = Set(found ?? [])
+                // A list that failed says nothing about what runs: keep the last one.
+                if let found = await list(true) { self.running = Set(found) }
                 self.runningListedAt = self.now()
                 self.relisting = false
             }
@@ -147,8 +151,11 @@ public final class WslHud {
         async let up = list(true)
         let (found, foundRunning) = await (all, up)
         distros = found.map(WslCommand.readable)
-        running = Set(foundRunning ?? [])
+        // A running list that failed keeps the last one for the HUD, but starts
+        // no run: `wsl.exe -d` would start a distro that stopped since.
+        if let foundRunning { running = Set(foundRunning) } else if found == nil { running = [] }
         runningListedAt = now()
+        guard foundRunning != nil else { return }
         for distro in distros ?? [] where running.contains(distro) && kept[distro]?.on != false && !probing.contains(distro) {
             probing.insert(distro)
             track { [probe] in

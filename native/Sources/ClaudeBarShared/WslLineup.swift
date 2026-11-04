@@ -78,7 +78,8 @@ public enum WslLineup {
     private static func part(of distro: WslDistro) -> Part? {
         let name = distro.name
         let answer = distro.reading?.hud
-        if let failure = distro.failure {
+        // A stopped distro is notRunning, whatever its last run said: trying again can't help it.
+        if let failure = distro.failure, distro.running {
             guard let answer else {
                 let id = "wsl:\(name)"
                 let grey = ProviderTokenLogs.hex(nil)
