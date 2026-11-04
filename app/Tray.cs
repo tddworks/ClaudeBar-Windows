@@ -136,6 +136,15 @@ internal static class Preferences
         set => Write("updateNotified", value);
     }
 
+    /// Each WSL distro's switch and last reading (WslSettings): `{"Ubuntu-26.04":
+    /// {"on": true, "answeredAt": 1762230000, "reading": {…}}}`, the shape
+    /// `cbw_wsl_configure` takes.
+    internal static JsonObject Wsl
+    {
+        get => Read()?["wsl"] is JsonObject wsl ? (JsonObject)wsl.DeepClone() : new JsonObject();
+        set => Write("wsl", value.DeepClone());
+    }
+
     private static DateTimeOffset? Date(JsonNode? node) =>
         node?.GetValue<long>() is long seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
 
