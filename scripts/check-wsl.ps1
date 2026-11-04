@@ -273,7 +273,8 @@ if ($Tests -contains 'cost') {
 if ($Tests -contains 'hud') {
   $expected = @()
   if ($answer -and $answer.hud) {
-    $shown = @(@($answer.hud.reading.tools) | ForEach-Object { $_.id }) + @(@($answer.hud.problems) | Where-Object { $_.kind -ne 'notSetUp' } | ForEach-Object { $_.id })
+    # As WslLineup.merge: not notSetUp, nor a source Linux can't read at all (WslLineup.unavailableOnLinux).
+    $shown = @(@($answer.hud.reading.tools) | ForEach-Object { $_.id }) + @(@($answer.hud.problems) | Where-Object { $_.kind -ne 'notSetUp' -and -not ($_.kind -eq 'failed' -and $_.message.Contains("isn't available on Linux yet")) } | ForEach-Object { $_.id })
     $expected = @(@($answer.hud.looks) | Where-Object { $shown -contains $_.id } | ForEach-Object { "$($_.name) $dot WSL" } | Select-Object -Unique)
   }
   if (-not $expected) { Unverified 'hud' 'no probe answer with tools to look for' }
