@@ -16,8 +16,10 @@ public final class HudMonitor {
     /// A login in the lineup the HUD has no fresh numbers for, and why:
     /// `reading` (not read yet), `notSetUp` (no tool or sign-in on this PC),
     /// `signedOut`, or `failed` (its last refresh failed; any numbers it
-    /// showed before stay in the reading). `message` is the text a person
-    /// reads: what setting it up takes, or what failed.
+    /// showed before stay in the reading). A WSL distro's tool can also be
+    /// `notRunning` (the distro is stopped; its numbers are the last read,
+    /// `WslLineup`). `message` is the text a person reads: what setting it
+    /// up takes, or what failed.
     public struct Problem: Equatable, Sendable, Codable {
         public let id: String
         public let kind: String
