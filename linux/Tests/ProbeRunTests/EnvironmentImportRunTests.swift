@@ -65,6 +65,26 @@ extension ProbeRuns {
             #expect(!reading.skipped.contains { $0.provider == "codex" })
         }
 
+        /// `wsl.exe` gives every Linux process a controlling terminal, even one
+        /// started with no console and every handle redirected, as the app
+        /// starts it (measured on the PC, research). An interactive shell in a
+        /// background process group of that terminal stops itself with
+        /// `SIGTTIN` before it reads a file, so it must have no terminal at all.
+        @Test
+        func `should read the shell when the probe has a controlling terminal, as under wsl.exe`() throws {
+            let user = try ProbeUser()
+            try altCodex(user)
+            try bashrc(user, "export CODEX_HOME=$HOME/alt-codex")
+
+            let result = try user.run(["--logs-only", "--windows-roots", try user.rootsFile()], marker: ProbeUser.runId(), terminal: true)
+
+            #expect(result.status == 0, "\(result.stderr)")
+            let reading = try result.reading()
+            #expect(reading.environmentImport.state == .imported, "\(reading.environmentImport)")
+            #expect(reading.environmentImport.names.contains("CODEX_HOME"))
+            #expect(reading.days.contains { $0.provider == "codex" && $0.day == Records.label(0) })
+        }
+
         @Test
         func `should give up on a shell that hangs after 3 s, and go on without it`() throws {
             let user = try ProbeUser()

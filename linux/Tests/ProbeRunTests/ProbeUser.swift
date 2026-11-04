@@ -122,30 +122,48 @@ final class ProbeUser {
     }
 
     /// Starts the probe as this user, with the environment `wsl.exe -e` gives
-    /// and, unless `marker` is nil, `CLAUDEBAR_WSL_RUN=<marker>`.
-    func start(_ arguments: [String], marker: String?) throws -> Run {
+    /// and, unless `marker` is nil, `CLAUDEBAR_WSL_RUN=<marker>`. With
+    /// `terminal`, it runs under `script`, in a session whose controlling
+    /// terminal is a pty, as `wsl.exe` starts every Linux process, even with
+    /// no console and every handle redirected; its stdout and stderr are still
+    /// files. Its PID is then `script`'s.
+    func start(_ arguments: [String], marker: String?, terminal: Bool = false) throws -> Run {
         var environment = ["HOME=\(home.path)", "USER=\(name)", "LOGNAME=\(name)", "SHELL=/bin/bash",
                            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"]
         if let marker { environment.append("\(RunMarker.name)=\(marker)") }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/setpriv")
-        process.arguments = ["--reuid=\(uid)", "--regid=\(gid)", "--init-groups", "--",
-                             "/usr/bin/env", "-i"] + environment + [Self.probe] + arguments
-        process.currentDirectoryURL = home
+        let argv = ["/usr/bin/setpriv", "--reuid=\(uid)", "--regid=\(gid)", "--init-groups", "--",
+                    "/usr/bin/env", "-i"] + environment + [Self.probe] + arguments
         let folder = FileManager.default.temporaryDirectory
         let stdout = folder.appendingPathComponent("probe-out-\(UUID().uuidString)")
         let stderr = folder.appendingPathComponent("probe-err-\(UUID().uuidString)")
         FileManager.default.createFile(atPath: stdout.path, contents: nil)
         FileManager.default.createFile(atPath: stderr.path, contents: nil)
-        process.standardOutput = try FileHandle(forWritingTo: stdout)
-        process.standardError = try FileHandle(forWritingTo: stderr)
+        let process = Process()
+        process.currentDirectoryURL = home
         process.standardInput = FileHandle.nullDevice
+        if terminal {
+            let line = (argv.map(Self.quoted) + [">", Self.quoted(stdout.path), "2>", Self.quoted(stderr.path)]).joined(separator: " ")
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/script")
+            process.arguments = ["-q", "-e", "-c", line, "/dev/null"]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+        } else {
+            process.executableURL = URL(fileURLWithPath: argv[0])
+            process.arguments = Array(argv.dropFirst())
+            process.standardOutput = try FileHandle(forWritingTo: stdout)
+            process.standardError = try FileHandle(forWritingTo: stderr)
+        }
         try process.run()
         return Run(process: process, stdout: stdout, stderr: stderr)
     }
 
-    func run(_ arguments: [String], marker: String?) throws -> Result {
-        try start(arguments, marker: marker).finish()
+    func run(_ arguments: [String], marker: String?, terminal: Bool = false) throws -> Result {
+        try start(arguments, marker: marker, terminal: terminal).finish()
+    }
+
+    /// One word for `sh -c`, in single quotes.
+    private static func quoted(_ word: String) -> String {
+        "'" + word.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     /// Whether a PID still answers `kill -0`, waiting up to 5 s for it to be

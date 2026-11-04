@@ -12,8 +12,17 @@ enum RunEnd: Equatable {
     case notStarted(Int32)
 }
 
-/// Runs a command with `/dev/null` for stdin, stdout and stderr, in a process
-/// group of its own, and waits for it at most `timeout`.
+/// Runs a command with `/dev/null` for stdin, stdout and stderr, in a session
+/// of its own, and waits for it at most `timeout`.
+///
+/// A session, not only a process group: `wsl.exe` gives every Linux process a
+/// controlling terminal, even one started with no console and every handle
+/// redirected. An interactive shell (`-i`) opens `/dev/tty` for job control,
+/// and in a background process group of that terminal it stops itself with
+/// `SIGTTIN` until its group is in front, which never happens: the import
+/// always timed out. A new session has no controlling terminal, so the shell
+/// runs without job control. Its leader's process group is its own, so the
+/// timeout still ends the whole group.
 func run(_ argv: [String], timeout: Duration) -> RunEnd {
     var actions = posix_spawn_file_actions_t()
     posix_spawn_file_actions_init(&actions)
@@ -24,8 +33,7 @@ func run(_ argv: [String], timeout: Duration) -> RunEnd {
     var attributes = posix_spawnattr_t()
     posix_spawnattr_init(&attributes)
     defer { posix_spawnattr_destroy(&attributes) }
-    posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP))
-    posix_spawnattr_setpgroup(&attributes, 0)
+    posix_spawnattr_setflags(&attributes, spawnSetSID)
 
     let arguments = argv.map { strdup($0) } + [nil]
     defer { arguments.forEach { free($0) } }
@@ -49,6 +57,10 @@ func run(_ argv: [String], timeout: Duration) -> RunEnd {
     }
     return .exited(status & 0x7f == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f))
 }
+
+/// glibc's `POSIX_SPAWN_SETSID` (2.26 and later), which `spawn.h` defines only
+/// under `_GNU_SOURCE`, so Swift's `Glibc` doesn't carry it.
+private let spawnSetSID: Int16 = 0x80
 
 extension EnvironmentImport {
     /// Asks the login shell once for every name: `env -0` into a file in a
