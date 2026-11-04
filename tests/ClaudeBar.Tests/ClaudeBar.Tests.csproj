@@ -25,6 +25,7 @@
     <Compile Include="..\..\app\UpdateFlow.cs" Link="UpdateFlow.cs" />
     <Compile Include="..\..\app\UploadTask.cs" Link="UploadTask.cs" />
     <Compile Include="..\..\app\WslSettings.cs" Link="WslSettings.cs" />
+    <Compile Include="..\..\app\WslHold.cs" Link="WslHold.cs" />
     <!-- The sample the HUD check shows, read as the C interface sends it. -->
     <Content Include="..\hud-check.json" Link="hud-check.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\hud-check-fine.json" Link="hud-check-fine.json" CopyToOutputDirectory="PreserveNewest" />

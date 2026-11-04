@@ -95,6 +95,9 @@ public sealed partial class MainWindow
             }));
             _update = _update.Restarting();
             ShowUpdate();
+            // Windows can't rename a folder a Linux probe runs from: wait for
+            // each distro's run, and hold them until the app exits (WslHold).
+            await WslHold.TakeAll(_hud.WslDistros, TimeSpan.FromMinutes(3));
             _updater.InstallWhenQuit();
         }
         catch (Exception error)
