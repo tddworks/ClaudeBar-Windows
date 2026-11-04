@@ -20,5 +20,8 @@ let package = Package(
         ]),
         .executableTarget(name: "ClaudeBarProbe", dependencies: ["ProbeCore"]),
         .testTarget(name: "ProbeCoreTests", dependencies: ["ProbeCore"], resources: [.copy("Fixtures")]),
+        // Depends on the executable so `swift test` builds it: the runner tests
+        // find it beside the test binary and run it as fixture users.
+        .testTarget(name: "ProbeRunTests", dependencies: ["ClaudeBarProbe", "ProbeCore"]),
     ]
 )
