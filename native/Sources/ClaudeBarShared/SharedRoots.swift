@@ -5,8 +5,13 @@ import Foundation
 /// sides in Windows form, normalized: the `\\?\` prefix
 /// `GetFinalPathNameByHandleW` returns removed (`\\?\UNC\` becomes `\\`),
 /// `\\wsl$\` read as `\\wsl.localhost\`, case ignored, `\` and `/` the same,
-/// no trailing separator. Shared when they're the same or one is an
-/// ancestor of the other by whole names.
+/// no trailing separator.
+///
+/// A credential root is shared only when it's the same place as one of
+/// Windows' credential roots: an account nested in the folder Windows reads
+/// (`.claude\wsl` in `.claude`) is another login. A log root is shared when
+/// it overlaps one of Windows' log roots, one inside the other by whole
+/// names: records are read as a folder tree.
 public enum SharedRoots {
     /// One of the probe's roots, mapped to Windows.
     public struct WslRoot: Equatable, Sendable {
@@ -31,22 +36,33 @@ public enum SharedRoots {
         return path.lowercased()
     }
 
-    public static func isShared(_ a: String, _ b: String) -> Bool {
+    /// The same file or folder, by whole names.
+    public static func isSame(_ a: String, _ b: String) -> Bool {
+        let x = names(a)
+        return !x.isEmpty && x == names(b)
+    }
+
+    /// The same place, or one inside the other, by whole names.
+    public static func overlaps(_ a: String, _ b: String) -> Bool {
         let x = names(a), y = names(b)
         guard !x.isEmpty, !y.isEmpty else { return false }
         return x.starts(with: y) || y.starts(with: x)
     }
 
-    /// Each WSL root left out: shared with one of the provider's Windows
-    /// roots (of either kind), or one that couldn't be checked. Counting
+    /// Each WSL root left out: a credential root the same place as one of
+    /// the provider's Windows credential roots, a log root overlapping one
+    /// of its Windows log roots, or one that couldn't be checked. Counting
     /// nothing from a source beats counting it twice.
     public static func skips(provider: String, roots: [WslRoot], windows: ProviderRoots?) -> [ProbeReading.Skip] {
-        let theirs = (windows?.credentials ?? []) + (windows?.logs ?? [])
         var skips: [ProbeReading.Skip] = []
         for root in roots {
             let skip: ProbeReading.Skip?
             if let path = root.windowsPath {
-                skip = theirs.first { isShared(path, $0) }.map { .init(provider: provider, kind: root.kind, windowsPath: $0, reason: .shared) }
+                let match = switch root.kind {
+                case .credentials: windows?.credentials.first { isSame(path, $0) }
+                case .logs: windows?.logs.first { overlaps(path, $0) }
+                }
+                skip = match.map { .init(provider: provider, kind: root.kind, windowsPath: $0, reason: .shared) }
             } else {
                 skip = .init(provider: provider, kind: root.kind, windowsPath: nil, reason: .uncheckable)
             }
