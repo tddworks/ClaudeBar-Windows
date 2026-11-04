@@ -46,8 +46,15 @@ final class ProbeUser {
     func write(_ path: String, _ text: String, executable: Bool = false) throws {
         let url = home.appendingPathComponent(path)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try text.write(to: url, atomically: true, encoding: .utf8)
-        if executable { try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path) }
+        // O_CLOEXEC: Foundation's write(to:atomically:) opens its file without
+        // it, so a child another test starts at that moment would keep the
+        // file open for writing, and running it would fail with ETXTBSY.
+        let descriptor = open(url.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, executable ? 0o755 : 0o644)
+        guard descriptor >= 0 else { throw Failure("couldn't write \(url.path)") }
+        let bytes = Array(text.utf8)
+        let written = Glibc.write(descriptor, bytes, bytes.count)
+        close(descriptor)
+        guard written == bytes.count else { throw Failure("couldn't write \(url.path)") }
         try Self.command(["chown", "-R", "\(name):\(name)", home.path])
     }
 
@@ -161,6 +168,17 @@ final class ProbeUser {
         return exists(path)
     }
 
+    /// For a failure's message: the user's processes now, and the end of
+    /// ClaudeBar's log in the home.
+    func whatRan() -> String {
+        let processes = ((try? FileManager.default.contentsOfDirectory(atPath: "/proc")) ?? []).compactMap { pid_t($0) }
+            .filter { pid in (try? FileManager.default.attributesOfItem(atPath: "/proc/\(pid)"))?[.ownerAccountID] as? UInt == UInt(uid) }
+            .map { pid in "\(pid): " + String(decoding: readProcFile("/proc/\(pid)/cmdline") ?? Data(), as: UTF8.self)
+                .replacingOccurrences(of: "\0", with: " ") }
+        let log = read(".local/share/ClaudeBar/Logs/ClaudeBar.log")?.split(separator: "\n").suffix(15).joined(separator: "\n") ?? "no log"
+        return "processes:\n\(processes.joined(separator: "\n"))\nlog:\n\(log)"
+    }
+
     struct Failure: Error, CustomStringConvertible {
         let description: String
         init(_ description: String) { self.description = description }
@@ -170,7 +188,8 @@ final class ProbeUser {
     static func command(_ argv: [String]) throws -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = argv
+        // Their own PATH, not the test process's.
+        process.arguments = ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"] + argv
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()

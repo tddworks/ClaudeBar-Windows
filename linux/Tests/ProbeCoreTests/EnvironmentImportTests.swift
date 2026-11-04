@@ -50,7 +50,7 @@ struct EnvironmentImportTests {
     func `should build the shell command from SHELL, or bash without it`() {
         #expect(EnvironmentImport.command(shell: "/usr/bin/zsh", file: "/tmp/claudebar-env.Ab12/env")
                 == ["/usr/bin/zsh", "-l", "-i", "-c",
-                    "env -0 > /tmp/claudebar-env.Ab12/env; printf %s @@CLAUDEBAR_ENV_END@@ >> /tmp/claudebar-env.Ab12/env"])
+                    "/usr/bin/env -0 > /tmp/claudebar-env.Ab12/env && printf %s @@CLAUDEBAR_ENV_END@@ >> /tmp/claudebar-env.Ab12/env"])
         #expect(EnvironmentImport.command(shell: nil, file: "/tmp/x/env").first == "/bin/bash")
         #expect(EnvironmentImport.command(shell: "", file: "/tmp/x/env").first == "/bin/bash")
     }
@@ -59,15 +59,14 @@ struct EnvironmentImportTests {
 #if os(Linux)
 /// The import through a shell it really runs: here a stand-in for the
 /// person's shell that sets a variable, hangs or fails, then runs the command.
-/// One at a time: a script written while another test forks can't be run
-/// until the fork's copy of the open file is closed (ETXTBSY).
+/// One at a time, so a hanging stand-in doesn't hold up the next.
 @Suite(.serialized)
 struct EnvironmentImportShellTests {
-    private func shell(_ body: String) throws -> String {
+    /// `before` runs in the shell that runs the command, just before it.
+    private func shell(_ body: String, before: String = "") throws -> String {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("probe-shell-\(UUID().uuidString)")
         // Called as `<shell> -l -i -c <command>`: the command is $4.
-        try "#!/bin/sh\n\(body)\nexec /bin/sh -c \"$4\"\n".write(to: file, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: file.path)
+        try writeProgram("#!/bin/sh\n\(body)\nexec /bin/sh -c \"\(before)$4\"\n", to: file)
         return file.path
     }
 
@@ -84,6 +83,27 @@ struct EnvironmentImportShellTests {
 
         #expect(outcome == .values(["PROBE_SHELL_TEST": "from the shell"]))
         #expect(envFolders().subtracting(before).isEmpty)
+    }
+
+    /// The shell files decide `PATH`, and one can leave `env` off it, as another
+    /// test setting the process's `PATH` did in CI: `env` must still be found.
+    @Test
+    func `should read the names when the shell files leave env off PATH`() throws {
+        let outcome = EnvironmentImport.importing(names: ["PROBE_SHELL_TEST"],
+                                                  shell: try shell("export PROBE_SHELL_TEST=set PATH=/nonexistent"))
+
+        #expect(outcome == .values(["PROBE_SHELL_TEST": "set"]))
+    }
+
+    /// An `env` that fails writes no end marker, so the import fails instead
+    /// of saying it read a shell that set nothing.
+    @Test
+    func `should fail when env itself fails`() throws {
+        let outcome = EnvironmentImport.importing(names: ["PROBE_SHELL_TEST"],
+                                                  shell: try shell("export PROBE_SHELL_TEST=set", before: "ulimit -v 1024; "))
+
+        guard case .failed(let reason) = outcome else { Issue.record("an env that failed was read as \(outcome)"); return }
+        #expect(reason.hasPrefix("the shell exited with"), "\(reason)")
     }
 
     @Test

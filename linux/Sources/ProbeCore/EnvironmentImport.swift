@@ -33,11 +33,14 @@ public enum EnvironmentImport {
     }
 
     /// The login shell's command: `$SHELL`, or bash without one, as ClaudeBar's
-    /// `LinuxProcesses` chooses. `file` comes from `mkdtemp` with a safe
-    /// template, so it needs no quoting in bash, zsh or fish.
+    /// `LinuxProcesses` chooses. `env` by its full path, since the shell files
+    /// decide `PATH` and can leave it off, and the end marker only after `env`
+    /// succeeded (`&&`, in bash, zsh and fish alike): a failed dump would
+    /// otherwise read as a whole one that set nothing. `file` comes from
+    /// `mkdtemp` with a safe template, so it needs no quoting.
     public static func command(shell: String?, file: String) -> [String] {
         let binary = (shell ?? "").isEmpty ? "/bin/bash" : shell!
-        return [binary, "-l", "-i", "-c", "env -0 > \(file); printf %s \(end) >> \(file)"]
+        return [binary, "-l", "-i", "-c", "/usr/bin/env -0 > \(file) && printf %s \(end) >> \(file)"]
     }
 
     /// The file only `env -0` and the end marker wrote: anything else in it fails the import.
