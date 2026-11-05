@@ -1,12 +1,12 @@
 {
-  "originHash" : "86f9b91fc79f72136cc403e0cd09622387dc4369ac04dd601717049a866d92a5",
+  "originHash" : "27369519ec5103b2743431fabf2fa66414b8867bd3a86c72e6749f3a6b15b73a",
   "pins" : [
     {
       "identity" : "claudebar",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tddworks/ClaudeBar.git",
       "state" : {
-        "revision" : "da68b4a3e97381b2bd4f01408330c284860b71c4"
+        "revision" : "7d5a61f588d0388a3c615800e6f200013cd74c4f"
       }
     },
     {
