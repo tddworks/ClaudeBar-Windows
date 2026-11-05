@@ -99,7 +99,7 @@ public sealed partial class MainWindow
             // each distro's run and hold them until the app exits; if the
             // install can't be set up, they're free again before we say so (WslHold).
             // It waits for a run as long as the Swift side does (WslProbe.mutexWait).
-            await WslHold.Install(_hud.WslDistros, TimeSpan.FromSeconds(210), _updater.InstallWhenQuit);
+            await WslHold.Install(_hud.WslDistros, TimeSpan.FromSeconds(240), _updater.InstallWhenQuit);
         }
         catch (Exception error)
         {

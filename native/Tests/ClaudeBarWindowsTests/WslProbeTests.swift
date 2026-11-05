@@ -68,8 +68,10 @@ struct WslProbeTests {
 
         let line = try #require(wsl.calls.first { $0.hasPrefix("start ") })
         #expect(line.hasSuffix(" --deadline 90"))
-        // A run: the deadline, the 90 s answer window, then `--end`.
-        #expect(Int(WslProbe.mutexWait) >= (90 + 90 + Int(WslProbe.stepTimeout.components.seconds)) * 1000)
+        // A run at its longest: two `wslpath`, the deadline, the 90 s answer
+        // window, then the running list and `--end`.
+        let step = Int(WslProbe.stepTimeout.components.seconds)
+        #expect(Int(WslProbe.mutexWait) >= (2 * step + 90 + 90 + 2 * step) * 1000)
     }
 
     @Test func `should say the probe's line when it finds no marker`() async throws {
