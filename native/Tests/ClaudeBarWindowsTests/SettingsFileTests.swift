@@ -1,6 +1,7 @@
 import Foundation
 import Leaderboard
 import Testing
+import WinSDK
 @testable import ClaudeBarWindows
 
 /// The membership's record on disk, which the app and the hourly uploader,
@@ -70,6 +71,62 @@ struct SettingsFileTests {
 
         let saved = file().leaderboardRecord()
         #expect(saved.map { records.contains($0) } == true)
+    }
+
+    /// A program this process starts, as the app starts `schtasks.exe` or a
+    /// test `cmd.exe`, gets a copy of every handle the process lets children
+    /// inherit. A copy of the new file a save was writing kept the save from
+    /// moving it into place (Win32 error 32, a sharing violation), and the
+    /// save was lost, its new file left beside the settings.
+    @Test func `should save every time while this process starts programs`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let starting = Starting()
+        let starters = DispatchGroup()
+        for _ in 0..<4 {
+            starters.enter()
+            Thread.detachNewThread {
+                while starting.isOn {
+                    let program = Process()
+                    program.executableURL = URL(fileURLWithPath: #"C:\Windows\System32\cmd.exe"#)
+                    program.arguments = ["/c", "exit"]
+                    program.standardOutput = FileHandle.nullDevice
+                    try? program.run()
+                    program.waitUntilExit()
+                }
+                starters.leave()
+            }
+        }
+        let view = file()
+        var lost: [String] = []
+        for round in 0..<300 {
+            view.saveLeaderboardRecord(record.with(lastUpload: Date(timeIntervalSince1970: Double(round))))
+            if let failure = view.takeFailure() { lost.append(failure) }
+        }
+        starting.stop()
+        starters.wait()
+
+        #expect(lost == [])
+        #expect(file().leaderboardRecord() == record.with(lastUpload: Date(timeIntervalSince1970: 299)))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["settings.json"])
+    }
+
+    /// Another program reading the file for a moment without letting it be
+    /// replaced: the save waits for it rather than being lost.
+    @Test func `should save over the file while another program holds it open for a moment`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record)
+        let view = file()
+        _ = view.leaderboardRecord()
+        let opened = url.path.withCString(encodedAs: UTF16.self) {
+            CreateFileW($0, DWORD(GENERIC_READ), DWORD(FILE_SHARE_READ | FILE_SHARE_WRITE), nil, DWORD(OPEN_EXISTING), 0, nil)
+        }
+        let held = try #require(opened.flatMap { $0 == INVALID_HANDLE_VALUE ? nil : UInt(bitPattern: $0) })
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { CloseHandle(HANDLE(bitPattern: held)) }
+
+        view.saveLeaderboardRecord(record.with(visible: true))
+
+        #expect(view.takeFailure() == nil)
+        #expect(file().leaderboardRecord() == record.with(visible: true))
     }
 
     // MARK: - Each membership saves only what it changed
@@ -178,6 +235,24 @@ struct SettingsFileTests {
 
         #expect(view.takeFailure() == nil)
         #expect(SettingsFile(url: blocked.appendingPathComponent("settings.json"), lockName: lockName).leaderboardRecord() == record)
+    }
+}
+
+/// Whether the test is still starting programs.
+private final class Starting: @unchecked Sendable {
+    private let lock = NSLock()
+    private var on = true
+
+    var isOn: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return on
+    }
+
+    func stop() {
+        lock.lock()
+        defer { lock.unlock() }
+        on = false
     }
 }
 
