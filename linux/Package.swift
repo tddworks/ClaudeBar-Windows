@@ -12,7 +12,7 @@ let package = Package(
     dependencies: [
         .package(path: "../native"),
         // The same commit as native/Package.swift, bumped together.
-        .package(url: "https://github.com/tddworks/ClaudeBar.git", revision: "da68b4a3e97381b2bd4f01408330c284860b71c4"),
+        .package(url: "https://github.com/tddworks/ClaudeBar.git", revision: "7d5a61f588d0388a3c615800e6f200013cd74c4f"),
     ],
     targets: [
         .target(name: "ProbeCore", dependencies: [

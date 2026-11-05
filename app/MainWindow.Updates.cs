@@ -98,7 +98,8 @@ public sealed partial class MainWindow
             // Windows can't rename a folder a Linux probe runs from: wait for
             // each distro's run and hold them until the app exits; if the
             // install can't be set up, they're free again before we say so (WslHold).
-            await WslHold.Install(_hud.WslDistros, TimeSpan.FromMinutes(3), _updater.InstallWhenQuit);
+            // It waits for a run as long as the Swift side does (WslProbe.mutexWait).
+            await WslHold.Install(_hud.WslDistros, TimeSpan.FromSeconds(240), _updater.InstallWhenQuit);
         }
         catch (Exception error)
         {

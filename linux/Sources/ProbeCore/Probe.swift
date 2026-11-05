@@ -64,11 +64,16 @@ public enum Probe {
         let off = Set(roots.skipped.filter { $0.kind == .credentials }.map(\.provider))
         let except = Set(roots.skipped.filter { $0.kind == .logs }.map(\.provider))
 
-        // The HUD, at most until the deadline.
+        // The HUD, at most until the deadline. WSL takes an idle distro's page
+        // cache back, so at the HUD's cadence each CLI starts from the disk,
+        // past its timeout: the CLIs get `ProbeTiming.startAllowance` more to
+        // start, and the app's deadline grows by it (`ProbeTiming.deadline`).
         var hud: HudMonitor.Answer?
         var timedOut = false
         if arguments.mode == .json {
-            (hud, timedOut) = await refreshed(HudMonitor(settings: ClaudeBarSettings(off: off)), deadline: arguments.deadline)
+            (hud, timedOut) = await FetchContext.$startAllowance.withValue(ProbeTiming.startAllowance) {
+                await refreshed(HudMonitor(settings: ClaudeBarSettings(off: off)), deadline: arguments.deadline)
+            }
         }
 
         // The days, whole, after the refresh or the deadline.

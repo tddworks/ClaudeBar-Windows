@@ -86,13 +86,15 @@ public final class WslProbe: WslProbing, @unchecked Sendable {
     /// Each distro's Linux paths of the probe and the roots folder, asked once per start.
     private var linuxPaths: [String: (probe: String, folder: String)] = [:]
 
-    /// The mutex is waited for this long: a run takes at most the deadline,
-    /// the answer window and `--end`.
-    static let mutexWait: DWORD = 180_000
+    /// The mutex is waited for this long: a run takes at most two `wslpath`
+    /// (the first in a distro since the app started), the deadline
+    /// (`ProbeTiming.deadline`, 90 s), the answer window, then the running
+    /// list and `--end`, each step at most `stepTimeout`.
+    static let mutexWait: DWORD = 240_000
     /// Each `wslpath`, list and `--end` gets this long.
     static let stepTimeout: Duration = .seconds(15)
 
-    public init(probe: URL = WslProbe.bundled, folder: URL = WslProbe.folder, deadline: Int = 60,
+    public init(probe: URL = WslProbe.bundled, folder: URL = WslProbe.folder, deadline: Int = ProbeTiming.deadline,
                 wsl: URL = WslProbe.systemWsl,
                 processes: any WslProcesses = SystemWslProcesses(), answerWindow: Duration = .seconds(90)) {
         self.probe = probe
