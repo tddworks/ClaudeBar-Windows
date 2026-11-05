@@ -54,6 +54,24 @@ struct WslProbeTests {
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: rootsFolder.path)) ?? []).isEmpty)
     }
 
+    /// A CLI that never answers is stopped at its timeout plus the start
+    /// allowance, and the data source it falls back to starts only then
+    /// (Codex's JSON-RPC, 15 s, then its terminal, 20 s). The refresh grows
+    /// by the allowance, so that fallback keeps the 45 s it had in 60 s.
+    @Test func `should give the refresh 60 s and the CLIs' start allowance, and wait that long for a run in the mutex`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try makeProbeFile()
+        let wsl = FakeWsl(rootsFolder: rootsFolder, answer: .output(WslOutput(stdout: try Self.sample(), stderr: "", exit: 0)))
+
+        _ = await WslProbe(probe: probeFile, folder: rootsFolder, wsl: URL(fileURLWithPath: #"C:\fake\wsl.exe"#), processes: wsl)
+            .run(distro: distro, logsOnly: false)
+
+        let line = try #require(wsl.calls.first { $0.hasPrefix("start ") })
+        #expect(line.hasSuffix(" --deadline 90"))
+        // A run: the deadline, the 90 s answer window, then `--end`.
+        #expect(Int(WslProbe.mutexWait) >= (90 + 90 + Int(WslProbe.stepTimeout.components.seconds)) * 1000)
+    }
+
     @Test func `should say the probe's line when it finds no marker`() async throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         try makeProbeFile()
