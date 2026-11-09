@@ -95,7 +95,8 @@ public sealed class HudNotRunningTests
             foreach (var id in new[] { "wsl:Ubuntu-26.04/claude", Josh, Work }) problems.Add(new JsonObject { ["id"] = id, ["kind"] = "notRunning", ["message"] = "" });
         reply["looks"] = new JsonArray(Look("wsl:Ubuntu-26.04/claude", "Claude"), Look("wsl:Ubuntu-26.04/omp", "Oh My Pi"),
                                        Look(Josh, "Claude · josh"), Look(Work, "Codex · work"));
-        return reply;
+        // As it crosses the C interface: numbers parsed from text, as `Parse` reads them.
+        return (JsonObject)JsonNode.Parse(reply.ToJsonString())!;
     }
 
     /// The reply of `cbw_hud_reading`, as `HudSummaryTests` builds it: one
