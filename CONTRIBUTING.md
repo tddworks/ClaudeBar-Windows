@@ -37,6 +37,11 @@ swift test --package-path native
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 ```
 
+`swift test` logs to a file of its own, `%TEMP%\ClaudeBar-test-log-<run>\ClaudeBar.log`,
+never to the app's `%LOCALAPPDATA%\ClaudeBar\Logs\ClaudeBar.log`: a test that makes a save
+or a read fail on purpose would otherwise read there as the app's error. ClaudeBar's
+package decides this ([tddworks/ClaudeBar#690](https://github.com/tddworks/ClaudeBar/issues/690)).
+
 ## Releases
 
 A release is a tag. Set the version in both `native/Sources/ClaudeBarShared/ClientVersion.swift`
