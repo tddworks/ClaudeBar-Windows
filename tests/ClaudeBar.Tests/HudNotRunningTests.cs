@@ -50,6 +50,7 @@ public sealed class HudNotRunningTests
         Assert.IsNotNull(rows[0].Headline);   // Claude keeps its numbers, dimmed, with their time
         Assert.IsNull(rows[1].Headline);
         Assert.AreEqual("Oh My Pi · WSL", stopped.LookOf(rows[1].Tool!.Id).Name);
+        Assert.IsFalse(stopped.AloneOnHud.Any());
         // Limits keeps a card for each account, as while it runs, each saying WSL isn't running.
         CollectionAssert.AreEqual(new[] { Josh, Work }, stopped.Alone.Select(problem => problem.Id).ToList());
     }
@@ -62,8 +63,10 @@ public sealed class HudNotRunningTests
 
         Assert.AreEqual("Claude · josh · WSL", data.LookOf(Josh).Name);   // the HUD's row
         Assert.AreEqual("Claude · josh · WSL · via Oh My Pi", data.Header(Josh));   // Limits, Settings and Narrator
+        Assert.AreEqual("Oh My Pi", data.ViaName(Josh));
         Assert.AreEqual("Claude · josh · WSL Ubuntu-26.04 · via Oh My Pi", named.Header(Josh));
         Assert.AreEqual("Claude · WSL", data.Header("wsl:Ubuntu-26.04/claude"));
+        Assert.IsNull(data.ViaName("wsl:Ubuntu-26.04/claude"));
     }
 
     private const string Josh = "wsl:Ubuntu-26.04/omp/Claude · josh";
