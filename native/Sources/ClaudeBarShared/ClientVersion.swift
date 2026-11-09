@@ -2,5 +2,5 @@
 /// window, and every `ProbeReading`, so the app can refuse a probe of another
 /// version. A release sets it here and in app/ClaudeBar.csproj (CONTRIBUTING).
 public enum ClientVersion {
-    public static let version = "0.1.13"
+    public static let version = "0.1.14"
 }
