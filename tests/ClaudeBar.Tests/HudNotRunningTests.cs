@@ -34,6 +34,67 @@ public sealed class HudNotRunningTests
         Assert.AreEqual("Claude · WSL: WSL isn't running.", HudText.NotRunningSentence("Claude · WSL", null, culture));
     }
 
+    [TestMethod]
+    public void Should_fold_a_stopped_distro_s_quiet_omp_accounts_into_one_row_as_while_it_runs()
+    {
+        var running = HudData.Parse(Distro(stopped: false))!;
+        var stopped = HudData.Parse(Distro(stopped: true))!;
+
+        // Running: Claude is fine (the quiet row), omp's accounts with nothing measured are one row.
+        Assert.AreEqual("wsl:Ubuntu-26.04/omp", string.Join(",", running.Summary().Rows.Select(RowId)));
+        Assert.IsNull(running.Summary().Rows.Single().Problem);
+        // Stopped: the same tools, each saying WSL isn't running, and nothing more.
+        var rows = stopped.Summary().Rows;
+        Assert.AreEqual("wsl:Ubuntu-26.04/claude,wsl:Ubuntu-26.04/omp", string.Join(",", rows.Select(RowId)));
+        Assert.IsTrue(rows.All(row => row.Problem?.Kind == "notRunning"));
+        Assert.IsNotNull(rows[0].Headline);   // Claude keeps its numbers, dimmed, with their time
+        Assert.IsNull(rows[1].Headline);
+        Assert.AreEqual("Oh My Pi · WSL", stopped.LookOf(rows[1].Tool!.Id).Name);
+        // Limits keeps a card for each account, as while it runs, each saying WSL isn't running.
+        CollectionAssert.AreEqual(new[] { Josh, Work }, stopped.Alone.Select(problem => problem.Id).ToList());
+    }
+
+    [TestMethod]
+    public void Should_say_WSL_once_in_a_WSL_group_s_header()
+    {
+        var data = HudData.Parse(Distro(stopped: false))!;
+        var named = HudData.Parse(Distro(stopped: false, place: "WSL Ubuntu-26.04"))!;
+
+        Assert.AreEqual("Claude · josh · WSL", data.LookOf(Josh).Name);   // the HUD's row
+        Assert.AreEqual("Claude · josh · WSL · via Oh My Pi", data.Header(Josh));   // Limits, Settings and Narrator
+        Assert.AreEqual("Claude · josh · WSL Ubuntu-26.04 · via Oh My Pi", named.Header(Josh));
+        Assert.AreEqual("Claude · WSL", data.Header("wsl:Ubuntu-26.04/claude"));
+    }
+
+    private const string Josh = "wsl:Ubuntu-26.04/omp/Claude · josh";
+    private const string Work = "wsl:Ubuntu-26.04/omp/Codex · work";
+
+    private static string RowId(HudSummary.Row row) => row.Tool?.Id ?? row.Problem!.Id;
+
+    /// A distro as the merge sends it: Claude with numbers read at 14:05, and
+    /// two omp accounts omp measures nothing for (a note alone); stopped,
+    /// each of the three `notRunning`. Every name ends with its place.
+    private static JsonObject Distro(bool stopped, string place = "WSL")
+    {
+        JsonObject Group(string id, string group) => new()
+        {
+            ["id"] = id, ["group"] = group, ["via"] = "wsl:Ubuntu-26.04/omp", ["lines"] = new JsonArray(),
+            ["notes"] = new JsonArray(new JsonObject { ["label"] = null, ["value"] = "No usage reported", ["unit"] = "" }),
+            ["outUntil"] = null, ["runningHot"] = false, ["headline"] = 0, ["others"] = new JsonObject { ["count"] = 0, ["attention"] = 0 },
+        };
+        JsonObject Look(string id, string name) => new() { ["id"] = id, ["name"] = $"{name} · {place}", ["light"] = "#299E61", ["dark"] = "#299E61", ["place"] = place };
+        var reply = Reply(tool: "wsl:Ubuntu-26.04/claude", problem: ("wsl:Ubuntu-26.04/claude", "notRunning"));
+        ((JsonArray)reply["reading"]!["tools"]!).Add(Group(Josh, "Claude · josh"));
+        ((JsonArray)reply["reading"]!["tools"]!).Add(Group(Work, "Codex · work"));
+        var problems = (JsonArray)reply["problems"]!;
+        problems.Clear();
+        if (stopped)
+            foreach (var id in new[] { "wsl:Ubuntu-26.04/claude", Josh, Work }) problems.Add(new JsonObject { ["id"] = id, ["kind"] = "notRunning", ["message"] = "" });
+        reply["looks"] = new JsonArray(Look("wsl:Ubuntu-26.04/claude", "Claude"), Look("wsl:Ubuntu-26.04/omp", "Oh My Pi"),
+                                       Look(Josh, "Claude · josh"), Look(Work, "Codex · work"));
+        return reply;
+    }
+
     /// The reply of `cbw_hud_reading`, as `HudSummaryTests` builds it: one
     /// tool with one line, read at 14:05, and one problem with an empty
     /// message, as the merge sends `notRunning`.
