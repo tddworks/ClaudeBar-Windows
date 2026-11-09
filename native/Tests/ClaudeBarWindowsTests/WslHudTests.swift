@@ -105,7 +105,7 @@ struct WslHudTests {
     }
 
     /// The two refreshes' lists answer after 500 ms, as they can on a busy
-    /// runner: the test must not count on them landing while the run is held.
+    /// runner: the test waits for both refreshes, not for a set time.
     @Test func `should start no second run in a distro while one is in flight`() async throws {
         let probe = FakeProbing([:], reading: reading, holding: true)
         let lists = ListCounter()
@@ -116,9 +116,10 @@ struct WslHudTests {
 
         _ = wsl.answer(merging: windows)
         await probe.started(1)
-        wsl.refresh()
-        wsl.refresh()
-        try? await Task.sleep(for: .milliseconds(200))
+        let first = wsl.refresh()
+        let second = wsl.refresh()
+        await first.value
+        await second.value
         #expect(try distros(wsl).first { $0["name"] as? String == "Ubuntu-26.04" }?["probing"] as? Bool == true)
         probe.release()
         await wsl.settled()

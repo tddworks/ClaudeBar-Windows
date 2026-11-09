@@ -104,7 +104,9 @@ public final class WslHud {
     }
 
     /// Probes every running distro that isn't off, now; doesn't wait for them.
-    public func refresh() {
+    /// The task returned is the lists and the check of what to probe, not the runs.
+    @discardableResult
+    public func refresh() -> Task<Void, Never> {
         track { await self.refreshNow() }
     }
 
@@ -175,12 +177,15 @@ public final class WslHud {
     }
 
     /// Runs `work` on the main actor, kept in `pending` until it's done.
-    private func track(_ work: @escaping @MainActor () async -> Void) {
+    @discardableResult
+    private func track(_ work: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let id = UUID()
-        pending[id] = Task {
+        let task = Task {
             await work()
             self.pending[id] = nil
         }
+        pending[id] = task
+        return task
     }
 
     /// `wsl.exe -l -q`, or `-l --running -q`; nil when WSL isn't there or the list fails.
