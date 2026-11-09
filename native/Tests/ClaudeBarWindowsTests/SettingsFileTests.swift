@@ -1,3 +1,4 @@
+import Diagnostics
 import Foundation
 import Leaderboard
 import Testing
@@ -235,6 +236,39 @@ struct SettingsFileTests {
 
         #expect(view.takeFailure() == nil)
         #expect(SettingsFile(url: blocked.appendingPathComponent("settings.json"), lockName: lockName).leaderboardRecord() == record)
+    }
+
+    /// A test that makes a save fail on purpose logs the failure like the app
+    /// does: into the test run's own log, never the person's, where it would
+    /// read as a save the app lost.
+    @Test func `should log a save that failed on purpose to the test run's own log, not the person's`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let person = try #require(FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first)
+            .appendingPathComponent("ClaudeBar/Logs/ClaudeBar.log")
+        let failed = "Leaderboard settings could not be saved"
+        let personBefore = Self.lines(in: person, containing: failed)
+        let ownBefore = Self.lines(in: AppLog.logFileURL, containing: failed)
+        let blocked = folder.appendingPathComponent("ClaudeBar")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data().write(to: blocked)
+        let view = SettingsFile(url: blocked.appendingPathComponent("settings.json"), lockName: lockName)
+
+        view.saveLeaderboardRecord(record)
+
+        #expect(view.takeFailure() != nil)
+        // The log writes on its own queue: wait for the line to land.
+        let deadline = Date().addingTimeInterval(10)
+        while Self.lines(in: AppLog.logFileURL, containing: failed) == ownBefore, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        #expect(Self.lines(in: AppLog.logFileURL, containing: failed) > ownBefore)
+        #expect(Self.lines(in: person, containing: failed) == personBefore)
+        #expect(AppLog.logFileURL.standardizedFileURL.path != person.standardizedFileURL.path)
+    }
+
+    private static func lines(in log: URL, containing text: String) -> Int {
+        guard let data = try? Data(contentsOf: log) else { return 0 }
+        return String(decoding: data, as: UTF8.self).split(separator: "\n").filter { $0.contains(text) }.count
     }
 }
 
