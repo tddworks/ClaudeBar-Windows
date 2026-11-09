@@ -1,3 +1,4 @@
+import Diagnostics
 import Foundation
 import Leaderboard
 import Testing
@@ -235,6 +236,61 @@ struct SettingsFileTests {
 
         #expect(view.takeFailure() == nil)
         #expect(SettingsFile(url: blocked.appendingPathComponent("settings.json"), lockName: lockName).leaderboardRecord() == record)
+    }
+
+    /// A test that makes a save fail on purpose logs the failure like the app
+    /// does: into the test run's own log, never the person's, where it would
+    /// read as a save the app lost.
+    @Test func `should log a save that failed on purpose to the test run's own log, not the person's`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let person = try #require(FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first)
+            .appendingPathComponent("ClaudeBar/Logs/ClaudeBar.log")
+        let failed = "Leaderboard settings could not be saved"
+        let personBefore = Self.lines(in: person, containing: failed)
+        // The run's log exists before anything is logged, so every line here
+        // is added to its end: ClaudeBar's package can lose the line that
+        // starts a log on Windows (tddworks/ClaudeBar#696), and this test
+        // is about where a line goes, not about that one.
+        try Self.makeIfMissing(AppLog.logFileURL)
+        let ownBefore = Self.lines(in: AppLog.logFileURL, containing: failed)
+        let blocked = folder.appendingPathComponent("ClaudeBar")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data().write(to: blocked)
+        let view = SettingsFile(url: blocked.appendingPathComponent("settings.json"), lockName: lockName)
+
+        view.saveLeaderboardRecord(record)
+        // The log writes on one queue, in order, and the folder test fails a
+        // save with the same words meanwhile: a line only this test writes,
+        // after the save's, is in the file only once the save's line is.
+        let marker = "SettingsFileTests marker \(UUID().uuidString)"
+        AppLog.ui.info(marker)
+
+        #expect(view.takeFailure() != nil)
+        let deadline = Date().addingTimeInterval(10)
+        while Self.lines(in: AppLog.logFileURL, containing: marker) == 0, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        #expect(Self.lines(in: AppLog.logFileURL, containing: marker) == 1)
+        #expect(Self.lines(in: AppLog.logFileURL, containing: failed) > ownBefore)
+        #expect(Self.lines(in: person, containing: marker) == 0)
+        #expect(Self.lines(in: person, containing: failed) == personBefore)
+        #expect(AppLog.logFileURL.standardizedFileURL.path != person.standardizedFileURL.path)
+    }
+
+    /// Makes `file` empty if it isn't there; leaves it as it is if it is.
+    private static func makeIfMissing(_ file: URL) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        do {
+            try Data().write(to: file, options: .withoutOverwriting)
+        } catch {
+            // Already there: another test's line made it first.
+            try #require(FileManager.default.fileExists(atPath: file.path), "\(error)")
+        }
+    }
+
+    private static func lines(in log: URL, containing text: String) -> Int {
+        guard let data = try? Data(contentsOf: log) else { return 0 }
+        return String(decoding: data, as: UTF8.self).split(separator: "\n").filter { $0.contains(text) }.count
     }
 }
 

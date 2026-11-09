@@ -17,7 +17,7 @@ let package = Package(
     ],
     dependencies: [
         // ClaudeBar at a commit, bumped on purpose, never silently (CONTRIBUTING).
-        .package(url: "https://github.com/tddworks/ClaudeBar.git", revision: "7d5a61f588d0388a3c615800e6f200013cd74c4f"),
+        .package(url: "https://github.com/tddworks/ClaudeBar.git", revision: "e5cda8a418244f11889e692de43b6d6b929da72e"),
     ],
     targets: [
         .target(name: "ClaudeBarShared", dependencies: [.product(name: "ClaudeBarKit", package: "ClaudeBar")]),
