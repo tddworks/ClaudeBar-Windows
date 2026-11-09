@@ -104,9 +104,15 @@ struct WslHudTests {
         #expect(rows[0]["on"] is NSNull && rows[0]["reading"] is NSNull)
     }
 
+    /// The two refreshes' lists answer after 500 ms, as they can on a busy
+    /// runner: the test must not count on them landing while the run is held.
     @Test func `should start no second run in a distro while one is in flight`() async throws {
         let probe = FakeProbing([:], reading: reading, holding: true)
-        let wsl = hud(probe)
+        let lists = ListCounter()
+        let wsl = WslHud(probe: probe, list: { running in
+            if await lists.count(running) > 2 { try? await Task.sleep(for: .milliseconds(500)) }
+            return running ? ["Ubuntu-26.04", "docker-desktop"] : ["Ubuntu-26.04", "Debian", "docker-desktop"]
+        }, interval: .seconds(3600))
 
         _ = wsl.answer(merging: windows)
         await probe.started(1)
@@ -326,7 +332,11 @@ private final class RunningList: @unchecked Sendable {
 private actor ListCounter {
     var running = 0
     var all = 0
-    func count(_ runningOnly: Bool) { if runningOnly { running += 1 } else { all += 1 } }
+    /// Counts one list and returns how many were asked so far, of both kinds.
+    @discardableResult func count(_ runningOnly: Bool) -> Int {
+        if runningOnly { running += 1 } else { all += 1 }
+        return running + all
+    }
 }
 
 /// `wsl.exe` when WSL isn't installed: every list fails.
