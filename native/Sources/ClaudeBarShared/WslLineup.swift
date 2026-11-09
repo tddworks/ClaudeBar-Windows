@@ -23,7 +23,10 @@ public struct WslDistro: Equatable, Sendable {
 /// Each distro's tools in the HUD's lineup, after this PC's
 /// (docs/plans/2026-11-03-wsl-design.md, The HUD, Limits and Settings), so
 /// `cbw_hud_reading` keeps its shape. A distro's ids are prefixed with it
-/// (`wsl:Ubuntu-26.04/claude`), and its names say WSL.
+/// (`wsl:Ubuntu-26.04/claude`). The names from its answer end with WSL,
+/// which each of those looks also says apart (`place`); the look of a run
+/// that failed with no answer kept is the distro's own (`WSL Ubuntu-26.04`),
+/// with no login to name and no place.
 public enum WslLineup {
     /// The words of ClaudeBar's `Unavailable` (DataSources'
     /// `Internal/Unavailable.swift`): a source Linux has no connection for
@@ -54,10 +57,10 @@ public enum WslLineup {
         var tools = windows.reading.tools, problems = windows.problems, looks = windows.looks
         var readAt = windows.readAt
         for part in parts {
-            let suffix = named ? " · WSL \(part.distro)" : " · WSL"
+            let place = named ? "WSL \(part.distro)" : "WSL"
             tools += part.tools
             problems += part.problems
-            looks += part.looks.map { part.hud ? HudMonitor.Look(id: $0.id, name: $0.name + suffix, light: $0.light, dark: $0.dark) : $0 }
+            looks += part.looks.map { part.hud ? HudMonitor.Look(id: $0.id, name: "\($0.name) · \(place)", light: $0.light, dark: $0.dark, place: place) : $0 }
             if let at = part.readAt { readAt = max(readAt ?? at, at) }
         }
         let worst = tools.flatMap(\.lines).map(\.status).reduce(windows.reading.worst) { rank($1) > rank($0) ? $1 : $0 }

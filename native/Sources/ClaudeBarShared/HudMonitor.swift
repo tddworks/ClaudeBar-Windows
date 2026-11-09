@@ -28,12 +28,24 @@ public final class HudMonitor {
 
     /// How the app draws a login: the name the lineup prints and its
     /// product's colour in a light and a dark theme (`#RRGGBB`). A group
-    /// (`omp/Codex`) is drawn as the product it names.
+    /// (`omp/Codex`) is drawn as the product it names. `place` is where the
+    /// login is read when it isn't this PC (`WSL`, `WSL Ubuntu-26.04`), which
+    /// its name already ends with, so the app says it once where it puts two
+    /// names together (`Claude · work · WSL · via Oh My Pi`).
     public struct Look: Equatable, Sendable, Codable {
         public let id: String
         public let name: String
         public let light: String
         public let dark: String
+        public let place: String?
+
+        public init(id: String, name: String, light: String, dark: String, place: String? = nil) {
+            self.id = id
+            self.name = name
+            self.light = light
+            self.dark = dark
+            self.place = place
+        }
     }
 
     public struct Answer: Equatable, Sendable, Codable {

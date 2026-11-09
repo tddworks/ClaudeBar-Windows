@@ -103,6 +103,19 @@ struct WslLineupTests {
                 == ["Claude", "Claude · WSL Ubuntu-26.04", "Claude · WSL Debian"])
     }
 
+    /// What the app needs to say WSL once in a group's header: the place its
+    /// name ends with, apart, so `Claude · work · WSL` read through
+    /// `Oh My Pi · WSL` heads as `Claude · work · WSL · via Oh My Pi`.
+    @Test func `should send the place a distro's names end with, beside each name`() throws {
+        func places(_ merged: HudMonitor.Answer) throws -> [String?] {
+            try #require(merged.json()["looks"] as? [[String: Any]]).map { $0["place"] as? String }
+        }
+
+        #expect(try places(WslLineup.merge(windows, with: [running("Ubuntu-26.04", answer: [claude, ompWork])]))
+                == [nil, "WSL", "WSL", "WSL"])
+        #expect(try places(WslLineup.merge(windows, with: [ubuntu, debian])) == [nil, "WSL Ubuntu-26.04", "WSL Debian"])
+    }
+
     @Test func `should leave out notSetUp and a source Linux can't read at all`() {
         let merged = WslLineup.merge(windows, with: [ubuntu])
 

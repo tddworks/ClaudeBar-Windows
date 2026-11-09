@@ -48,8 +48,9 @@ internal sealed record HudData(
     /// (`Stale`). Tools not set up on this PC (`notSetUp`) are left out: the HUD doesn't show them.
     internal sealed record Problem(string Id, string Kind, string Message);
 
-    /// A tool's name and colours (`#RRGGBB`), light and dark.
-    internal sealed record Look(string Id, string Name, string Light, string Dark);
+    /// A tool's name and colours (`#RRGGBB`), light and dark, and where it's
+    /// read when that isn't this PC (`WSL`): its name already ends with it.
+    internal sealed record Look(string Id, string Name, string Light, string Dark, string? Place = null);
 
     internal static readonly HudData Empty = new(Array.Empty<Tool>(), "healthy", null, Array.Empty<Problem>(), Array.Empty<Look>());
 
@@ -86,6 +87,19 @@ internal sealed record HudData(
     /// with them; one with no limit line to draw (balances only) has none.
     internal IEnumerable<Problem> Alone => Problems.Where(problem => Tools.All(tool => tool.Lines.Count == 0 || tool.Id != problem.Id));
 
+    /// The problems the HUD shows on their own (`Alone`), but a group's of
+    /// notes alone that isn't signed out: the HUD doesn't show that group
+    /// (`OnHud`), so it doesn't show its problem either. Its aggregator
+    /// standing in for it says it (`StandInProblem`): a stopped distro's omp
+    /// accounts are one row, as while it runs.
+    internal IEnumerable<Problem> AloneOnHud => Alone.Where(problem => !Tools.Any(tool => tool.Id == problem.Id && tool.NotesOnly && !tool.SignedOut));
+
+    /// Why an aggregator standing in for its groups (`OnHud`) has no live
+    /// numbers: its groups' problem, under its own id; null for a tool in the reading.
+    private Problem? StandInProblem(Tool tool) =>
+        Tools.Any(other => other.Id == tool.Id) ? null
+        : Problems.FirstOrDefault(problem => Tools.Any(group => group.Via == tool.Id && group.Id == problem.Id)) is { } theirs ? theirs with { Id = tool.Id } : null;
+
     /// Why a tool's numbers aren't live: signed out, its last read failed, or
     /// its WSL distro isn't running, while the numbers it had are still here.
     internal Problem? Stale(string id) =>
@@ -96,7 +110,8 @@ internal sealed record HudData(
     /// hot, or its numbers not live), then a row for each tool without
     /// numbers (an account omp signed out among them), then one for each tool
     /// whose limits have no share to draw (`Headline` null) and is on the HUD
-    /// (`OnHud`); every other tool goes into one quiet row.
+    /// (`OnHud`), an aggregator standing in for groups without live numbers
+    /// first; every other tool goes into one quiet row.
     internal HudSummary Summary()
     {
         var rows = new List<HudSummary.Row>();
@@ -108,9 +123,11 @@ internal sealed record HudData(
             if (stale is not null || headline.Status != "healthy" || headline.RunningHot) rows.Add(new HudSummary.Row(tool, headline, stale));
             else fine.Add(tool);
         }
-        rows.AddRange(Alone.Select(problem => new HudSummary.Row(null, null, problem)));
-        rows.AddRange(OnHud.Where(tool => tool.Lines.Count == 0 && Problems.All(problem => problem.Id != tool.Id))
-            .Select(tool => new HudSummary.Row(tool, null, null)));
+        rows.AddRange(AloneOnHud.Select(problem => new HudSummary.Row(null, null, problem)));
+        var bare = OnHud.Where(tool => tool.Lines.Count == 0 && Problems.All(problem => problem.Id != tool.Id))
+            .Select(tool => new HudSummary.Row(tool, null, StandInProblem(tool))).ToList();
+        rows.AddRange(bare.Where(row => row.Problem is not null));
+        rows.AddRange(bare.Where(row => row.Problem is null));
         var lowest = fine.OrderBy(tool => tool.HeadlineLine.PercentLeft).FirstOrDefault();
         var quiet = lowest is null ? null
             : new HudSummary.Quiet(fine.Select(tool => tool.Id).ToList(), lowest.Id, lowest.HeadlineLine.PercentLeft, rows.Count == 0);
@@ -167,7 +184,8 @@ internal sealed record HudData(
         {
             var id = node["id"]?.GetValue<string>() ?? "";
             if (looks.Any(look => look.Id == id)) continue;
-            looks.Add(new Look(id, node["name"]?.GetValue<string>() ?? id, node["light"]?.GetValue<string>() ?? "#8A8A8A", node["dark"]?.GetValue<string>() ?? "#8A8A8A"));
+            looks.Add(new Look(id, node["name"]?.GetValue<string>() ?? id, node["light"]?.GetValue<string>() ?? "#8A8A8A", node["dark"]?.GetValue<string>() ?? "#8A8A8A",
+                               node["place"]?.GetValue<string>()));
         }
         return new HudData(tools, reading["worst"]?.GetValue<string>() ?? "healthy", Date(reply["readAt"]), problems, looks);
     }
@@ -182,9 +200,20 @@ internal sealed record HudData(
         ?? new Look(id, id, "#8A8A8A", "#8A8A8A");
 
     /// A tool's name as the Limits page and the HUD's settings say it: a group
-    /// says what it was read through (`Codex · via Oh My Pi`).
-    internal string Header(string id) =>
-        Tools.FirstOrDefault(tool => tool.Id == id)?.Via is { } via ? $"{LookOf(id).Name} · via {LookOf(via).Name}" : LookOf(id).Name;
+    /// says what it was read through (`Codex · via Oh My Pi`). A WSL group's
+    /// name says WSL after its own, as its HUD row does, and what it was read
+    /// through doesn't again (`Claude · work · WSL · via Oh My Pi`).
+    internal string Header(string id) => ViaName(id) is { } via ? $"{LookOf(id).Name} · via {via}" : LookOf(id).Name;
+
+    /// The name of what a group was read through, without the place the
+    /// group's own name already ends with; null for a tool of its own.
+    internal string? ViaName(string id)
+    {
+        if (Tools.FirstOrDefault(tool => tool.Id == id)?.Via is not { } via) return null;
+        var look = LookOf(via);
+        var place = $" · {look.Place}";
+        return look.Place is not null && look.Place == LookOf(id).Place && look.Name.EndsWith(place, StringComparison.Ordinal) ? look.Name[..^place.Length] : look.Name;
+    }
 
     /// The tools taken off the HUD, with every group of an aggregator taken
     /// off whole (`omp`, as it was hidden before its groups were tools): a
@@ -239,7 +268,8 @@ internal sealed record HudSummary(IReadOnlyList<HudSummary.Row> Rows, HudSummary
 {
     /// A tool with numbers (its headline, and why they aren't live, if they
     /// aren't), a tool without (`Tool` null: its problem), or a tool whose
-    /// limits have no share to draw (`Headline` and `Problem` null).
+    /// limits have no share to draw (`Headline` null; `Problem` null, or an
+    /// aggregator's standing in for its groups, theirs).
     internal sealed record Row(HudData.Tool? Tool, HudData.Line? Headline, HudData.Problem? Problem);
 
     internal sealed record Quiet(IReadOnlyList<string> Ids, string LowestId, int LowestPercent, bool All);

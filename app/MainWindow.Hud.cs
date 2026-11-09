@@ -61,9 +61,9 @@ public sealed partial class MainWindow
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         header.Children.Add(new Ellipse { Width = 10, Height = 10, Fill = Brush(Hex(IsDark ? look.Dark : look.Light)), VerticalAlignment = VerticalAlignment.Center });
         header.Children.Add(new TextBlock { Text = look.Name, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-        // A group says what it was read through: `Codex · via Oh My Pi`.
-        if (tool?.Via is { } via)
-            header.Children.Add(new TextBlock { Text = $"· via {data.LookOf(via).Name}", Style = (Style)Root.Resources["Secondary"], VerticalAlignment = VerticalAlignment.Center });
+        // A group says what it was read through: `Codex · via Oh My Pi`; a WSL group says WSL once, in its own name.
+        if (data.ViaName(id) is { } via)
+            header.Children.Add(new TextBlock { Text = $"· via {via}", Style = (Style)Root.Resources["Secondary"], VerticalAlignment = VerticalAlignment.Center });
         // The login's plan, after its name, as the Mac's account card badges it.
         if (tool?.Tier is { } tier) header.Children.Add(TierBadge(tier));
         AutomationProperties.SetName(header, data.Header(id) + (tool?.Tier is { } plan ? $", {plan} plan" : ""));
@@ -337,7 +337,7 @@ public sealed partial class MainWindow
     private List<(string Id, string Name)> KnownTools()
     {
         if (_hud.Data is not { } data) return new List<(string, string)>();
-        return data.OnHud.Select(tool => tool.Id).Concat(data.Problems.Select(problem => problem.Id)).Distinct().Select(id => (id, data.Header(id))).ToList();
+        return data.OnHud.Select(tool => tool.Id).Concat(data.AloneOnHud.Select(problem => problem.Id)).Distinct().Select(id => (id, data.Header(id))).ToList();
     }
 
     private void OnHudToggled(object sender, RoutedEventArgs e)

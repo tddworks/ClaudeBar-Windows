@@ -89,7 +89,7 @@ internal sealed class HudView
             Measure(data, summary);
             foreach (var row in summary.Rows)
                 body.Children.Add(Clickable(row.Tool is null ? DownRow(data.LookOf(row.Problem!.Id), row.Problem, input.Dark)
-                    : row.Headline is null ? NoLimitsRow(data.LookOf(row.Tool.Id), input.Dark)
+                    : row.Headline is null ? row.Problem is { } down ? DownRow(data.LookOf(row.Tool.Id), down, input.Dark) : NoLimitsRow(data.LookOf(row.Tool.Id), input.Dark)
                     : ToolRow(data, row, input)));
             if (summary.Fine is { } fine) body.Children.Add(Clickable(QuietRow(data, fine)));
         }
@@ -577,18 +577,16 @@ internal sealed class HudView
                 }, $"{name}: {words}"));
                 others.Add($"{name} {words}");
             }
-            foreach (var problem in data.Alone)
+            // Then each row without numbers, in the card's order: a tool down, or one with no limits to show.
+            foreach (var down in summary.Rows.Where(r => r.Headline is null))
             {
-                var name = data.LookOf(problem.Id).Name;
-                var words = problem.Kind switch { "signedOut" => "signed out", "reading" => "reading", "notRunning" => "not running", _ => "couldn't read" };
+                var name = data.LookOf(down.Tool?.Id ?? down.Problem!.Id).Name;
+                var words = down.Problem?.Kind switch
+                {
+                    null => "no limits to show", "signedOut" => "signed out", "reading" => "reading", "notRunning" => "not running", _ => "couldn't read",
+                };
                 dots.Children.Add(StatusDot("HudDotDown", $"{name}: {words}"));
                 others.Add($"{name} {words}");
-            }
-            foreach (var bare in summary.Rows.Where(r => r.Tool is not null && r.Headline is null))
-            {
-                var name = data.LookOf(bare.Tool!.Id).Name;
-                dots.Children.Add(StatusDot("HudDotDown", $"{name}: no limits to show"));
-                others.Add($"{name} no limits to show");
             }
             if (dots.Children.Count > 0) parts.Children.Add(dots);
             if (others.Count > 0) sentences.Add(string.Join(", ", others));
