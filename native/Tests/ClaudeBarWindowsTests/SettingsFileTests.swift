@@ -254,14 +254,20 @@ struct SettingsFileTests {
         let view = SettingsFile(url: blocked.appendingPathComponent("settings.json"), lockName: lockName)
 
         view.saveLeaderboardRecord(record)
+        // The log writes on one queue, in order, and the folder test fails a
+        // save with the same words meanwhile: a line only this test writes,
+        // after the save's, is in the file only once the save's line is.
+        let marker = "SettingsFileTests marker \(UUID().uuidString)"
+        AppLog.ui.info(marker)
 
         #expect(view.takeFailure() != nil)
-        // The log writes on its own queue: wait for the line to land.
         let deadline = Date().addingTimeInterval(10)
-        while Self.lines(in: AppLog.logFileURL, containing: failed) == ownBefore, Date() < deadline {
+        while Self.lines(in: AppLog.logFileURL, containing: marker) == 0, Date() < deadline {
             Thread.sleep(forTimeInterval: 0.05)
         }
+        #expect(Self.lines(in: AppLog.logFileURL, containing: marker) == 1)
         #expect(Self.lines(in: AppLog.logFileURL, containing: failed) > ownBefore)
+        #expect(Self.lines(in: person, containing: marker) == 0)
         #expect(Self.lines(in: person, containing: failed) == personBefore)
         #expect(AppLog.logFileURL.standardizedFileURL.path != person.standardizedFileURL.path)
     }
