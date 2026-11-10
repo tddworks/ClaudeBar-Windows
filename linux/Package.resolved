@@ -4,9 +4,9 @@
     {
       "identity" : "claudebar",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/tddworks/ClaudeBar.git",
+      "location" : "https://github.com/LunarECL/ClaudeBar.git",
       "state" : {
-        "revision" : "bcead725d6e82a5a4508d9d9dfa3cc9c97523581"
+        "revision" : "06959f8eff2195cd2414bf09dbbad0bec88050cc"
       }
     },
     {
