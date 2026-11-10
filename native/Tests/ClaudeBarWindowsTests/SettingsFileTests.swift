@@ -247,11 +247,6 @@ struct SettingsFileTests {
             .appendingPathComponent("ClaudeBar/Logs/ClaudeBar.log")
         let failed = "Leaderboard settings could not be saved"
         let personBefore = Self.lines(in: person, containing: failed)
-        // The run's log exists before anything is logged, so every line here
-        // is added to its end: ClaudeBar's package can lose the line that
-        // starts a log on Windows (tddworks/ClaudeBar#696), and this test
-        // is about where a line goes, not about that one.
-        try Self.makeIfMissing(AppLog.logFileURL)
         let ownBefore = Self.lines(in: AppLog.logFileURL, containing: failed)
         let blocked = folder.appendingPathComponent("ClaudeBar")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -275,17 +270,6 @@ struct SettingsFileTests {
         #expect(Self.lines(in: person, containing: marker) == 0)
         #expect(Self.lines(in: person, containing: failed) == personBefore)
         #expect(AppLog.logFileURL.standardizedFileURL.path != person.standardizedFileURL.path)
-    }
-
-    /// Makes `file` empty if it isn't there; leaves it as it is if it is.
-    private static func makeIfMissing(_ file: URL) throws {
-        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        do {
-            try Data().write(to: file, options: .withoutOverwriting)
-        } catch {
-            // Already there: another test's line made it first.
-            try #require(FileManager.default.fileExists(atPath: file.path), "\(error)")
-        }
     }
 
     private static func lines(in log: URL, containing text: String) -> Int {
