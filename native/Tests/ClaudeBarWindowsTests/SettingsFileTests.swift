@@ -19,7 +19,9 @@ struct SettingsFileTests {
         username: "tokenwhale", sharing: ["omp", "claude"], visible: false, lastUpload: Date(timeIntervalSince1970: 1_791_692_409.532),
         sharesCountry: true, globeHintDismissed: true, link: ProfileLink(platform: .github, handle: "octocat"),
         refused: [RefusedDay(provider: "omp", day: "2026-10-10", reason: "cap")], shownDevices: ["k2", "k1"],
-        machine: "3f1a9c", addedAsDevice: true)
+        machine: "3f1a9c", addedAsDevice: true,
+        sent: [SentDay(provider: "omp", day: "2026-11-05", total: 100), SentDay(provider: "claude", day: "2026-11-05", total: 40)],
+        heldBefore: "2026-11-01")
 
     @Test func `should read the record back exactly in another process's file, as after a restart`() {
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -215,6 +217,181 @@ struct SettingsFileTests {
         #expect(file().leaderboardRecord() == next)
     }
 
+    // MARK: - What the server took (`sent`, `heldBefore`)
+
+    /// ClaudeBar keeps what the server took of each day apart from no record
+    /// of it: a record without `sent` is one from before it was kept, whose
+    /// earlier days are held, while an empty one holds none.
+    @Test func `should read an empty sent back as empty, apart from a record from before it was kept`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record.with(sent: .some([]), heldBefore: .some(nil)))
+
+        #expect(file().leaderboardRecord()?.sent == [])
+        #expect(String(decoding: try Data(contentsOf: url), as: UTF8.self).contains(#""sent" : ["#))
+
+        file().saveLeaderboardRecord(nil)
+        file().saveLeaderboardRecord(record.with(sent: .some(nil), heldBefore: .some(nil)))
+
+        #expect(file().leaderboardRecord().map { $0.sent == nil } == true)
+        #expect(!String(decoding: try Data(contentsOf: url), as: UTF8.self).contains(#""sent""#))
+    }
+
+    /// The app and the hourly uploader each upload and record what the server
+    /// took, from the same read: the days each recorded both stay, or one
+    /// would read as a day the server holds nothing of.
+    @Test func `should keep the days each of two processes recorded, when both save from the same read`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record)
+        let app = file(), uploader = file()
+        let read = try #require(app.leaderboardRecord())
+        _ = uploader.leaderboardRecord()
+        let earlier = read.sent ?? []
+
+        app.saveLeaderboardRecord(read.with(sent: earlier + [SentDay(provider: "omp", day: "2026-11-06", total: 70)]))
+        uploader.saveLeaderboardRecord(read.with(sent: earlier + [SentDay(provider: "claude", day: "2026-11-07", total: 30)]))
+
+        #expect(file().leaderboardRecord()?.sent == (earlier + [SentDay(provider: "omp", day: "2026-11-06", total: 70),
+                                                                 SentDay(provider: "claude", day: "2026-11-07", total: 30)]).sorted())
+    }
+
+    /// Both processes send the same day, read at different times: which
+    /// answer reached the server last isn't known here, so the larger total
+    /// stays, and a day read smaller than it is never sent to lower it.
+    @Test(arguments: [(200, 150), (150, 200)])
+    func `should keep the larger total of a day two processes both recorded`(_ first: Int, _ late: Int) throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record)
+        let one = file(), other = file()
+        let read = try #require(one.leaderboardRecord())
+        _ = other.leaderboardRecord()
+        func taken(_ total: Int) -> [SentDay] {
+            (read.sent ?? []).map { $0.provider == "omp" ? SentDay(provider: "omp", day: $0.day, total: total) : $0 }
+        }
+
+        one.saveLeaderboardRecord(read.with(sent: taken(first)))
+        other.saveLeaderboardRecord(read.with(sent: taken(late)))
+
+        #expect(file().leaderboardRecord()?.sent == taken(max(first, late)).sorted())
+    }
+
+    /// A day leaves `sent` two days after it leaves the thirty: a process
+    /// whose read still had it, saving later, doesn't bring it back, in
+    /// either order.
+    @Test func `should keep a day dropped from sent dropped, when the other process saves from an earlier read`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record)
+        let dropping = file(), late = file()
+        let read = try #require(dropping.leaderboardRecord())
+        _ = late.leaderboardRecord()
+        let kept = (read.sent ?? []).filter { $0.provider == "claude" }
+        let today = SentDay(provider: "omp", day: "2026-12-07", total: 5)
+
+        dropping.saveLeaderboardRecord(read.with(sent: kept))
+        late.saveLeaderboardRecord(read.with(sent: (read.sent ?? []) + [today]))
+
+        #expect(file().leaderboardRecord()?.sent == (kept + [today]).sorted())
+
+        // And the other way round: the file still has it, the one saving dropped it.
+        file().saveLeaderboardRecord(nil)
+        file().saveLeaderboardRecord(record)
+        let first = file(), second = file()
+        let again = try #require(first.leaderboardRecord())
+        _ = second.leaderboardRecord()
+        first.saveLeaderboardRecord(again.with(sent: (again.sent ?? []) + [today]))
+        second.saveLeaderboardRecord(again.with(sent: kept))
+
+        #expect(file().leaderboardRecord()?.sent == (kept + [today]).sorted())
+    }
+
+    /// Leaving forgets what the server took: an upload's record, from before,
+    /// brings back neither the membership nor its days, after a new join either.
+    @Test func `should not bring back the days of a membership that left, from a save made before it did`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record)
+        let uploader = file()
+        let read = try #require(uploader.leaderboardRecord())
+        let next = LeaderboardRecord(username: "tokenwhale", sharing: ["omp"], visible: true, lastUpload: nil, sent: [])
+
+        file().saveLeaderboardRecord(nil)
+        file().saveLeaderboardRecord(next)
+        uploader.saveLeaderboardRecord(read.with(sent: (read.sent ?? []) + [SentDay(provider: "omp", day: "2026-11-06", total: 70)]))
+
+        #expect(file().leaderboardRecord() == next)
+    }
+
+    /// *Make this PC its own device* gives the membership a new key, and with
+    /// it a new `machine`; the server holds nothing of the new key's days, so
+    /// `sent` starts empty. A process still on the old key, saving later,
+    /// brings none of the old key's days into it.
+    @Test func `should not carry days taken under the old key into the new key's sent`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record)
+        let app = file(), uploader = file()
+        let read = try #require(app.leaderboardRecord())
+        _ = uploader.leaderboardRecord()
+        let ownDevice = read.with(machine: "9d0e57", sent: [], heldBefore: "2026-11-12")
+
+        app.saveLeaderboardRecord(ownDevice)
+        uploader.saveLeaderboardRecord(read.with(sent: (read.sent ?? []) + [SentDay(provider: "omp", day: "2026-11-11", total: 70)],
+                                                 heldBefore: .some(nil)))
+
+        #expect(file().leaderboardRecord()?.sent == [])
+        #expect(file().leaderboardRecord()?.heldBefore == "2026-11-12")
+    }
+
+    /// Two saves from one read that each give the membership a new key: the
+    /// file keeps the later one's `machine`, so `sent` and `heldBefore` come
+    /// from it too, never one key's machine with another key's days.
+    @Test func `should keep sent and heldBefore with the machine they came with, when two saves each changed the key`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record)
+        let first = file(), later = file()
+        let read = try #require(first.leaderboardRecord())
+        _ = later.leaderboardRecord()
+        let laterKey = read.with(machine: "b71c02", sent: [SentDay(provider: "omp", day: "2026-11-12", total: 9)], heldBefore: "2026-11-12")
+
+        first.saveLeaderboardRecord(read.with(machine: "9d0e57", sent: [], heldBefore: "2026-11-11"))
+        later.saveLeaderboardRecord(laterKey)
+
+        #expect(file().leaderboardRecord() == laterKey)
+    }
+
+    /// Both processes hold the earlier days from a different day (each held
+    /// them from its own read of the last upload, after the update): the
+    /// later day stays, holding more. A held day goes only when refused, so
+    /// holding one too many delays it; holding one too few could send it
+    /// smaller than the server holds.
+    @Test func `should hold the earlier days from the later day, when two processes held them from different days`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record.with(sent: .some(nil), heldBefore: .some(nil)))
+        let app = file(), uploader = file()
+        let read = try #require(app.leaderboardRecord())
+        _ = uploader.leaderboardRecord()
+
+        uploader.saveLeaderboardRecord(read.with(sent: [], heldBefore: "2026-11-12"))
+        app.saveLeaderboardRecord(read.with(sent: [], heldBefore: "2026-11-11"))
+
+        #expect(file().leaderboardRecord()?.heldBefore == "2026-11-12")
+        #expect(file().leaderboardRecord()?.sent == [])
+    }
+
+    /// A process that changed nothing of them leaves `sent` and `heldBefore`
+    /// as the file has them, the other's change included: once the earlier
+    /// days are far enough back, an upload stops holding them.
+    @Test func `should keep what the other process changed of sent and heldBefore, when this one changed neither`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record)
+        let app = file(), uploader = file()
+        let read = try #require(app.leaderboardRecord())
+        _ = uploader.leaderboardRecord()
+        let taken = [SentDay(provider: "omp", day: "2026-12-07", total: 5)]
+
+        uploader.saveLeaderboardRecord(read.with(sent: taken, heldBefore: .some(nil)))
+        app.saveLeaderboardRecord(read.with(visible: true))
+
+        #expect(file().leaderboardRecord() == read.with(visible: true, sent: taken, heldBefore: .some(nil)))
+    }
+
     /// ClaudeBar's package saves without throwing, so the file says when a save
     /// didn't land, and the same membership's next save still writes its change.
     @Test func `should say a save didn't reach the file, and write the change on the next save`() throws {
@@ -299,10 +476,18 @@ private final class Starting: @unchecked Sendable {
 extension LeaderboardRecord {
     /// This record with some fields changed.
     func with(sharing: [String]? = nil, visible: Bool? = nil, lastUpload: Date?? = nil, refused: [RefusedDay]? = nil,
-              machine: String?? = nil) -> LeaderboardRecord {
+              machine: String?? = nil, sent: [SentDay]?? = nil, heldBefore: String?? = nil) -> LeaderboardRecord {
         LeaderboardRecord(username: username, sharing: sharing ?? self.sharing, visible: visible ?? self.visible,
                           lastUpload: lastUpload ?? self.lastUpload, sharesCountry: sharesCountry,
                           globeHintDismissed: globeHintDismissed, link: link, refused: refused ?? self.refused,
-                          shownDevices: shownDevices, machine: machine ?? self.machine, addedAsDevice: addedAsDevice)
+                          shownDevices: shownDevices, machine: machine ?? self.machine, addedAsDevice: addedAsDevice,
+                          sent: sent ?? self.sent, heldBefore: heldBefore ?? self.heldBefore)
+    }
+}
+
+extension [SentDay] {
+    /// As `LeaderboardRecord` keeps them: by day, then provider.
+    func sorted() -> [SentDay] {
+        sorted { ($0.day, $0.provider) < ($1.day, $1.provider) }
     }
 }
