@@ -339,6 +339,23 @@ struct SettingsFileTests {
         #expect(file().leaderboardRecord()?.heldBefore == "2026-11-12")
     }
 
+    /// Two saves from one read that each give the membership a new key: the
+    /// file keeps the later one's `machine`, so `sent` and `heldBefore` come
+    /// from it too, never one key's machine with another key's days.
+    @Test func `should keep sent and heldBefore with the machine they came with, when two saves each changed the key`() throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        file().saveLeaderboardRecord(record)
+        let first = file(), later = file()
+        let read = try #require(first.leaderboardRecord())
+        _ = later.leaderboardRecord()
+        let laterKey = read.with(machine: "b71c02", sent: [SentDay(provider: "omp", day: "2026-11-12", total: 9)], heldBefore: "2026-11-12")
+
+        first.saveLeaderboardRecord(read.with(machine: "9d0e57", sent: [], heldBefore: "2026-11-11"))
+        later.saveLeaderboardRecord(laterKey)
+
+        #expect(file().leaderboardRecord() == laterKey)
+    }
+
     /// Both processes hold the earlier days from a different day (each held
     /// them from its own read of the last upload, after the update): the
     /// later day stays, holding more. A held day goes only when refused, so
