@@ -125,15 +125,16 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
     /// - Either side's whole `sent` and `heldBefore` when it changed
     ///   `machine` from one to another: a new key here (*Make this PC its own
     ///   device*), whose days the server holds none of, under which the
-    ///   other's days, taken from the old key, mean nothing. Leaving or
-    ///   joining again is apart: it ends the membership (`generation`).
+    ///   other's days, taken from the old key, mean nothing. This side's
+    ///   first, as its `machine` is the one kept when both changed it.
+    ///   Leaving or joining again is apart: it ends the membership (`generation`).
     static func taken(_ mine: LeaderboardRecord, since base: LeaderboardRecord,
                       onto theirs: LeaderboardRecord) -> (sent: [SentDay]?, heldBefore: String?) {
         func rekeyed(_ record: LeaderboardRecord) -> Bool {
             base.machine != nil && record.machine != nil && record.machine != base.machine
         }
-        if rekeyed(theirs) { return (theirs.sent, theirs.heldBefore) }
         if rekeyed(mine) { return (mine.sent, mine.heldBefore) }
+        if rekeyed(theirs) { return (theirs.sent, theirs.heldBefore) }
         return (sent(mine.sent, since: base.sent, onto: theirs.sent),
                 heldBefore(mine.heldBefore, since: base.heldBefore, onto: theirs.heldBefore))
     }
