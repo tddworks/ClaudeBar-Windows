@@ -162,8 +162,34 @@ v0.1.11 installed, WSL 3.0.3.0, no `.wslconfig`. With Ubuntu running, Claude · 
 - **Not the cause:** the network (25–35 ms to `api.anthropic.com`, `chatgpt.com`, `auth.openai.com`, cold or warm; DNS through WSL's resolver, no proxy variables) and how the CLIs are started (the harness, outside the probe and its session, gets the same times). Running the providers together adds about a third; alone, Claude first showed something at 18.1 s and was still running its SessionStart hooks at 21.7 s, so running them one at a time wouldn't do. The distro takes 48–65 s to finish booting (`landscape-client` 57 s), which slows the first read after a start further.
 - **The fix** is ClaudeBar's: a CLI still loading hasn't stalled ([#685](https://github.com/tddworks/ClaudeBar/issues/685), fixed by [#686](https://github.com/tddworks/ClaudeBar/pull/686) at `7d5a61f5`). The probe gives each CLI 30 s more to start (*The probe* in the design). CI's probe with it, run as the app runs it, read what both CLIs say on the first run after a start (95 s), with the page cache dropped (89 s), and five minutes after the installed app's own tick (76 s, `Cached` down to 428 MB). v0.1.11's probe timed out on both, run by hand with the page cache dropped and by that tick. Warm, the fixed probe takes 23 s, as before. Every run's HUD finished inside the 60 s deadline; the rest of each run reads the days.
 
+## Counting in Windows' zone with `TZ` (2026-11-10)
+
+The installed v0.1.15's probe (ClaudeBar `e5cda8a4`; `LinuxTimeZone`, `Platform.calendar`, `DailyTokens`, `DayLedger` and `UsageLog` are the same at `bcead725`), run in Ubuntu-26.04 (`/etc/localtime` → `Asia/Seoul`, `tzdata 2026e-0ubuntu0.26.04.1`, `tzdata-legacy` not installed) as `env CLAUDEBAR_WSL_RUN=<id> TZ=<zone> CLAUDE_CONFIG_DIR=<fixture> claudebar-probe --logs-only --days 5`, a fixture folder per run and a roots file naming the whole home as Windows' for every other provider, so only the fixture was read. The fixture's Claude records: 1 token at 2026-11-08T14:30Z, 10 at 15:30Z, 10000 at 20:00Z, 100 at 2026-11-09T07:30Z, 1000 at 08:30Z. Python's `zoneinfo` gives the expected days.
+
+| `TZ` | `timeZone` answered | Claude's days | Right? |
+|---|---|---|---|
+| unset (the distro's own) | `Asia/Seoul` | 11-08: 1, 11-09: 11110 | yes |
+| `Asia/Seoul` | `Asia/Seoul` | 11-08: 1, 11-09: 11110 | yes |
+| `America/Los_Angeles` | `America/Los_Angeles` | 11-08: 10111, 11-09: 1000 | yes |
+| `Etc/UTC` | `Etc/UTC` | 11-08: 10011, 11-09: 1100 | yes |
+| `UTC` | `GMT` | 11-08: 10011, 11-09: 1100 | yes |
+| `Asia/Kolkata`, `Asia/Kathmandu`, `Asia/Yangon` | the same | 11-08: 11, 11-09: 11100 | yes |
+| `America/St_Johns`, `Europe/Kyiv`, `America/Argentina/Buenos_Aires`, `America/Nuuk`, `America/Indiana/Indianapolis` | the same | 11-08: 10011, 11-09: 1100 | yes |
+| `Etc/GMT-9` | `Etc/GMT-9` | 11-08: 1, 11-09: 11110 | yes |
+| `Asia/Calcutta` | `GMT` | 11-08: 10011, 11-09: 1100 | no: UTC, not +05:30 |
+| `Nowhere/Zone` | `Asia/Seoul` | 11-08: 1, 11-09: 11110 | no: the distro's own zone |
+| `GMT+0900` | none | none: exit 132 (SIGILL) | no |
+| `Asia/Seoul`, `TZDIR` an empty folder | `Asia/Seoul` | 11-08: 1, 11-09: 11110 | yes |
+| `Asia/Kolkata`, `TZDIR` an empty folder | `Asia/Kolkata` | 11-08: 11, 11-09: 11100 | yes |
+
+- **Why the three fail.** `LinuxTimeZone.current()` takes Foundation's `TimeZone.current` (which reads `TZ`) only when `/usr/share/zoneinfo/<its name>` exists, and otherwise the C library's offset, fixed. Foundation knows `Asia/Calcutta`, the file isn't there, and glibc, with no file either, keeps UTC (`TZ=Asia/Calcutta date` says `UTC +0000`). Foundation doesn't know `Nowhere/Zone`, so it falls back to `/etc/localtime`. `GMT+0900` is Foundation's own name for a fixed offset; glibc reads it as UTC, and the probe stops. None of the three says so in the answer.
+- **CLDR's names.** Of the 139 IANA names in ClaudeBar's `WindowsZones` table, seven have no file here: `America/Buenos_Aires`, `America/Godthab`, `America/Indianapolis`, `Asia/Calcutta`, `Asia/Katmandu`, `Asia/Rangoon`, `Europe/Kiev`. `tzdata.zi` links each to its current name (`L Asia/Kolkata Asia/Calcutta`, …), and each current name counted right. On the PC, .NET 8.0.19's `TryConvertWindowsIdToIanaId` gives the same seven old names (`India Standard Time` → `Asia/Calcutta`), maps every other Windows zone to a name (`Korea Standard Time` → `Asia/Seoul`), and maps none for five old keys (`British Columbia`, `Alberta`, `Manitoba`, `Mid-Atlantic`, `Kamchatka Standard Time`).
+- **Kept days carry no zone.** A first try used one fixture folder for every run. The later runs answered with days the earlier ones had kept, in another zone: `UTC` gave 11-08: 1221 for records that hold 1111 tokens. `DayLedger` keeps a closed day under its label (`~/.claudebar/usage-history/<login>.json`) and starts over only when the log's fingerprint changes; the fingerprint holds the log's paths, not the zone (`UsageLog.swift:478-501`), while the scans are kept per zone (503). The table above is from the second try, one folder per run.
+- **What it wrote.** The first try replaced the distro's `claude.json` and `codex.json` in `~/.claudebar/usage-history` with the fixture's (the key is the login, `claude`, whatever folder it reads). Both were removed, and the probe, without `TZ`, read the distro's logs back into them over the same 406 days the other logins keep: Claude has 8 days with tokens (April 12 to June 2) and Codex none, as in *Running the probe*. The fixture's scans, and the one that read made, were removed. The distro's `mistral.json`, `omp.json` and `opencode-go.json` weren't written. Ubuntu-26.04 was running before (a login session of 16 h) and was left running.
+
 ## Not measured
 
 - A distro without `libcurl.so.4`, a custom `[automount] root` on a real distro, and an arm64 PC.
 - Why the musl build's refresh hangs.
 - A probe reading a Claude or Codex login that's signed in now: this distro's are from June and August.
+- A distro with no tzdata at all, and the app's side of `TZ` (the name it sends), which isn't built yet.
