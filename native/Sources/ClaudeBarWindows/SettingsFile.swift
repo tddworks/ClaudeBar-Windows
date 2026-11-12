@@ -92,16 +92,76 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
     }
 
     /// Each field as this membership has it where it changed it since `base`,
-    /// else as the file has it.
+    /// else as the file has it; what the server took (`sent`, `heldBefore`)
+    /// as `taken` merges it.
     static func merge(_ mine: LeaderboardRecord, since base: LeaderboardRecord, onto theirs: LeaderboardRecord) -> LeaderboardRecord {
         func pick<Value: Equatable>(_ field: KeyPath<LeaderboardRecord, Value>) -> Value {
             mine[keyPath: field] != base[keyPath: field] ? mine[keyPath: field] : theirs[keyPath: field]
         }
+        let server = taken(mine, since: base, onto: theirs)
         return LeaderboardRecord(username: pick(\.username), sharing: pick(\.sharing), visible: pick(\.visible),
                                  lastUpload: pick(\.lastUpload), sharesCountry: pick(\.sharesCountry),
                                  globeHintDismissed: pick(\.globeHintDismissed), link: pick(\.link),
                                  refused: pick(\.refused), shownDevices: pick(\.shownDevices),
-                                 machine: pick(\.machine), addedAsDevice: pick(\.addedAsDevice))
+                                 machine: pick(\.machine), addedAsDevice: pick(\.addedAsDevice),
+                                 sent: server.sent, heldBefore: server.heldBefore)
+    }
+
+    /// What the server took from this device, as both processes recorded it.
+    /// Each uploads and records on its own, and which answer reached the
+    /// server last isn't known here, so neither process's whole record wins:
+    ///
+    /// - A day both have keeps the larger total. Keeping the smaller would
+    ///   let a later read between the two go, lowering what the server holds;
+    ///   the larger only holds a day back until it reads larger still.
+    /// - A day one side has and the other doesn't: kept where that side added
+    ///   it since `base`, dropped where the other side dropped it (two days
+    ///   after it leaves the thirty), so a process from an earlier read
+    ///   doesn't bring it back.
+    /// - `heldBefore`: the side that changed it, or the later day when both
+    ///   did. A day before it goes only when refused: holding from a day too
+    ///   late delays a day, from a day too early could send it smaller than
+    ///   the server holds.
+    /// - Either side's whole `sent` and `heldBefore` when it changed
+    ///   `machine` from one to another: a new key here (*Make this PC its own
+    ///   device*), whose days the server holds none of, under which the
+    ///   other's days, taken from the old key, mean nothing. Leaving or
+    ///   joining again is apart: it ends the membership (`generation`).
+    static func taken(_ mine: LeaderboardRecord, since base: LeaderboardRecord,
+                      onto theirs: LeaderboardRecord) -> (sent: [SentDay]?, heldBefore: String?) {
+        func rekeyed(_ record: LeaderboardRecord) -> Bool {
+            base.machine != nil && record.machine != nil && record.machine != base.machine
+        }
+        if rekeyed(theirs) { return (theirs.sent, theirs.heldBefore) }
+        if rekeyed(mine) { return (mine.sent, mine.heldBefore) }
+        return (sent(mine.sent, since: base.sent, onto: theirs.sent),
+                heldBefore(mine.heldBefore, since: base.heldBefore, onto: theirs.heldBefore))
+    }
+
+    private static func sent(_ mine: [SentDay]?, since base: [SentDay]?, onto theirs: [SentDay]?) -> [SentDay]? {
+        guard mine != base, let mine else { return theirs }
+        func byDay(_ days: [SentDay]?) -> [ProviderDay: Int] {
+            Dictionary((days ?? []).map { (ProviderDay(provider: $0.provider, day: $0.day), $0.total) }, uniquingKeysWith: max)
+        }
+        let before = byDay(base), ours = byDay(mine), others = byDay(theirs)
+        let merged = ours.merging(others, uniquingKeysWith: max).filter { day, _ in
+            // Only one side has it: kept unless the other dropped it since `base`.
+            (ours[day] != nil && others[day] != nil) || before[day] == nil
+        }
+        return merged.map { SentDay(provider: $0.key.provider, day: $0.key.day, total: $0.value) }
+    }
+
+    private static func heldBefore(_ mine: String?, since base: String?, onto theirs: String?) -> String? {
+        if mine == base { return theirs }
+        if theirs == base { return mine }
+        guard let mine, let theirs else { return mine ?? theirs }
+        return max(mine, theirs)
+    }
+
+    /// One provider's day, `yyyy-MM-dd`.
+    private struct ProviderDay: Hashable {
+        let provider: String
+        let day: String
     }
 
     public func isLeaderboardOn() -> Bool {
@@ -138,6 +198,10 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
         /// Optional, as a file written before they were kept has neither.
         var machine: String?
         var addedAsDevice: Bool?
+        /// What the server took of each day; `nil` in a file written before
+        /// it was kept, and written as `[]` when empty, so the two stay apart.
+        var sent: [SentDay]?
+        var heldBefore: String?
 
         init(_ record: LeaderboardRecord) {
             username = record.username
@@ -151,12 +215,15 @@ public final class SettingsFile: LeaderboardSettingsRepository, @unchecked Senda
             shownDevices = record.shownDevices
             machine = record.machine
             addedAsDevice = record.addedAsDevice
+            sent = record.sent
+            heldBefore = record.heldBefore
         }
 
         var record: LeaderboardRecord {
             LeaderboardRecord(username: username, sharing: sharing, visible: visible, lastUpload: lastUpload,
                               sharesCountry: sharesCountry, globeHintDismissed: globeHintDismissed, link: link,
-                              refused: refused, shownDevices: shownDevices, machine: machine, addedAsDevice: addedAsDevice ?? false)
+                              refused: refused, shownDevices: shownDevices, machine: machine, addedAsDevice: addedAsDevice ?? false,
+                              sent: sent, heldBefore: heldBefore)
         }
     }
 
