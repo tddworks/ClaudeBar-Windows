@@ -90,20 +90,17 @@ public struct KeptZone {
         return zone.isEmpty ? .unreadable : .zone(zone)
     }
 
+    #if canImport(Glibc)
+    typealias Folder = OpaquePointer
+    #else
+    typealias Folder = UnsafeMutablePointer<DIR>
+    #endif
+
     /// Each `*.json` file directly in the ledger's folder, by name; none when
     /// there's no folder. A folder it can't list, or a page it can't look at,
     /// may hide a page, so it throws.
     private func pages() throws(Failure) -> [String] {
-        guard let folder = opendir(ledger.path) else {
-            if errno == ENOENT { return [] }
-            throw Failure(path: ledger.path, reason: Self.reason(errno))
-        }
-        var names: [String] = []
-        while let entry = readdir(folder) {
-            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
-            if name.hasSuffix(".json") { names.append(name) }
-        }
-        closedir(folder)
+        let names = try Self.names(in: ledger.path).filter { $0.hasSuffix(".json") }
         var pages: [String] = []
         for name in names.sorted() {
             let path = ledger.appendingPathComponent(name).path
@@ -115,6 +112,28 @@ public struct KeptZone {
             if (info.st_mode & S_IFMT) != S_IFDIR { pages.append(path) }
         }
         return pages
+    }
+
+    /// The names in `path`, without `.` and `..`; none when there's no such
+    /// folder. `next` is `readdir`, for a test to fail it: it returns nil at
+    /// the end and on an error alike, so `errno`, cleared before each call,
+    /// tells them apart.
+    static func names(in path: String, next: (Folder) -> UnsafeMutablePointer<dirent>? = { readdir($0) }) throws(Failure) -> [String] {
+        guard let folder = opendir(path) else {
+            if errno == ENOENT { return [] }
+            throw Failure(path: path, reason: reason(errno))
+        }
+        defer { closedir(folder) }
+        var names: [String] = []
+        while true {
+            errno = 0
+            guard let entry = next(folder) else {
+                if errno != 0 { throw Failure(path: path, reason: reason(errno)) }
+                return names
+            }
+            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            if name != "." && name != ".." { names.append(name) }
+        }
     }
 
     private static func reason(_ code: Int32) -> String { String(cString: strerror(code)) }
