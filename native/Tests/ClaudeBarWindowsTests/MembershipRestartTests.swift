@@ -17,10 +17,12 @@ struct MembershipRestartTests {
     private var settingsURL: URL { folder.appendingPathComponent("settings.json") }
     private var lockName: String { #"Local\ClaudeBar.test."# + folder.lastPathComponent }
 
-    /// A client as a new process builds it: nothing in memory but the file and the key.
+    /// A client as a new process builds it: nothing in memory but the file and
+    /// the key, and token logs read from the test's folder, not the person's.
     private func process(on machine: String = "4C4C4544-0042-3510-8048-B3C04F4A3133") -> Client {
         Client(api: server, keys: keys, settings: SettingsFile(url: settingsURL, lockName: lockName),
-               logs: ProviderTokenLogs(), machine: FixedMachine(hardwareUUID: machine))
+               logs: ProviderTokenLogs(home: folder.appendingPathComponent("home", isDirectory: true)),
+               machine: FixedMachine(hardwareUUID: machine))
     }
 
     @Test func `should still be the member it joined as, sharing the same providers, after a restart`() async throws {
