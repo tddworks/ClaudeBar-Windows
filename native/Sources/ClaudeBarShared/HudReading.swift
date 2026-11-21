@@ -116,9 +116,11 @@ public struct HudReading: Equatable, Sendable, Codable {
                 worst = max(worst, statuses.max() ?? .healthy)
                 let lines = zip(quotas, statuses).map { quota, status in
                     let hot = quota.pace(at: now) == .ahead
+                    // The Mac's name for it in tight places: a stated window's length, else its name.
+                    let label = QuotaLabel(quota).short
                     return Line(
                         key: quota.quotaType.quotaKey,
-                        window: quota.compactTitle ?? group.map { Self.title(quota.quotaType.shortLabel, in: $0) } ?? quota.quotaType.shortLabel,
+                        window: group.map { Self.title(label, in: $0) } ?? label,
                         percentLeft: Int(quota.percentLeft ?? quota.percentRemaining),
                         resetsAt: quota.resetsAt,
                         windowSeconds: quota.windowDuration,

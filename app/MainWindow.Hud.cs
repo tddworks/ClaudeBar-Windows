@@ -224,7 +224,7 @@ public sealed partial class MainWindow
 
     // MARK: - Notifications
 
-    /// A limit crossed 20%, reached 0, or came back: once, with *Show the HUD*
+    /// A limit turned critical, reached 0, or came back: once, with *Show the HUD*
     /// and *Quiet until reset* (design, Taskbar and notifications).
     private void OnCrossed(HudData.Tool tool, HudData.Line line, Crossing crossing)
     {
