@@ -3,7 +3,8 @@ import Foundation
 import Leaderboard
 
 /// ClaudeBar for Windows' composition root: ClaudeBar's factories, this
-/// client's settings file and token logs, and the version it names itself by.
+/// client's settings file and token logs (this PC's, with the WSL distros'
+/// kept days), and the version it names itself by.
 @MainActor
 public final class Client {
     /// How this client names itself on every request (`X-Client`), as
@@ -14,16 +15,16 @@ public final class Client {
     public let api: any LeaderboardAPI
     public let keys: any SigningKeyStore
     public let settings: SettingsFile
-    public let logs: ProviderTokenLogs
+    public let logs: DeviceTokenLogs
     public let machine: any MachineIdentity
 
     public init(api: (any LeaderboardAPI)? = nil, keys: (any SigningKeyStore)? = nil,
-                settings: SettingsFile? = nil, logs: ProviderTokenLogs? = nil,
+                settings: SettingsFile? = nil, logs: DeviceTokenLogs? = nil,
                 machine: (any MachineIdentity)? = nil) {
         self.api = api ?? Leaderboard.makeAPI(client: Self.xClient)
         self.keys = keys ?? Leaderboard.makeKeyStore()
         self.settings = settings ?? SettingsFile()
-        self.logs = logs ?? ProviderTokenLogs()
+        self.logs = logs ?? DeviceTokenLogs()
         self.machine = machine ?? Leaderboard.makeMachineIdentity()
     }
 

@@ -29,15 +29,26 @@ struct WslCommandTests {
 
     @Test func `should mark the run with env, before the probe, never in WSLENV`() {
         #expect(WslCommand.probe(distro: "Ubuntu-26.04", probe: "/mnt/c/a b/claudebar-probe", run: "0123456789abcdef0123456789abcdef",
-                                 windowsRoots: "/mnt/c/r.json", deadline: 60, logsOnly: false)
+                                 timeZone: nil, windowsRoots: "/mnt/c/r.json", deadline: 60, logsOnly: false)
                 == ["-d", "Ubuntu-26.04", "-e", "env", "CLAUDEBAR_WSL_RUN=0123456789abcdef0123456789abcdef", "/mnt/c/a b/claudebar-probe",
                     "--json", "--windows-roots", "/mnt/c/r.json", "--deadline", "60"])
     }
 
     @Test func `should read the logs alone with no deadline, for the uploader`() {
         #expect(WslCommand.probe(distro: "Ubuntu-26.04", probe: "/p", run: "0123456789abcdef0123456789abcdef",
-                                 windowsRoots: "/r.json", deadline: 60, logsOnly: true)
+                                 timeZone: nil, windowsRoots: "/r.json", deadline: 60, logsOnly: true)
                 == ["-d", "Ubuntu-26.04", "-e", "env", "CLAUDEBAR_WSL_RUN=0123456789abcdef0123456789abcdef", "/p",
+                    "--logs-only", "--windows-roots", "/r.json"])
+    }
+
+    @Test func `should hand Windows' zone over in TZ, after the marker, in both modes`() {
+        #expect(WslCommand.probe(distro: "Ubuntu-26.04", probe: "/p", run: "0123456789abcdef0123456789abcdef",
+                                 timeZone: "Asia/Seoul", windowsRoots: "/r.json", deadline: 60, logsOnly: false)
+                == ["-d", "Ubuntu-26.04", "-e", "env", "CLAUDEBAR_WSL_RUN=0123456789abcdef0123456789abcdef", "TZ=Asia/Seoul", "/p",
+                    "--json", "--windows-roots", "/r.json", "--deadline", "60"])
+        #expect(WslCommand.probe(distro: "Ubuntu-26.04", probe: "/p", run: "0123456789abcdef0123456789abcdef",
+                                 timeZone: "Asia/Seoul", windowsRoots: "/r.json", deadline: 60, logsOnly: true)
+                == ["-d", "Ubuntu-26.04", "-e", "env", "CLAUDEBAR_WSL_RUN=0123456789abcdef0123456789abcdef", "TZ=Asia/Seoul", "/p",
                     "--logs-only", "--windows-roots", "/r.json"])
     }
 

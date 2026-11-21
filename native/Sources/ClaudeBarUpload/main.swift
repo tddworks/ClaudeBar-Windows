@@ -15,7 +15,7 @@ func end(_ code: Int32) -> Never {
     exit(code)
 }
 
-let client = Client()
+let client = Client(logs: DeviceTokenLogs(wsl: WslDays(fresh: true)))
 let membership = client.membership()
 guard membership.isOn, membership.isJoined else {
     AppLog.network.info("Leaderboard upload skipped: \(membership.isOn ? "not joined" : "turned off")")

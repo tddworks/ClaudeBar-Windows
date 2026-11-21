@@ -1,0 +1,25 @@
+{
+  "answeredAt" : 1794470400,
+  "days" : [
+    {
+      "cacheRead" : 4,
+      "cacheWrite" : 3,
+      "day" : "2026-11-11",
+      "input" : 1,
+      "output" : 2,
+      "provider" : "claude",
+      "unsplit" : 0
+    }
+  ],
+  "distro" : "Ubuntu-26.04",
+  "logRoots" : [
+    {
+      "provider" : "claude",
+      "windowsPath" : "\\\\wsl.localhost\\Ubuntu-26.04\\home\\josh\\.claude\\projects"
+    }
+  ],
+  "readAt" : {
+    "claude" : 1794470400
+  },
+  "timeZone" : "Asia/Seoul"
+}
