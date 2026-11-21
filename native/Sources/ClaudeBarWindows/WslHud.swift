@@ -1,5 +1,8 @@
 import ClaudeBarShared
+import DataSources
 import Foundation
+import Leaderboard
+import Quotas
 
 /// Each WSL distro's tools on the HUD (design, *The HUD, Limits and
 /// Settings*): the running distros are probed at the HUD's cadence, and each
@@ -31,6 +34,9 @@ public final class WslHud {
     private let list: @Sendable (_ runningOnly: Bool) async -> [String]?
     private let interval: Duration
     private let now: @Sendable () -> Date
+    private let zone: @Sendable () -> TimeZone
+    private let keptDays: WslKeptDays
+    private let windowsRoots: @Sendable () -> [ProviderRoots]
     private var kept: [String: Kept] = [:]
     private var read: [String: Read] = [:]
     private var probing: Set<String> = []
@@ -46,13 +52,22 @@ public final class WslHud {
     /// The running list is asked again when an answer finds it older than this.
     static let runningListAge: TimeInterval = 30
 
+    /// `zone`, `kept` and `windows`: Windows' zone, the distros' kept days and
+    /// this PC's log roots, for what the Leaderboard counts from WSL now
+    /// (`json()`), as the uploader counts it.
     public init(probe: any WslProbing = WslProbe(),
                 list: @escaping @Sendable (_ runningOnly: Bool) async -> [String]? = WslHud.list,
-                interval: Duration = .seconds(600), now: @escaping @Sendable () -> Date = Date.init) {
+                interval: Duration = .seconds(600), now: @escaping @Sendable () -> Date = Date.init,
+                zone: @escaping @Sendable () -> TimeZone = DataSources.timeZone,
+                kept: WslKeptDays = WslKeptDays(),
+                windows: @escaping @Sendable () -> [ProviderRoots] = WslDays.windowsRoots) {
         self.probe = probe
         self.list = list
         self.interval = interval
         self.now = now
+        self.zone = zone
+        self.keptDays = kept
+        self.windowsRoots = windows
     }
 
     /// The switches and kept readings; a running distro whose switch is set
@@ -66,7 +81,7 @@ public final class WslHud {
 
     /// `app.json`'s `wsl`: `{"<distro>": {"on", "answeredAt", "reading"}}`.
     /// A distro whose reading doesn't decode (from another version) keeps its switch.
-    public static func kept(fromJSON text: String) -> [String: Kept] {
+    public nonisolated static func kept(fromJSON text: String) -> [String: Kept] {
         guard let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return [:] }
         var kept: [String: Kept] = [:]
         for (distro, value) in object {
@@ -110,14 +125,25 @@ public final class WslHud {
         track { await self.refreshNow() }
     }
 
-    /// The reply's `wsl`: `{installed, distros: [{name, running, on, probing,
-    /// answeredAt, reading, error}]}`.
+    /// The reply's `wsl`: `{installed, timeZone, leaderboard, distros: [{name,
+    /// running, on, probing, answeredAt, reading, error, sharedLogs, keptZone}]}`.
+    /// `timeZone` is the name Windows' zone goes to a distro by, or null;
+    /// `leaderboard` what the Leaderboard counts from WSL now, each distro
+    /// with the providers that have a day with tokens in the last 30 days;
+    /// `sharedLogs` a distro's log roots another distro's kept days read too;
+    /// `keptZone` the zone a distro's kept days were counted in when it isn't
+    /// `timeZone`, so they're left out, else null (always null with no `timeZone`).
     public func json() throws -> [String: Any] {
         let encoder = ProbeReading.encoder()
+        let date = now(), timeZone = zone()
+        let zoneName = WslZone.name(for: timeZone, at: date)
+        let entries = keptDays.all()
+        let counted = WslKeptDays.current(entries, zone: zoneName, windows: windowsRoots())
         let rows = try (distros ?? []).map { name -> [String: Any] in
             let last = read[name]
             let reading = last?.reading ?? kept[name]?.reading
             let answeredAt = last?.answeredAt ?? kept[name]?.answeredAt
+            let keptZone = zoneName.flatMap { zone in entries.first { $0.distro == name }.map(\.timeZone).flatMap { $0 == zone ? nil : $0 } }
             return [
                 "name": name,
                 "running": running.contains(name),
@@ -126,9 +152,26 @@ public final class WslHud {
                 "answeredAt": answeredAt.map { $0.timeIntervalSince1970 } ?? NSNull(),
                 "reading": try reading.map { try JSONSerialization.jsonObject(with: encoder.encode($0)) } ?? NSNull(),
                 "error": last?.failure ?? NSNull(),
+                "sharedLogs": try JSONSerialization.jsonObject(with: encoder.encode(counted.shared[name] ?? [])),
+                "keptZone": keptZone.map { $0 as Any } ?? NSNull(),
             ]
         }
-        return ["installed": distros != nil, "distros": rows]
+        return ["installed": distros != nil, "timeZone": zoneName.map { $0 as Any } ?? NSNull(),
+                "leaderboard": Self.leaderboard(counted.entries, at: date, in: timeZone), "distros": rows]
+    }
+
+    /// Each distro with the providers that have a day with tokens in the 30
+    /// days ending today in `zone`, providers and distros sorted; a distro
+    /// with none left out.
+    static func leaderboard(_ entries: [WslKeptDays.Entry], at date: Date, in zone: TimeZone) -> [[String: Any]] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let window = DateRange.last(30, endingOn: date, calendar: calendar)
+        let first = DailyTokens.day(of: window.first, calendar: calendar), last = DailyTokens.day(of: window.last, calendar: calendar)
+        return entries.sorted { $0.distro < $1.distro }.compactMap { entry in
+            let providers = Set(entry.days.filter { $0.day >= first && $0.day <= last && $0.total > 0 }.map(\.provider)).sorted()
+            return providers.isEmpty ? nil : ["distro": entry.distro, "providers": providers]
+        }
     }
 
     /// Waits for every list and run started so far, and any they start.

@@ -136,6 +136,15 @@ internal static class Preferences
         set => Write("updateNotified", value);
     }
 
+    /// The WSL Leaderboard notice (WslSettings.Board): absent until the window
+    /// was visible with its bar open, then `shown`; `seen` once either copy was
+    /// closed or a distro's switch changed.
+    internal static string? WslBoardNotice
+    {
+        get => Read()?["wslBoardNotice"]?.GetValue<string>();
+        set => Write("wslBoardNotice", value);
+    }
+
     /// Each WSL distro's switch and last reading (WslSettings): `{"Ubuntu-26.04":
     /// {"on": true, "answeredAt": 1762230000, "reading": {…}}}`, the shape
     /// `cbw_wsl_configure` takes.

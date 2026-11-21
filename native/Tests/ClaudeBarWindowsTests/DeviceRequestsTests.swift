@@ -16,7 +16,10 @@ struct DeviceRequestsTests {
         Client(api: server, keys: NoKeys(),
                settings: SettingsFile(url: folder.appendingPathComponent("settings.json"),
                                       lockName: #"Local\ClaudeBar.test."# + folder.lastPathComponent),
-               logs: ProviderTokenLogs(home: folder.appendingPathComponent("home", isDirectory: true)), machine: PC()).membership()
+               logs: DeviceTokenLogs(windows: ProviderTokenLogs(home: folder.appendingPathComponent("home", isDirectory: true)),
+                                     wsl: WslDays(kept: WslKeptDays(folder: folder.appendingPathComponent("days", isDirectory: true)),
+                                                  windows: { [] })),
+               machine: PC()).membership()
     }
 
     private func asked(_ count: Int) async {

@@ -18,10 +18,13 @@ struct MembershipRestartTests {
     private var lockName: String { #"Local\ClaudeBar.test."# + folder.lastPathComponent }
 
     /// A client as a new process builds it: nothing in memory but the file and
-    /// the key, and token logs read from the test's folder, not the person's.
+    /// the key, and token logs read from the test's folder, not the person's,
+    /// with the distros' kept days from it too.
     private func process(on machine: String = "4C4C4544-0042-3510-8048-B3C04F4A3133") -> Client {
         Client(api: server, keys: keys, settings: SettingsFile(url: settingsURL, lockName: lockName),
-               logs: ProviderTokenLogs(home: folder.appendingPathComponent("home", isDirectory: true)),
+               logs: DeviceTokenLogs(windows: ProviderTokenLogs(home: folder.appendingPathComponent("home", isDirectory: true)),
+                                     wsl: WslDays(kept: WslKeptDays(folder: folder.appendingPathComponent("days", isDirectory: true)),
+                                                  windows: { [] })),
                machine: FixedMachine(hardwareUUID: machine))
     }
 

@@ -1,8 +1,10 @@
 # Checks Tools in WSL on a Windows PC (docs/plans/2026-11-03-wsl-design.md,
-# docs/plans/2026-11-04-wsl.md Task 19): the probe as the app runs it, what it
-# leaves behind, --wsl-end-all, a folder with a space, the environment
-# import's cost, and, read from the screen's UI Automation tree without
-# changing it, the HUD's WSL rows.
+# docs/plans/2026-11-04-wsl.md Task 19, docs/plans/2026-11-12-wsl-phase2.md
+# Task 11): the probe as the app runs it, in Windows' zone, what it leaves
+# behind, the days the running app kept for the Leaderboard and the zone the
+# distro's kept days are counted in, --wsl-end-all, a folder with a space, the
+# environment import's cost, and, read from the screen's UI Automation tree
+# without changing it, the HUD's WSL rows.
 # It never moves the mouse, raises or focuses a window, invokes a control or
 # switches the theme: the HUD checks only read the tree of a ClaudeBar that is
 # already running, so they can run while someone uses the PC.
@@ -16,25 +18,35 @@
 # make (no distro running, no HUD open): those never count as a pass. It exits
 # 1 on any FAIL, 2 when nothing failed but something went unverified, and 0
 # only when every check ran and passed. Windows PowerShell 5.1 or PowerShell 7.
-#   .\scripts\check-wsl.ps1 [-Exe out\win-x64\ClaudeBar.exe] [-Distro <name>] [-Start <name>] [-Tests probe,...] [-Minutes 11] [-KeepAnswer <file>]
+#   .\scripts\check-wsl.ps1 [-Exe out\win-x64\ClaudeBar.exe] [-Distro <name>] [-Start <name>] [-Tests probe,...] [-Minutes 11] [-KeepAnswer <file>] [-Upload]
 # -KeepAnswer keeps the probe check's answer, as it came, in that file: it
 # holds the distro's limits and days, so keep it off anything shared.
 # `hud` waits up to -Minutes for the running ClaudeBar's next HUD refresh to
 # show the distro's tools; `stopped` (only with -Start) stops the distro and
 # watches it stay stopped for -Minutes, then looks for *WSL isn't running*.
+# `kept` waits up to -Minutes for the running ClaudeBar's next HUD refresh of
+# the distro to keep its days (wsl\days\<distro>.json), and prints them as
+# counts, never the file. `zonefile` reads the zone the distro's kept days are
+# counted in. `upload` runs only when named, with -Upload: it runs
+# claudebar-upload.exe once, a real upload of this PC's days, as the hourly
+# task does.
+# The zone checks compare with Windows' zone by the name the app sends a
+# distro in TZ, derived here as the app derives it; with daylight saving's
+# automatic adjustment off, the app sends a fixed offset, and they say UNVERIFIED.
 param(
   [string]$Exe = (Join-Path $PSScriptRoot '..\out\win-x64\ClaudeBar.exe'),
   [string]$Distro,
   [string]$Start,
-  [string[]]$Tests = @('probe', 'marker', 'space', 'endall', 'cost', 'hud', 'stopped'),
+  [string[]]$Tests = @('probe', 'marker', 'kept', 'zonefile', 'space', 'endall', 'cost', 'hud', 'stopped'),
   [int]$Minutes = 11,
-  [string]$KeepAnswer
+  [string]$KeepAnswer,
+  [switch]$Upload
 )
 
 $ErrorActionPreference = 'Continue'
 # `powershell -File` hands `-Tests a,b` over as one string.
 $Tests = @($Tests | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-$known = 'probe', 'marker', 'space', 'endall', 'cost', 'hud', 'stopped'
+$known = 'probe', 'marker', 'kept', 'zonefile', 'upload', 'space', 'endall', 'cost', 'hud', 'stopped'
 $unknown = @($Tests | Where-Object { $known -notcontains $_ })
 if ($unknown) { "no such check: $($unknown -join ', ') (the checks: $($known -join ', '))"; exit 1 }
 $results = New-Object System.Collections.Generic.List[string]
@@ -53,6 +65,64 @@ if (-not $Exe) { 'no ClaudeBar.exe at -Exe'; exit 1 }
 $probeWin = Join-Path (Split-Path $Exe) 'linux\x64\claudebar-probe'
 $version = ((Get-Item $Exe).VersionInfo.ProductVersion -split '\+')[0]
 "ClaudeBar: $Exe ($version)"
+$checkStarted = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+
+# Windows' IANA zone for its key, as ICU (and .NET) has it: CLDR's windowsZones,
+# the table ClaudeBar's WindowsZones is made from.
+function IanaOf([string]$id) {
+  $method = [TimeZoneInfo].GetMethod('TryConvertWindowsIdToIanaId', [Type[]]@([string], [string].MakeByRefType()))
+  if ($method) {
+    $arguments = [object[]]@($id, $null)
+    if ($method.Invoke($null, $arguments)) { return [string]$arguments[1] }
+    return $null
+  }
+  if (-not ('CheckWsl.Icu' -as [type])) {
+    Add-Type -Namespace CheckWsl -Name Icu -MemberDefinition @'
+[DllImport("icu.dll", CharSet = CharSet.Unicode)]
+public static extern int ucal_getTimeZoneIDForWindowsID(string winid, int len, [MarshalAs(UnmanagedType.LPStr)] string region, System.Text.StringBuilder id, int capacity, ref int status);
+'@
+  }
+  $found = New-Object Text.StringBuilder 128
+  $status = 0
+  $n = [CheckWsl.Icu]::ucal_getTimeZoneIDForWindowsID($id, $id.Length, $null, $found, $found.Capacity, [ref]$status)
+  if ($status -gt 0 -or $n -le 0) { return $null }
+  $found.ToString().Substring(0, $n)
+}
+# The name the app sends a distro in TZ (WslZone.name of DataSources.timeZone()):
+# the key's IANA zone; the OS's offset, fixed, when daylight saving's adjustment
+# is off, the key has no zone or it's one Foundation on Windows can't format in
+# (WindowsZones.unformattable); CLDR's seven old names by tzdata's; a fixed
+# offset of whole hours as Etc/GMT-9 (POSIX's sign), 0 as Etc/UTC, else none.
+function WindowsZone {
+  $local = [TimeZoneInfo]::Local
+  $dstOff = $false
+  try { $dstOff = [int](Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\TimeZoneInformation' -Name DynamicDaylightTimeDisabled -ErrorAction Stop).DynamicDaylightTimeDisabled -ne 0 } catch { }
+  $iana = IanaOf $local.Id
+  $unformattable = 'America/Mazatlan', 'America/Whitehorse', 'Asia/Qyzylorda', 'Etc/UTC', 'Europe/Volgograd'
+  $renamed = @{ 'America/Buenos_Aires' = 'America/Argentina/Buenos_Aires'; 'America/Godthab' = 'America/Nuuk'
+    'America/Indianapolis' = 'America/Indiana/Indianapolis'; 'Asia/Calcutta' = 'Asia/Kolkata'; 'Asia/Katmandu' = 'Asia/Kathmandu'
+    'Asia/Rangoon' = 'Asia/Yangon'; 'Europe/Kiev' = 'Europe/Kyiv' }
+  $name = $null; $fixed = $false
+  if (-not $dstOff -and $iana -and $unformattable -notcontains $iana) {
+    $name = if ($renamed.ContainsKey($iana)) { $renamed[$iana] } else { $iana }
+  } else {
+    $fixed = $true
+    $seconds = [int]$(if ($dstOff) { $local.BaseUtcOffset.TotalSeconds } else { $local.GetUtcOffset([DateTime]::UtcNow).TotalSeconds })
+    $hours = [int][Math]::Truncate($seconds / 3600)
+    if ($seconds % 3600 -eq 0) {
+      if ($hours -eq 0) { $name = 'Etc/UTC' }
+      elseif ($hours -ge -12 -and $hours -le 14) { $name = if ($hours -gt 0) { "Etc/GMT-$hours" } else { "Etc/GMT+$(-$hours)" } }
+    }
+  }
+  [pscustomobject]@{ Key = $local.Id; Iana = $iana; Name = $name; Fixed = $fixed; DstOff = $dstOff }
+}
+$zone = WindowsZone
+"Windows' zone: $($zone.Key) -> $(if ($zone.Iana) { $zone.Iana } else { 'no IANA zone' }); the app sends TZ=$(if ($zone.Name) { $zone.Name } else { '(none)' })$(if ($zone.DstOff) { ", a fixed offset: daylight saving's adjustment is off" } elseif ($zone.Fixed) { ', a fixed offset' })"
+# Each zone check's verdict on a mismatch: with the adjustment off, unverified.
+function ZoneVerdict([string]$n, [bool]$ok, [string]$detail) {
+  if ($zone.DstOff) { Unverified $n "daylight saving's adjustment is off; $detail" }
+  elseif ($ok) { Pass $n $detail } else { Fail $n $detail }
+}
 
 # wsl.exe's own text is UTF-16LE (no BOM), or UTF-8 with WSL_UTF8=1; the Linux
 # side's is UTF-8. The same rule as WslCommand.text(in:).
@@ -120,11 +190,12 @@ function WriteRoots([string]$d, [string]$run) {
   [IO.File]::WriteAllText($file, ($roots | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
   $file
 }
-# One run as WslProbe makes it: `wsl.exe -d <d> -e env CLAUDEBAR_WSL_RUN=<id> <probe> --json --windows-roots <file> --deadline 60`.
+# One run as WslProbe makes it: `wsl.exe -d <d> -e env CLAUDEBAR_WSL_RUN=<id> [TZ=<zone>] <probe> --json --windows-roots <file> --deadline 60`.
 function Probe([string]$d, [string]$probe, [string]$run) {
   $roots = WriteRoots $d $run
   try {
-    $argv = @('-d', $d, '-e', 'env', "CLAUDEBAR_WSL_RUN=$run", $probe, '--json', '--windows-roots', (LinuxPath $d $roots), '--deadline', '60')
+    $tz = if ($zone.Name) { @("TZ=$($zone.Name)") } else { @() }
+    $argv = @('-d', $d, '-e', 'env', "CLAUDEBAR_WSL_RUN=$run") + $tz + @($probe, '--json', '--windows-roots', (LinuxPath $d $roots), '--deadline', '60')
     Write-Host ("  argv: wsl.exe " + (($argv | ForEach-Object { Quote $_ }) -join ' '))
     $r = Wsl $argv 240
     $answer = $null
@@ -201,6 +272,12 @@ if ($Tests -contains 'probe') {
       "  skipped: " + ((@($answer.skipped) | ForEach-Object { "$($_.provider) $($_.kind) $($_.reason)" }) -join ', ')
       "  timeZone {0}, timedOut {1}, environmentImport {2} [{3}]{4}" -f $answer.timeZone, $answer.timedOut, $answer.environmentImport.state, (@($answer.environmentImport.names) -join ', '), $(if ($answer.environmentImport.reason) { " ($($answer.environmentImport.reason))" } else { '' })
       foreach ($line in @($answer.diagnostics)) { "  diagnostic: " + (Redact $line) }
+      if (-not $zone.Name) { Unverified 'probe zone' "Windows' zone has no name Linux knows: the app sends no TZ" }
+      else {
+        $hasDays = $null -ne $answer.PSObject.Properties['days'] -and $null -ne $answer.days
+        $noData = @(@($answer.diagnostics) | Where-Object { $_ -like 'no time zone data*' })
+        ZoneVerdict 'probe zone' ($answer.timeZone -eq $zone.Name -and $hasDays -and -not $noData) ("timeZone {0} (sent {1}), days {2}, {3}" -f $answer.timeZone, $zone.Name, $(if ($hasDays) { 'present' } else { 'absent' }), $(if ($noData) { 'a no time zone data diagnostic' } else { 'no time zone data diagnostic' }))
+      }
     }
   }
 }
@@ -212,6 +289,108 @@ if ($Tests -contains 'marker') {
     "  any run's marked processes now: $($others.Count)"
     if ($left.Count -eq 0) { Pass 'marker' "no process carries run $($ourRuns[0].Substring(0, 8))... after it" }
     else { Fail 'marker' "$($left.Count) processes still carry the run's marker: $($left -join ', ')" }
+  }
+}
+# The days the running app keeps for the Leaderboard: each provider's days, and
+# those with a day of tokens in the last 30 days in Windows' zone (what
+# wsl.leaderboard lists for the distro when no other distro reads its folders).
+function KeptSummary($entry) {
+  # Gregorian labels whatever the person's calendar, as the kept days write them.
+  $iso = [Globalization.CultureInfo]::InvariantCulture
+  $first = (Get-Date).Date.AddDays(-29).ToString('yyyy-MM-dd', $iso); $last = (Get-Date).Date.ToString('yyyy-MM-dd', $iso)
+  $days = @($entry.days)
+  $inWindow = @($days | Where-Object { $_.day -ge $first -and $_.day -le $last -and ($_.input + $_.output + $_.cacheWrite + $_.cacheRead + $_.unsplit) -gt 0 })
+  [pscustomobject]@{
+    Counts = (($days | Group-Object provider | ForEach-Object { "$($_.Name) $($_.Count)" }) -join ', ')
+    Span = $(if ($days) { "$(($days | Sort-Object day)[0].day) to $(($days | Sort-Object day)[-1].day)" } else { '-' })
+    Window = @($inWindow | ForEach-Object { $_.provider } | Sort-Object -Unique)
+    WindowDays = $inWindow.Count
+  }
+}
+function KeptFile([string]$d) { Join-Path $env:LOCALAPPDATA "ClaudeBar\wsl\days\$d.json" }
+function ReadKept([string]$d) {
+  $file = KeptFile $d
+  if (-not (Test-Path $file)) { return $null }
+  try { [IO.File]::ReadAllText($file) | ConvertFrom-Json } catch { $null }
+}
+if ($Tests -contains 'kept') {
+  if (-not $up) { Unverified 'kept' 'no distro running' }
+  elseif (-not $zone.Name) { Unverified 'kept' "Windows' zone has no name Linux knows: the app keeps no new days" }
+  elseif (-not (Get-Process ClaudeBar -ErrorAction SilentlyContinue)) { Unverified 'kept' 'no ClaudeBar running to keep them' }
+  else {
+    $deadline = (Get-Date).AddMinutes($Minutes)
+    do {
+      $entry = ReadKept $d
+      if ($entry -and [long]$entry.answeredAt -ge $checkStarted) { break }
+      Start-Sleep -Seconds 30
+    } while ((Get-Date) -lt $deadline)
+    if (-not $entry) { Fail 'kept' "no $(KeptFile $d) after $Minutes min" }
+    else {
+      $summary = KeptSummary $entry
+      $at = [DateTimeOffset]::FromUnixTimeSeconds([long]$entry.answeredAt).ToLocalTime().ToString('o')
+      "  kept: answeredAt $at, timeZone $($entry.timeZone), days $(@($entry.days).Count) ($($summary.Counts)), $($summary.Span)"
+      "  kept log roots: " + ((@($entry.logRoots) | ForEach-Object { "$($_.provider) $($_.windowsPath)" }) -join '; ')
+      "  with a day of tokens in the last 30 days: $(if ($summary.Window) { $summary.Window -join ', ' } else { 'none' }) ($($summary.WindowDays) days)"
+      if ([long]$entry.answeredAt -lt $checkStarted) { Fail 'kept' "the newest is from $at, before this check started, after $Minutes min" }
+      else { ZoneVerdict 'kept' ($entry.timeZone -eq $zone.Name) "kept at $at in $($entry.timeZone) (sent $($zone.Name))" }
+    }
+  }
+}
+if ($Tests -contains 'zonefile') {
+  if (-not $up) { Unverified 'zonefile' 'no distro running' }
+  else {
+    # -e runs no shell, so ~ would reach cat as it is: --cd ~ starts in the Linux home instead.
+    $r = Wsl @('-d', $d, '--cd', '~', '-e', 'cat', '.local/share/ClaudeBar/wsl-zone') 30
+    $text = $r.Out.Trim()
+    if ($r.Exit -ne 0) { Fail 'zonefile' "no ~/.local/share/ClaudeBar/wsl-zone (exit $($r.Exit)): $(Redact (Lines $r.Err | Select-Object -First 1))" }
+    elseif (-not $zone.Name) { Unverified 'zonefile' "it says $text; Windows' zone has no name Linux knows, so it is the distro's own" }
+    else { ZoneVerdict 'zonefile' ($text -eq $zone.Name) "it says $text (sent $($zone.Name))" }
+  }
+}
+if ($Tests -contains 'upload') {
+  if (-not $Upload) { Unverified 'upload' "only with -Upload: it's a real upload of this PC's days" }
+  else {
+    $uploader = Join-Path (Split-Path $Exe) 'claudebar-upload.exe'
+    $log = Join-Path $env:LOCALAPPDATA 'ClaudeBar\Logs\ClaudeBar.log'
+    $runningBefore = @(Running | Sort-Object)
+    $from = if (Test-Path $log) { (Get-Item $log).Length } else { 0 }
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $u = Start-Process -FilePath $uploader -PassThru -Wait -WindowStyle Hidden
+    $seconds = $clock.Elapsed.TotalSeconds
+    $runningAfter = @(Running | Sort-Object)
+    # The lines added since, from the file's new start if it rolled over to ClaudeBar.old.log.
+    $stream = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
+    try { $copy = New-Object IO.MemoryStream; $stream.CopyTo($copy); $bytes = $copy.ToArray() } finally { $stream.Dispose() }
+    $start = if ($bytes.Length -ge $from) { $from } else { 0 }
+    $added = @(Lines ([Text.Encoding]::UTF8.GetString($bytes, $start, $bytes.Length - $start)))
+    $done = @($added | Where-Object { $_ -like '*Leaderboard uploaded by the scheduled task*' })
+    $wslLines = @($added | Where-Object { $_ -like '*Leaderboard: WSL *' })
+    "  claudebar-upload.exe exit $($u.ExitCode) in {0:N1} s; running before [$($runningBefore -join ', ')], after [$($runningAfter -join ', ')]" -f $seconds
+    foreach ($line in $wslLines) { "  log: " + (Redact $line) }
+    # Each distro whose kept days have a day in the window and that wasn't read
+    # says so: that its kept days went, or, counted in another zone than
+    # Windows' now, that they were left out (WslKeptDays.current); a distro
+    # whose every provider is read by Windows or another distro now only says
+    # what was left out.
+    $unread = @()
+    foreach ($file in @(Get-ChildItem (Join-Path $env:LOCALAPPDATA 'ClaudeBar\wsl\days') -Filter *.json -ErrorAction SilentlyContinue)) {
+      $name = $file.BaseName
+      $entry = ReadKept $name
+      if ($entry -and (KeptSummary $entry).WindowDays -gt 0 -and $runningAfter -notcontains $name) {
+        $unread += [pscustomobject]@{ Name = $name; Zone = [string]$entry.timeZone }
+      }
+    }
+    $missing = @($unread | Where-Object {
+      $n = $_.Name; $z = $_.Zone
+      $said = if ($z -ne $zone.Name) { @($wslLines | Where-Object { $_ -like "*WSL ${n}: kept days left out: counted in ${z},*" }) }
+              else { @($wslLines | Where-Object { $_ -like "*WSL ${n}: *its kept days go*" -or $_ -like "*WSL ${n}: kept * days left out: *" }) }
+      -not $said
+    } | ForEach-Object { $_.Name })
+    if ($u.ExitCode -ne 0) { Fail 'upload' "exit $($u.ExitCode)" }
+    elseif (-not $done) { Fail 'upload' 'no *Leaderboard uploaded by the scheduled task* in the lines it added' }
+    elseif (($runningBefore -join ',') -ne ($runningAfter -join ',')) { Fail 'upload' "running before [$($runningBefore -join ', ')], after [$($runningAfter -join ', ')]" }
+    elseif ($missing) { Fail 'upload' "no line says these distros' kept days went: $($missing -join ', ')" }
+    else { Pass 'upload' ("exit 0 in {0:N1} s, uploaded; {1} WSL lines; the running distros are as they were" -f $seconds, $wslLines.Count) }
   }
 }
 if ($Tests -contains 'space') {

@@ -16,8 +16,10 @@ public enum EnvironmentImport {
     }
 
     /// Every `${NAME` in the definitions' own encoding, valid as a shell
-    /// name, except `PATH`: the probe's `PATH` is its own, without the
-    /// drives, and a shell's has WSL's Windows entries back in it.
+    /// name, except `PATH` and `TZ`: the probe's `PATH` is its own, without
+    /// the drives, and a shell's has WSL's Windows entries back in it; its
+    /// `TZ` is the app's zone (design, *The time zone*), and a shell file's
+    /// own would count the days in another.
     public static func names(usedBy definitions: [ProviderDefinition]) -> [String] {
         var names = Set<String>()
         for definition in definitions {
@@ -25,7 +27,7 @@ public enum EnvironmentImport {
             var rest = String(decoding: data, as: UTF8.self)[...]
             while let start = rest.range(of: "${") {
                 let name = String(rest[start.upperBound...].prefix { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") })
-                if name != "PATH", LoginShellEnvironment.isValidName(name) { names.insert(name) }
+                if name != "PATH", name != "TZ", LoginShellEnvironment.isValidName(name) { names.insert(name) }
                 rest = rest[start.upperBound...]
             }
         }

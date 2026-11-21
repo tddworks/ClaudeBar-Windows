@@ -1,0 +1,70 @@
+{
+  "distros" : [
+    {
+      "answeredAt" : null,
+      "error" : null,
+      "keptZone" : null,
+      "name" : "Alpine",
+      "on" : null,
+      "probing" : false,
+      "reading" : null,
+      "running" : false,
+      "sharedLogs" : []
+    },
+    {
+      "answeredAt" : null,
+      "error" : null,
+      "keptZone" : null,
+      "name" : "Debian",
+      "on" : null,
+      "probing" : false,
+      "reading" : null,
+      "running" : false,
+      "sharedLogs" : [
+        {
+          "provider" : "claude",
+          "windowsPath" : "D:\\shared\\.claude\\projects",
+          "with" : [
+            "Ubuntu-26.04"
+          ]
+        }
+      ]
+    },
+    {
+      "answeredAt" : null,
+      "error" : null,
+      "keptZone" : null,
+      "name" : "Ubuntu-26.04",
+      "on" : null,
+      "probing" : false,
+      "reading" : null,
+      "running" : false,
+      "sharedLogs" : [
+        {
+          "provider" : "claude",
+          "windowsPath" : "D:\\shared\\.claude",
+          "with" : [
+            "Debian"
+          ]
+        }
+      ]
+    }
+  ],
+  "installed" : true,
+  "leaderboard" : [
+    {
+      "distro" : "Debian",
+      "providers" : [
+        "codex"
+      ]
+    },
+    {
+      "distro" : "Ubuntu-26.04",
+      "providers" : [
+        "claude",
+        "omp"
+      ]
+    }
+  ],
+  "timeZone" : "Asia/Seoul"
+}

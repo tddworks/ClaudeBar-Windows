@@ -1,4 +1,5 @@
 import Foundation
+import Leaderboard
 import Testing
 @testable import ClaudeBarShared
 @testable import ClaudeBarWindows
@@ -10,6 +11,9 @@ import Testing
 struct WslHudTests {
     private let reading: ProbeReading
     private let windows: HudMonitor.Answer
+    /// A kept-days folder that's never there: no test reads this PC's.
+    private static let noKept = WslKeptDays(folder: FileManager.default.temporaryDirectory
+        .appendingPathComponent("cbw-nokept-\(UUID().uuidString)", isDirectory: true))
 
     init() throws {
         reading = try ProbeReading.decoder().decode(ProbeReading.self, from: WslProbeTests.sample())
@@ -18,7 +22,7 @@ struct WslHudTests {
 
     private func hud(_ probe: FakeProbing, all: [String]? = ["Ubuntu-26.04", "Debian", "docker-desktop"],
                      running: [String] = ["Ubuntu-26.04", "docker-desktop"]) -> WslHud {
-        WslHud(probe: probe, list: { $0 ? running : all }, interval: .seconds(3600))
+        WslHud(probe: probe, list: { $0 ? running : all }, interval: .seconds(3600), kept: Self.noKept, windows: { [] })
     }
 
     /// The ids the answer shows for a distro, in its tools and its problems.
@@ -112,7 +116,7 @@ struct WslHudTests {
         let wsl = WslHud(probe: probe, list: { running in
             if await lists.count(running) > 2 { try? await Task.sleep(for: .milliseconds(500)) }
             return running ? ["Ubuntu-26.04", "docker-desktop"] : ["Ubuntu-26.04", "Debian", "docker-desktop"]
-        }, interval: .seconds(3600))
+        }, interval: .seconds(3600), kept: Self.noKept, windows: { [] })
 
         _ = wsl.answer(merging: windows)
         await probe.started(1)
@@ -129,7 +133,7 @@ struct WslHudTests {
 
     @Test func `should answer this PC's alone when WSL isn't there`() async throws {
         let probe = FakeProbing([:], reading: reading)
-        let wsl = WslHud(probe: probe, list: { _ in nil }, interval: .seconds(3600))
+        let wsl = WslHud(probe: probe, list: { _ in nil }, interval: .seconds(3600), kept: Self.noKept, windows: { [] })
 
         _ = wsl.answer(merging: windows)
         await wsl.settled()
@@ -145,7 +149,7 @@ struct WslHudTests {
         let wsl = WslHud(probe: FakeProbing([:], reading: reading), list: { running in
             await counter.count(running)
             return running ? [] : ["Ubuntu-26.04"]
-        }, interval: .seconds(3600), now: { clock.now })
+        }, interval: .seconds(3600), now: { clock.now }, kept: Self.noKept, windows: { [] })
 
         _ = wsl.answer(merging: windows)
         await wsl.settled()
@@ -180,7 +184,8 @@ struct WslHudTests {
     @Test func `should probe a running distro as soon as its switch is first set on`() async {
         let running = RunningList([])
         let probe = FakeProbing([:], reading: reading)
-        let wsl = WslHud(probe: probe, list: { $0 ? running.value : ["Ubuntu-26.04"] }, interval: .seconds(3600))
+        let wsl = WslHud(probe: probe, list: { $0 ? running.value : ["Ubuntu-26.04"] }, interval: .seconds(3600),
+                         kept: Self.noKept, windows: { [] })
         _ = wsl.answer(merging: windows)
         await wsl.settled()
         #expect(probe.calls.isEmpty)
@@ -210,7 +215,8 @@ struct WslHudTests {
         let clock = Clock()
         let running = RunningList(["Ubuntu-26.04"])
         let probe = FakeProbing([:], reading: reading)
-        let wsl = WslHud(probe: probe, list: { $0 ? running.value : ["Ubuntu-26.04"] }, interval: .seconds(3600), now: { clock.now })
+        let wsl = WslHud(probe: probe, list: { $0 ? running.value : ["Ubuntu-26.04"] }, interval: .seconds(3600), now: { clock.now },
+                         kept: Self.noKept, windows: { [] })
         _ = wsl.answer(merging: windows)
         await wsl.settled()
 
@@ -246,6 +252,109 @@ struct WslHudTests {
         #expect(WslHud.endAll(processes: wsl, wsl: URL(fileURLWithPath: #"C:\fake\wsl.exe"#),
                               probe: URL(fileURLWithPath: #"C:\cb\claudebar-probe"#), budget: 20) == -1)
         #expect(wsl.count == 1)
+    }
+
+    /// The plan's *The HUD reply's `wsl`*: the kept files behind
+    /// tests/wsl-reply.json give its `timeZone`, `leaderboard`, and each
+    /// distro's `sharedLogs`.
+    @Test func `should say in the reply Windows' zone, what the Leaderboard counts from WSL, and each distro's shared logs`() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cbw-hudkept-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let kept = WslKeptDays(folder: folder)
+        for entry in WslKeptDaysTests.replyEntries() { try kept.save(entry) }
+        let sample = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: Self.replySample)) as? [String: Any])
+        let now = WslKeptDaysTests.noon("2026-11-12", WslKeptDaysTests.calendar("Asia/Seoul"))
+        let wsl = WslHud(probe: FakeProbing([:], reading: reading), list: { $0 ? [] : ["Alpine", "Debian", "Ubuntu-26.04"] },
+                         interval: .seconds(3600), now: { now }, zone: { TimeZone(identifier: "Asia/Seoul")! }, kept: kept, windows: { [] })
+
+        _ = wsl.answer(merging: windows)
+        await wsl.settled()
+        let json = try wsl.json()
+
+        #expect(json["timeZone"] as? String == "Asia/Seoul")
+        #expect(json["timeZone"] as? String == sample["timeZone"] as? String)
+        #expect(try Self.board(json["leaderboard"]) == Self.board(sample["leaderboard"]))
+        let rows = try #require(json["distros"] as? [[String: Any]]), expected = try #require(sample["distros"] as? [[String: Any]])
+        #expect(rows.map { $0["name"] as? String } == expected.map { $0["name"] as? String })
+        for (row, want) in zip(rows, expected) {
+            #expect(try Self.shared(row["sharedLogs"]) == Self.shared(want["sharedLogs"]), "\(row["name"] ?? "")")
+        }
+    }
+
+    @Test func `should say no zone, and nothing counted from WSL, when Windows' zone has no name`() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cbw-hudkept-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let kept = WslKeptDays(folder: folder)
+        for entry in WslKeptDaysTests.replyEntries() { try kept.save(entry) }
+        let wsl = WslHud(probe: FakeProbing([:], reading: reading), list: { $0 ? [] : ["Debian", "Ubuntu-26.04"] },
+                         interval: .seconds(3600), zone: { TimeZone(secondsFromGMT: 19_800)! }, kept: kept, windows: { [] })
+
+        _ = wsl.answer(merging: windows)
+        await wsl.settled()
+        let json = try wsl.json()
+
+        #expect(json["timeZone"] is NSNull)
+        #expect(try Self.board(json["leaderboard"]).isEmpty)
+    }
+
+    @Test func `should count on the Leaderboard no provider whose kept days are older than 30 days or hold no tokens`() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cbw-hudkept-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let kept = WslKeptDays(folder: folder)
+        try kept.save(WslKeptDaysTests.entry("Debian", days: [WslKeptDaysTests.day("claude", "2026-10-13", 5),
+                                                              WslKeptDaysTests.day("codex", "2026-11-12", 0),
+                                                              WslKeptDaysTests.day("omp", "2026-10-14", 0, 0, 0, 1)]))
+        let now = WslKeptDaysTests.noon("2026-11-12", WslKeptDaysTests.calendar("Asia/Seoul"))
+        let wsl = WslHud(probe: FakeProbing([:], reading: reading), list: { $0 ? [] : ["Debian"] }, interval: .seconds(3600),
+                         now: { now }, zone: { TimeZone(identifier: "Asia/Seoul")! }, kept: kept, windows: { [] })
+
+        _ = wsl.answer(merging: windows)
+        await wsl.settled()
+
+        #expect(try Self.board(wsl.json()["leaderboard"]) == [Counting(distro: "Debian", providers: ["omp"])])
+    }
+
+    /// A distro's kept days counted in another zone than Windows' now are left
+    /// out; its row says which zone they were counted in, for Settings to say so.
+    @Test func `should say in a distro's row the zone its kept days were counted in, when they're left out for it`() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cbw-hudkept-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let kept = WslKeptDays(folder: folder)
+        try kept.save(WslKeptDaysTests.entry("Debian", zone: "Asia/Seoul", days: [WslKeptDaysTests.day("claude", "2026-11-11", 5)]))
+        try kept.save(WslKeptDaysTests.entry("Ubuntu-26.04", zone: "America/Los_Angeles", days: [WslKeptDaysTests.day("claude", "2026-11-11", 5)]))
+        func keptZones(_ zone: TimeZone) async throws -> [String: String] {
+            let wsl = WslHud(probe: FakeProbing([:], reading: reading), list: { $0 ? [] : ["Alpine", "Debian", "Ubuntu-26.04"] },
+                             interval: .seconds(3600), zone: { zone }, kept: kept, windows: { [] })
+            _ = wsl.answer(merging: windows)
+            await wsl.settled()
+            let rows = try #require(try wsl.json()["distros"] as? [[String: Any]])
+            #expect(rows.allSatisfy { $0.keys.contains("keptZone") })
+            return rows.reduce(into: [:]) { zones, row in
+                if let zone = row["keptZone"] as? String { zones[row["name"] as! String] = zone }
+            }
+        }
+
+        #expect(try await keptZones(TimeZone(identifier: "America/Los_Angeles")!) == ["Debian": "Asia/Seoul"])
+        #expect(try await keptZones(TimeZone(identifier: "Asia/Seoul")!) == ["Ubuntu-26.04": "America/Los_Angeles"])
+        #expect(try await keptZones(TimeZone(secondsFromGMT: 19_800)!) == [:])
+    }
+
+    private static var replySample: URL {
+        URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../tests/wsl-reply.json").standardized
+    }
+
+    private struct Counting: Equatable {
+        let distro: String
+        let providers: [String]
+    }
+
+    private static func board(_ value: Any?) throws -> [Counting] {
+        let rows = try #require(value as? [[String: Any]])
+        return try rows.map { Counting(distro: try #require($0["distro"] as? String), providers: try #require($0["providers"] as? [String])) }
+    }
+
+    private static func shared(_ value: Any?) throws -> [WslKeptDays.SharedLog] {
+        try ProbeReading.decoder().decode([WslKeptDays.SharedLog].self, from: JSONSerialization.data(withJSONObject: try #require(value)))
     }
 
     private func distros(_ wsl: WslHud) throws -> [[String: Any]] {
