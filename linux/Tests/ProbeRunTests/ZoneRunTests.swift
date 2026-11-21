@@ -90,7 +90,10 @@ extension ProbeRuns {
             #expect(!FileManager.default.fileExists(atPath: "/usr/share/zoneinfo/Asia/Calcutta"))
         }
 
-        @Test(arguments: ["Asia/Seoul", "America/Los_Angeles"])
+        /// `Etc/` names too: what the app sends for UTC, and for a whole-hour
+        /// offset when daylight saving's adjustment is off (`WslZone`); the
+        /// answer must name the zone as sent, or Windows keeps nothing.
+        @Test(arguments: ["Asia/Seoul", "America/Los_Angeles", "Etc/UTC", "Etc/GMT-9", "Etc/GMT+5"])
         func `should date each record in the zone the app sends`(zone: String) throws {
             let user = try ProbeUser()
             try writeRecords(user)
