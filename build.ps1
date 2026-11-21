@@ -49,10 +49,13 @@ $environment | ForEach-Object {
     if ($_ -match '^([^=]+)=(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] }
 }
 $native = Join-Path $root 'native'
+# Visual Studio 18's headers (MSVC 14.52) ask for Clang 22, newer than Swift 6.3's;
+# Microsoft's own switch lets an older Clang use them, as ClaudeBar's Windows CI does.
+$mismatch = '-Xcc', '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH', '-Xcxx', '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH'
 $clock = [Diagnostics.Stopwatch]::StartNew()
-swift build -c release --package-path $native; Assert-Exit 'swift build'
+swift build -c release --package-path $native @mismatch; Assert-Exit 'swift build'
 "swift build: {0:N0} s" -f $clock.Elapsed.TotalSeconds
-$bin = (swift build -c release --package-path $native --show-bin-path | Select-Object -Last 1).Trim()
+$bin = (swift build -c release --package-path $native @mismatch --show-bin-path | Select-Object -Last 1).Trim()
 Assert-Exit 'swift build --show-bin-path'
 
 # 2. Stage the DLL and the uploader, the Swift runtime DLLs they import (transitively), and the resource bundles.

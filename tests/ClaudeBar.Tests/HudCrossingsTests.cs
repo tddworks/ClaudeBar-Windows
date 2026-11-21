@@ -16,18 +16,28 @@ public sealed class HudCrossingsTests
         percent <= 0 ? "depleted" : percent < 20 ? "critical" : percent < 50 ? "warning" : "healthy", resetsAt ?? Reset);
 
     /// The crossings each reading notifies, one reading after another, from a first reading at `first`.
-    private static List<string> Notified(int first, params LineNow[] readings)
+    private static List<string> Notified(int first, params LineNow[] readings) => Notified(Line(first), readings);
+
+    /// The same from any first reading, every reading taken at `Now`.
+    private static List<string> Notified(LineNow first, params LineNow[] readings) =>
+        NotifiedAt(first, readings.Select(reading => (reading, Now)).ToArray());
+
+    /// The same, each reading taken at its own time.
+    private static List<string> NotifiedAt(LineNow first, params (LineNow Line, DateTimeOffset At)[] readings)
     {
-        var (_, kept) = HudCrossings.Next(new Dictionary<string, KeptLine>(), new[] { Line(first) }, Now);
+        var (_, kept) = HudCrossings.Next(new Dictionary<string, KeptLine>(), new[] { first }, Now);
         var notified = new List<string>();
-        foreach (var reading in readings)
+        foreach (var (reading, at) in readings)
         {
-            var (notify, next) = HudCrossings.Next(kept, new[] { reading }, Now);
+            var (notify, next) = HudCrossings.Next(kept, new[] { reading }, at);
             notified.AddRange(notify.Select(n => n.Crossing.ToString()));
             kept = next;
         }
         return notified;
     }
+
+    /// A limit with a status as ClaudeBar gives it under any policy, and the reset it reports, if any.
+    private static LineNow Status(string status, DateTimeOffset? resetsAt) => new("claude/5h", status, resetsAt);
 
     [TestMethod]
     public void Should_notify_when_a_limit_crosses_20_percent() =>
@@ -60,6 +70,30 @@ public sealed class HudCrossingsTests
     [TestMethod]
     public void Should_not_notify_a_limit_seen_for_the_first_time() =>
         CollectionAssert.AreEqual(Array.Empty<string>(), Notified(0));
+
+    // Under pace-aware, critical follows the time left until it runs out, so a pause and a resume
+    // flip a limit between warning and critical: it is told once per window, as the Mac's status
+    // alerts tell it (ClaudeBar #710, #711).
+
+    [TestMethod]
+    public void Should_not_notify_again_when_a_limit_told_before_it_had_a_reset_reports_its_first() =>
+        CollectionAssert.AreEqual(new[] { "Low" }, Notified(Status("healthy", null),
+            Status("critical", null), Status("warning", Reset), Status("critical", Reset)));
+
+    [TestMethod]
+    public void Should_not_start_a_window_at_a_reset_already_past() =>
+        CollectionAssert.AreEqual(new[] { "Low" }, Notified(Status("healthy", null),
+            Status("critical", null), Status("warning", Now.AddHours(-1)), Status("critical", Now.AddHours(-1))));
+
+    [TestMethod]
+    public void Should_notify_a_limit_with_no_reset_again_once_it_has_read_healthy() =>
+        CollectionAssert.AreEqual(new[] { "Low", "Low" }, Notified(Status("healthy", null),
+            Status("critical", null), Status("warning", null), Status("critical", null), Status("healthy", null), Status("critical", null)));
+
+    [TestMethod]
+    public void Should_start_a_new_window_once_its_reset_has_passed_though_the_limit_still_reports_it() =>
+        CollectionAssert.AreEqual(new[] { "Low", "Low" }, NotifiedAt(Status("warning", Reset),
+            (Status("critical", Reset), Now), (Status("warning", Reset), Reset.AddMinutes(1)), (Status("critical", Reset), Reset.AddMinutes(2))));
 
     [TestMethod]
     public void Should_keep_quiet_until_the_reset_once_asked()
