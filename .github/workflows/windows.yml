@@ -130,6 +130,19 @@ jobs:
           name: claudebar-probe-linux-x64
           path: linux-out/x64
 
+      # Before anything runs, the runner's home gets a Claude Code session log,
+      # as a person's PC has, and ClaudeBar's folders in it are written down:
+      # the last step checks no test read that log into them or changed them.
+      - name: Write down ClaudeBar's folders in the home, beside a session log
+        id: baseline
+        run: |
+          $session = Join-Path $env:USERPROFILE '.claude\projects\ci\session.jsonl'
+          New-Item -ItemType Directory -Force (Split-Path $session) | Out-Null
+          $at = (Get-Date).ToUniversalTime().AddDays(-3).ToString("yyyy-MM-dd'T'12:00:00.000'Z'")
+          Set-Content -LiteralPath $session -Encoding ascii -Value ('{"type":"assistant","timestamp":"' + $at + '","requestId":"req_ci","message":{"id":"msg_ci","model":"claude-sonnet-4-5","usage":{"input_tokens":1200,"output_tokens":300}}}')
+          & .\scripts\person-files.ps1 -Save "$env:RUNNER_TEMP\person-files.txt"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # build.ps1 loads MSVC into this process's environment. Keep the tests
       # in the same step, so SwiftPM uses that environment too. -Probe puts the
       # WSL probe in out/win-x64/linux/x64, so the zip and the packages carry it.
@@ -148,6 +161,15 @@ jobs:
       - name: Test the app's C#
         run: |
           dotnet test tests/ClaudeBar.Tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # A test run never touches the person's files (CONTRIBUTING, Tests and
+      # the person's files): here, the runner's. Also after a failed test run,
+      # which may have changed them before it failed.
+      - name: Check the tests left ClaudeBar's folders in the home alone
+        if: (success() || failure()) && steps.baseline.outcome == 'success'
+        run: |
+          & .\scripts\person-files.ps1 -Compare "$env:RUNNER_TEMP\person-files.txt"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # The published app, without debug symbols, for the release job.
