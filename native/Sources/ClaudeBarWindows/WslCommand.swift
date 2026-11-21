@@ -50,11 +50,14 @@ public enum WslCommand {
     /// One probe run, marked by `env` before the probe is exec'd, so the
     /// marker is in `/proc/<pid>/environ` of the probe and every child, and
     /// the person's `WSLENV` is untouched. `run` is 32 lowercase hex digits.
-    public static func probe(distro: String, probe: String, run: String, windowsRoots: String,
+    /// `timeZone`, Windows' zone as the distro names it (`WslZone.name`), goes
+    /// in `TZ` after the marker; without one the probe counts in the distro's own.
+    public static func probe(distro: String, probe: String, run: String, timeZone: String?, windowsRoots: String,
                              deadline: Int, logsOnly: Bool) -> [String] {
         let mode = logsOnly ? ["--logs-only", "--windows-roots", windowsRoots]
                             : ["--json", "--windows-roots", windowsRoots, "--deadline", String(deadline)]
-        return ["-d", distro, "-e", "env", "CLAUDEBAR_WSL_RUN=\(run)", probe] + mode
+        let zone = timeZone.map { ["TZ=\($0)"] } ?? []
+        return ["-d", distro, "-e", "env", "CLAUDEBAR_WSL_RUN=\(run)"] + zone + [probe] + mode
     }
 
     /// Ends the processes of one run (`target` its id), or of every run

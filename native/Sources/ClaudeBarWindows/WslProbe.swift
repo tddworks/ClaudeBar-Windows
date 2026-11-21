@@ -1,4 +1,5 @@
 import ClaudeBarShared
+import DataSources
 import Foundation
 import Providers
 import WinSDK
@@ -82,6 +83,8 @@ public final class WslProbe: WslProbing, @unchecked Sendable {
     private let wsl: URL
     private let processes: any WslProcesses
     private let answerWindow: Duration
+    private let zone: @Sendable () -> TimeZone
+    private let now: @Sendable () -> Date
     private let lock = NSLock()
     /// Each distro's Linux paths of the probe and the roots folder, asked once per start.
     private var linuxPaths: [String: (probe: String, folder: String)] = [:]
@@ -94,15 +97,21 @@ public final class WslProbe: WslProbing, @unchecked Sendable {
     /// Each `wslpath`, list and `--end` gets this long.
     static let stepTimeout: Duration = .seconds(15)
 
+    /// `zone`: Windows' zone, handed to the probe by its tzdata name
+    /// (`WslZone`), read once per run. `now`: when a run answers.
     public init(probe: URL = WslProbe.bundled, folder: URL = WslProbe.folder, deadline: Int = ProbeTiming.deadline,
                 wsl: URL = WslProbe.systemWsl,
-                processes: any WslProcesses = SystemWslProcesses(), answerWindow: Duration = .seconds(90)) {
+                processes: any WslProcesses = SystemWslProcesses(), answerWindow: Duration = .seconds(90),
+                zone: @escaping @Sendable () -> TimeZone = DataSources.timeZone,
+                now: @escaping @Sendable () -> Date = Date.init) {
         self.probe = probe
         self.folder = folder
         self.deadline = deadline
         self.wsl = wsl
         self.processes = processes
         self.answerWindow = answerWindow
+        self.zone = zone
+        self.now = now
     }
 
     public func run(distro: String, logsOnly: Bool) async -> Result<ProbeReading, WslFailure> {
@@ -140,6 +149,7 @@ public final class WslProbe: WslProbing, @unchecked Sendable {
         }
 
         let run = WslCommand.newRun()
+        let name = WslZone.name(for: zone(), at: now())
         let roots: URL
         do {
             let windows = WslWindowsRoots.make(distro: distro, definitions: ProviderCatalog().detect(),
@@ -151,7 +161,7 @@ public final class WslProbe: WslProbing, @unchecked Sendable {
         }
         defer { try? FileManager.default.removeItem(at: roots) }
 
-        let arguments = WslCommand.probe(distro: distro, probe: paths.probe, run: run,
+        let arguments = WslCommand.probe(distro: distro, probe: paths.probe, run: run, timeZone: name,
                                          windowsRoots: paths.folder + "/" + roots.lastPathComponent,
                                          deadline: deadline, logsOnly: logsOnly)
         let running: any WslRunning
