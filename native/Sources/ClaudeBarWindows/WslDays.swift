@@ -77,25 +77,37 @@ public final class WslDays {
     /// The kept days as they count now, of `range` as `calendar` labels it;
     /// in fresh mode after a `--logs-only` run in each running distro that's
     /// on, each under its own mutex. A distro that can't be read, stopped,
-    /// switched off or removed keeps the days it had.
+    /// switched off or removed keeps the days it had; in fresh mode the log
+    /// says so for each one with a day in `range`.
     public func days(in range: DateRange, calendar: Calendar) async -> [LoginDays] {
-        if fresh, let running = await list(true) {
-            let on = switches()
-            let distros = WslCommand.readable(running).filter { on[$0] != false }
-            await withTaskGroup(of: (String, WslFailure?).self) { [probe] group in
-                for distro in distros {
-                    group.addTask {
-                        if case .failure(let failure) = await probe.run(distro: distro, logsOnly: true) { return (distro, failure) }
-                        return (distro, nil)
+        // Why a distro wasn't read in fresh mode; nil when it was, or when not fresh.
+        var unread: (String) -> String? = { _ in nil }
+        if fresh {
+            if let running = await list(true) {
+                let on = switches()
+                let distros = WslCommand.readable(running).filter { on[$0] != false }
+                await withTaskGroup(of: (String, WslFailure?).self) { [probe] group in
+                    for distro in distros {
+                        group.addTask {
+                            if case .failure(let failure) = await probe.run(distro: distro, logsOnly: true) { return (distro, failure) }
+                            return (distro, nil)
+                        }
+                    }
+                    for await (distro, failure) in group {
+                        if let failure { log("Leaderboard: WSL \(distro): \(failure.message); its kept days go") }
                     }
                 }
-                for await (distro, failure) in group {
-                    if let failure { log("Leaderboard: WSL \(distro): \(failure.message); its kept days go") }
-                }
+                unread = { distro in distros.contains(distro) ? nil : on[distro] == false ? "switched off" : "not running" }
+            } else {
+                unread = { _ in "the running distros couldn't be listed" }
             }
         }
         let counted = WslKeptDays.current(kept.all(), zone: WslZone.name(for: zone(), at: now()), windows: windows())
         for line in counted.leftOut { log("Leaderboard: " + line) }
-        return WslKeptDays.logins(counted.entries, in: range, calendar: calendar)
+        return counted.entries.flatMap { entry -> [LoginDays] in
+            let logins = WslKeptDays.logins([entry], in: range, calendar: calendar)
+            if !logins.isEmpty, let why = unread(entry.distro) { log("Leaderboard: WSL \(entry.distro): \(why); its kept days go") }
+            return logins
+        }
     }
 }
