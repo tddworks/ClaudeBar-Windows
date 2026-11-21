@@ -26,9 +26,10 @@ struct WslProbeTests {
         try Data("ELF".utf8).write(to: probeFile)
     }
 
-    private func probe(_ wsl: FakeWsl, deadline: Int = 60, answerWindow: Duration = .seconds(90)) -> WslProbe {
+    private func probe(_ wsl: FakeWsl, deadline: Int = 60, answerWindow: Duration = .seconds(90),
+                       zone: TimeZone = TimeZone(identifier: "Asia/Seoul")!) -> WslProbe {
         WslProbe(probe: probeFile, folder: rootsFolder, deadline: deadline, wsl: URL(fileURLWithPath: #"C:\fake\wsl.exe"#),
-                 processes: wsl, answerWindow: answerWindow)
+                 processes: wsl, answerWindow: answerWindow, zone: { zone })
     }
 
     @Test func `should read a good answer, asking wslpath once, the run marked and its roots file gone afterwards`() async throws {
@@ -49,9 +50,34 @@ struct WslProbeTests {
         #expect(lines.count == 2)
         let run = try #require(wsl.runs.first)
         #expect(run.count == 32 && run.allSatisfy { "0123456789abcdef".contains($0) })
-        #expect(lines[0] == "start -d \(distro) -e env CLAUDEBAR_WSL_RUN=\(run) /mnt/c/cb/linux/x64/claudebar-probe --json --windows-roots /mnt/c/cb/roots/windows-roots-\(run).json --deadline 60")
+        #expect(lines[0] == "start -d \(distro) -e env CLAUDEBAR_WSL_RUN=\(run) TZ=Asia/Seoul /mnt/c/cb/linux/x64/claudebar-probe --json --windows-roots /mnt/c/cb/roots/windows-roots-\(run).json --deadline 60")
         #expect(wsl.rootsSeen == [true, true])
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: rootsFolder.path)) ?? []).isEmpty)
+    }
+
+    /// Windows' zone, as the distro's tzdata names it (`WslZone`), after the
+    /// marker, in both modes; none when no name counts as it does, so the
+    /// probe counts in the distro's own.
+    @Test func `should launch the probe in Windows' zone by its tzdata name, and with no TZ when it has none`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try makeProbeFile()
+        let cases: [(zone: TimeZone, logsOnly: Bool, between: String)] = [
+            (TimeZone(identifier: "Asia/Calcutta")!, false, " TZ=Asia/Kolkata "),
+            (TimeZone(identifier: "Asia/Calcutta")!, true, " TZ=Asia/Kolkata "),
+            (TimeZone(secondsFromGMT: 19_800)!, false, " "),
+            (TimeZone(secondsFromGMT: 19_800)!, true, " "),
+        ]
+        for test in cases {
+            let wsl = FakeWsl(rootsFolder: rootsFolder, answer: .output(WslOutput(stdout: try Self.sample(), stderr: "", exit: 0)))
+
+            _ = await probe(wsl, zone: test.zone).run(distro: distro, logsOnly: test.logsOnly)
+
+            let run = try #require(wsl.runs.first)
+            let line = try #require(wsl.calls.first { $0.hasPrefix("start ") })
+            #expect(line.hasPrefix("start -d \(distro) -e env CLAUDEBAR_WSL_RUN=\(run)\(test.between)/mnt/c/cb/linux/x64/claudebar-probe "),
+                    "\(test.zone.identifier), logsOnly \(test.logsOnly): \(line)")
+            #expect(line.contains(test.logsOnly ? " --logs-only " : " --json "))
+        }
     }
 
     /// A CLI that never answers is stopped at its timeout plus the start
