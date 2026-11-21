@@ -191,6 +191,23 @@ struct WslProbeTests {
         #expect(result == .failure(WslFailure("ClaudeBar's WSL reader is from another version")))
     }
 
+    /// A probe left from phase 1 answers without `logRoots`, which this
+    /// version's `ProbeReading` needs: it's another version's answer, not a
+    /// broken one, and nothing of it is kept.
+    @Test func `should refuse a phase 1 probe's answer, without log roots, as another version's, and keep nothing`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try makeProbeFile()
+        let wsl = FakeWsl(rootsFolder: rootsFolder, answer: .output(try Self.answer {
+            $0["version"] = "0.1.17"
+            $0["logRoots"] = nil
+        }))
+
+        let result = await probe(wsl).run(distro: distro, logsOnly: false)
+
+        #expect(result == .failure(WslFailure("ClaudeBar's WSL reader is from another version")))
+        #expect(kept.all().isEmpty)
+    }
+
     @Test func `should say there's no reader when the build has none`() async throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         let wsl = FakeWsl(rootsFolder: rootsFolder, answer: .never)
