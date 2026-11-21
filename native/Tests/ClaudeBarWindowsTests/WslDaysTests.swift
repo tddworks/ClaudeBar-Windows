@@ -16,8 +16,8 @@ struct WslDaysTests {
     private var kept: WslKeptDays { WslKeptDays(folder: folder.appendingPathComponent("days", isDirectory: true)) }
     private let calendar = WslKeptDaysTests.calendar("Asia/Seoul")
     private let lines = Lines()
-    private static let seoul = TimeZone(identifier: "Asia/Seoul")!
-    private static let now = WslKeptDaysTests.noon("2026-11-12", WslKeptDaysTests.calendar("Asia/Seoul"))
+    private nonisolated static let seoul = TimeZone(identifier: "Asia/Seoul")!
+    private nonisolated static let now = WslKeptDaysTests.noon("2026-11-12", WslKeptDaysTests.calendar("Asia/Seoul"))
 
     private var window: DateRange { WslKeptDaysTests.window(endingOn: "2026-11-12", calendar) }
 

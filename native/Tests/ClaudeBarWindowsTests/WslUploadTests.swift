@@ -20,7 +20,7 @@ struct WslUploadTests {
     private var kept: WslKeptDays { WslKeptDays(folder: folder.appendingPathComponent("days", isDirectory: true)) }
     private let probe: RecordingProbe
     private let calendar = WslKeptDaysTests.calendar("UTC")
-    private static let utc = TimeZone(identifier: "UTC")!
+    private nonisolated static let utc = TimeZone(identifier: "UTC")!
 
     init() {
         probe = RecordingProbe(kept: WslKeptDays(folder: folder.appendingPathComponent("days", isDirectory: true)))
@@ -131,7 +131,8 @@ struct WslUploadTests {
         pc.set([9: 100], calendar)
         answer("Ubuntu", at: Self.at(9, 20), [9: 10])
         #expect(await upload(at: Self.at(9, 20), running: ["Ubuntu"]) == [Self.claude(9, 110)])
-        #expect(await upload(at: Self.at(10, 9)) == [])
+        // The next day, day 9 is the last upload's and goes as read; after it, an earlier day.
+        #expect(await upload(at: Self.at(10, 9)) == [Self.claude(9, 110)])
 
         answer("Ubuntu", at: Self.at(11, 9), [9: 30])
         #expect(await upload(at: Self.at(11, 9), running: ["Ubuntu"]) == [Self.claude(9, 130)])
@@ -143,6 +144,7 @@ struct WslUploadTests {
         pc.set([9: 100], calendar)
         answer("Ubuntu", at: Self.at(9, 20), [9: 10])
         #expect(await upload(at: Self.at(9, 20), running: ["Ubuntu"]) == [Self.claude(9, 110)])
+        #expect(await upload(at: Self.at(10, 9)) == [Self.claude(9, 110)])
 
         try FileManager.default.removeItem(at: folder.appendingPathComponent("days"))
         pc.set([9: 100, 11: 5], calendar)
