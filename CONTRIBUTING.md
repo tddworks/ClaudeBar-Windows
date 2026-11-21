@@ -46,6 +46,32 @@ never to the app's `%LOCALAPPDATA%\ClaudeBar\Logs\ClaudeBar.log`: a test that ma
 or a read fail on purpose would otherwise read there as the app's error. ClaudeBar's
 package decides this ([tddworks/ClaudeBar#690](https://github.com/tddworks/ClaudeBar/issues/690)).
 
+### Tests and the person's files
+
+A test run never reads or writes the person's own: their token logs, ClaudeBar's
+`%USERPROFILE%\.claudebar` (the kept days, the scan caches), `%LOCALAPPDATA%\ClaudeBar`
+(`settings.json`, the log, `app.json`), the Credential Manager key, the hourly task, or
+the Leaderboard server. A test builds `Client` with every part it uses stood in for: a
+server, a key store, a `SettingsFile` in a folder of its own, and token logs from a home
+of its own, `ProviderTokenLogs(home: folder)`, which reads the logs under `folder` (a
+session log a test writes there, or none) and keeps what it read in `folder\.claudebar`.
+`ProviderTokenLogs()` without a home, and `Client()`, are the app's and the uploader's.
+
+CI checks it: before the build it writes a Claude Code session log into the runner's
+home, as a person's PC has one, and after the tests, failed or not, it fails if anything
+under the runner's `.claudebar` or `%LOCALAPPDATA%\ClaudeBar` was added, removed or
+changed. The same on a PC, where they are your own:
+
+```powershell
+.\scripts\person-files.ps1 -Save $env:TEMP\person-files.txt
+swift test --package-path native -Xcc -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH -Xcxx -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+dotnet test tests/ClaudeBar.Tests
+.\scripts\person-files.ps1 -Compare $env:TEMP\person-files.txt
+```
+
+A running ClaudeBar writes there too, a line in its log at most during a run; `-Compare`
+names that file as well.
+
 ## Releases
 
 A release is a tag. Set the version in both `native/Sources/ClaudeBarShared/ClientVersion.swift`
