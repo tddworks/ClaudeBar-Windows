@@ -142,6 +142,7 @@ extension ProbeRuns {
         func `should start a CLI with the TZ it counts in`() throws {
             let user = try ProbeUser()
             try envWritingClaude(user)
+            try writeRecords(user)
 
             let result = try user.run(["--json", "--windows-roots", try user.rootsFile(), "--deadline", "15"],
                                       marker: ProbeUser.runId(), environment: ["TZ=America/Los_Angeles"])
