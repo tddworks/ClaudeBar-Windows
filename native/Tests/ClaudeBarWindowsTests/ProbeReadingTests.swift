@@ -16,10 +16,11 @@ struct ProbeReadingTests {
         let reading = try ProbeReading.decoder().decode(ProbeReading.self, from: Data(contentsOf: sample))
 
         #expect(reading.version == ClientVersion.version, "tests/wsl-probe.json says the version the app runs, or WslProbe turns it away")
-        #expect(reading.days.map(\.day) == ["2026-11-03", "2026-11-04"])
+        #expect(reading.days?.map(\.day) == ["2026-11-03", "2026-11-04"])
         #expect(reading.hud?.reading.tools.map(\.id) == ["claude"])
         #expect(reading.skipped.map(\.reason) == [.shared, .uncheckable])
         #expect(reading.environmentImport.state == .imported)
+        #expect(reading.logRoots == [.init(provider: "omp", windowsPath: #"\\wsl.localhost\Ubuntu-26.04\home\me\.omp\agent\sessions"#)])
     }
 
     @Test func `should write the sample back byte for byte`() throws {
@@ -41,5 +42,19 @@ struct ProbeReadingTests {
 
         #expect(back == reading)
         #expect(back.hud == nil)
+    }
+
+    @Test func `should read an answer whose days were refused, with the key left out or null`() throws {
+        let reading = ProbeReading(version: ClientVersion.version, hud: nil, days: nil, tools: [], skipped: [],
+                                   timeZone: "Asia/Seoul", timedOut: false,
+                                   environmentImport: .init(state: .imported, names: [], reason: nil),
+                                   diagnostics: ["no time zone data for Asia/Kolkata (/usr/share/zoneinfo/Asia/Kolkata)"])
+        let written = try ProbeReading.encoder().encode(reading)
+        var object = try #require(try JSONSerialization.jsonObject(with: written) as? [String: Any])
+
+        #expect(try ProbeReading.decoder().decode(ProbeReading.self, from: written) == reading)
+        #expect(object["days"] == nil)
+        object["days"] = NSNull()
+        #expect(try ProbeReading.decoder().decode(ProbeReading.self, from: JSONSerialization.data(withJSONObject: object)).days == nil)
     }
 }

@@ -65,6 +65,17 @@ public struct ProbeReading: Codable, Equatable, Sendable {
         }
     }
 
+    /// A log root a provider's days were read from, in Windows form.
+    public struct LogRoot: Codable, Equatable, Sendable {
+        public let provider: String
+        public let windowsPath: String
+
+        public init(provider: String, windowsPath: String) {
+            self.provider = provider
+            self.windowsPath = windowsPath
+        }
+    }
+
     /// The client's version (`ClientVersion`), so the app can refuse a
     /// probe of another version.
     public let version: String
@@ -72,14 +83,21 @@ public struct ProbeReading: Codable, Equatable, Sendable {
     /// nil with `--logs-only`.
     public let hud: HudMonitor.Answer?
     /// ClaudeBar's own days, made in the probe by `DailyTokens.summed` with
-    /// the distro's calendar: day labels and counts, never dates.
-    public let days: [DailyTokens]
+    /// the distro's calendar: day labels and counts, never dates. nil when
+    /// the probe couldn't count in the zone the app sent (TZ refused, or the
+    /// kept days couldn't be started over); left out of the JSON then.
+    public let days: [DailyTokens]?
     /// Each tool found, and where.
     public let tools: [Tool]
     /// Each source left out as shared with Windows, or as one it couldn't check.
     public let skipped: [Skip]
-    /// The distro's time zone (`Asia/Seoul`).
+    /// The zone the days were counted in: the one the app sent in TZ, or
+    /// the distro's own when there was none or it was refused (`Asia/Seoul`).
     public let timeZone: String
+    /// Each log root `days` was read from, in Windows form
+    /// (docs/plans/2026-11-03-wsl-design.md, Kept days count only while they
+    /// still mean what they did).
+    public let logRoots: [LogRoot]
     /// The deadline passed before every login was read: the HUD is as read
     /// by then, those still reading marked `reading`.
     public let timedOut: Bool
@@ -88,13 +106,15 @@ public struct ProbeReading: Codable, Equatable, Sendable {
     /// that couldn't be mapped.
     public let diagnostics: [String]
 
-    public init(version: String, hud: HudMonitor.Answer?, days: [DailyTokens], tools: [Tool], skipped: [Skip],
-                timeZone: String, timedOut: Bool, environmentImport: EnvironmentImport, diagnostics: [String]) {
+    public init(version: String, hud: HudMonitor.Answer?, days: [DailyTokens]?, tools: [Tool], skipped: [Skip],
+                logRoots: [LogRoot] = [], timeZone: String, timedOut: Bool,
+                environmentImport: EnvironmentImport, diagnostics: [String]) {
         self.version = version
         self.hud = hud
         self.days = days
         self.tools = tools
         self.skipped = skipped
+        self.logRoots = logRoots
         self.timeZone = timeZone
         self.timedOut = timedOut
         self.environmentImport = environmentImport

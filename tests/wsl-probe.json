@@ -112,6 +112,12 @@
       "worst" : "warning"
     }
   },
+  "logRoots" : [
+    {
+      "provider" : "omp",
+      "windowsPath" : "\\\\wsl.localhost\\Ubuntu-26.04\\home\\me\\.omp\\agent\\sessions"
+    }
+  ],
   "skipped" : [
     {
       "kind" : "credentials",
