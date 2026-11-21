@@ -97,6 +97,34 @@ struct WslDaysTests {
         #expect(summed(logins) == [WslKeptDaysTests.day("claude", "2026-11-11", 7)])
     }
 
+    /// The hourly upload's log says whose kept days went without a read
+    /// (a distro with no day in the window adds nothing, and isn't named).
+    @Test func `should say whose kept days go unread: a stopped distro's, a switched-off one's, every one's when the list fails`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try kept.save(Self.entry("Alpine", 3))
+        try kept.save(Self.entry("Debian", 5))
+        try kept.save(WslKeptDaysTests.entry("Old", days: [WslKeptDaysTests.day("claude", "2026-09-01", 9)]))
+        try kept.save(Self.entry("Ubuntu-26.04", 7))
+        let probe = RecordingProbe(kept: kept, answers: ["Ubuntu-26.04": .save(Self.entry("Ubuntu-26.04", 8))])
+
+        let logins = await days(fresh: true, probe: probe, running: ["Ubuntu-26.04", "Alpine"],
+                                switches: ["Alpine": false]).days(in: window, calendar: calendar)
+
+        #expect(summed(logins) == [WslKeptDaysTests.day("claude", "2026-11-11", 16)])
+        #expect(lines.all == ["Leaderboard: WSL Alpine: switched off; its kept days go",
+                              "Leaderboard: WSL Debian: not running; its kept days go"])
+
+        let unlisted = Lines()
+        _ = await WslDays(fresh: true, probe: probe, kept: kept, list: { _ in nil }, switches: { [:] }, zone: { Self.seoul },
+                          now: { Self.now }, windows: { [] }, log: { [unlisted] in unlisted.add($0) }).days(in: window, calendar: calendar)
+        #expect(unlisted.all == ["Alpine", "Debian", "Ubuntu-26.04"].map { "Leaderboard: WSL \($0): the running distros couldn't be listed; its kept days go" })
+
+        let stale = Lines()
+        _ = await WslDays(fresh: false, probe: probe, kept: kept, list: { _ in [] }, switches: { [:] }, zone: { Self.seoul },
+                          now: { Self.now }, windows: { [] }, log: { [stale] in stale.add($0) }).days(in: window, calendar: calendar)
+        #expect(stale.all.isEmpty, "the app's own uploads and its preview read the kept days as they are, and say nothing")
+    }
+
     @Test func `should leave out days kept in another zone than Windows' now, and all of them when it has no name`() async throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         try kept.save(Self.entry("Ubuntu-26.04", 7))
