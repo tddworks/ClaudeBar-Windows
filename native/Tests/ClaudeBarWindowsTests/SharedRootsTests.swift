@@ -96,4 +96,33 @@ struct SharedRootsTests {
         #expect(SharedRoots.skips(provider: "claude", roots: [.init(kind: .logs, windowsPath: nil)], windows: windows)
                 == [.init(provider: "claude", kind: .logs, windowsPath: nil, reason: .uncheckable)])
     }
+
+    private let countedRoots: [SharedRoots.WslRoot] = [
+        .init(kind: .logs, windowsPath: #"\\wsl.localhost\Ubuntu-26.04\home\me\.claude\projects"#),
+        .init(kind: .logs, windowsPath: #"D:\work\.claude\projects"#),
+        .init(kind: .credentials, windowsPath: #"\\wsl.localhost\Ubuntu-26.04\home\me\.claude"#),
+    ]
+
+    @Test func `should count every log root of a provider, never its credentials`() {
+        #expect(SharedRoots.counted(provider: "claude", roots: countedRoots, skips: []) == [
+            .init(provider: "claude", windowsPath: #"\\wsl.localhost\Ubuntu-26.04\home\me\.claude\projects"#),
+            .init(provider: "claude", windowsPath: #"D:\work\.claude\projects"#),
+        ])
+    }
+
+    @Test(arguments: [ProbeReading.SkipReason.shared, .uncheckable])
+    func `should count no log root of a provider whose logs were left out`(reason: ProbeReading.SkipReason) {
+        let skip = ProbeReading.Skip(provider: "claude", kind: .logs, windowsPath: nil, reason: reason)
+        #expect(SharedRoots.counted(provider: "claude", roots: countedRoots, skips: [skip]).isEmpty)
+    }
+
+    @Test func `should count the log roots when only a login was left out`() {
+        let skip = ProbeReading.Skip(provider: "claude", kind: .credentials, windowsPath: #"C:\Users\me\.claude"#, reason: .shared)
+        #expect(SharedRoots.counted(provider: "claude", roots: countedRoots, skips: [skip]).count == 2)
+    }
+
+    @Test func `should leave a provider's logs in when another provider's were left out`() {
+        let skip = ProbeReading.Skip(provider: "codex", kind: .logs, windowsPath: nil, reason: .uncheckable)
+        #expect(SharedRoots.counted(provider: "claude", roots: countedRoots, skips: [skip]).count == 2)
+    }
 }
