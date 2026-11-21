@@ -132,7 +132,7 @@ public sealed class WslSettingsTests
 
         var row = Row(Wsl(Distro(reading: reading)));
 
-        CollectionAssert.AreEqual(new[] { "ClaudeBar couldn't start Ubuntu-26.04's kept days over for Asia/Seoul (/home/me/.claudebar/usage-history/claude.json: Permission denied), so its days aren't on the Leaderboard; once ClaudeBar can change that file, its next run counts them" }, row.Notes.ToList());
+        CollectionAssert.AreEqual(new[] { "ClaudeBar couldn't start Ubuntu-26.04's kept days over for Asia/Seoul (/home/me/.claudebar/usage-history/claude.json: Permission denied), so it adds no new days to the Leaderboard; once ClaudeBar can change that file, its next run counts them" }, row.Notes.ToList());
     }
 
     [TestMethod]
@@ -146,7 +146,7 @@ public sealed class WslSettingsTests
 
         var row = Row(Wsl(Distro(reading: reading)));
 
-        CollectionAssert.AreEqual(new[] { "ClaudeBar couldn't start Ubuntu-26.04's kept days over for Asia/Seoul, so its days aren't on the Leaderboard; once ClaudeBar can change its kept days, its next run counts them" }, row.Notes.ToList());
+        CollectionAssert.AreEqual(new[] { "ClaudeBar couldn't start Ubuntu-26.04's kept days over for Asia/Seoul, so it adds no new days to the Leaderboard; once ClaudeBar can change its kept days, its next run counts them" }, row.Notes.ToList());
     }
 
     [TestMethod]
@@ -179,7 +179,7 @@ public sealed class WslSettingsTests
 
         var row = Row(Wsl("America/Los_Angeles", distro));
 
-        CollectionAssert.AreEqual(new[] { "Ubuntu-26.04's kept days were counted in Asia/Seoul, not Windows' zone America/Los_Angeles, so they aren't on the Leaderboard until it runs again" }, row.Notes.ToList());
+        CollectionAssert.AreEqual(new[] { "Ubuntu-26.04's kept days were counted in Asia/Seoul, not Windows' zone America/Los_Angeles, so they aren't on the Leaderboard until a run counts its days in America/Los_Angeles" }, row.Notes.ToList());
     }
 
     [TestMethod]
@@ -196,13 +196,13 @@ public sealed class WslSettingsTests
         CollectionAssert.AreEqual(new[]
         {
             "No time zone data for Asia/Kolkata in Ubuntu-26.04, so it adds no new days to the Leaderboard; installing tzdata in it fixes this",
-            "Ubuntu-26.04's kept days were counted in Asia/Seoul, not Windows' zone Asia/Kolkata, so they aren't on the Leaderboard until it runs again",
+            "Ubuntu-26.04's kept days were counted in Asia/Seoul, not Windows' zone Asia/Kolkata, so they aren't on the Leaderboard until a run counts its days in Asia/Kolkata",
         }, Row(Wsl("Asia/Kolkata", (JsonObject)distro.DeepClone())).Notes.ToList());
         CollectionAssert.AreEqual(new[] { WslSettings.NoZoneName }, Row(Wsl((string?)null, (JsonObject)distro.DeepClone())).Notes.ToList());
     }
 
     [TestMethod]
-    public void Should_say_only_that_kept_days_couldn_t_start_over_when_they_are_another_zone_s_too()
+    public void Should_say_both_when_kept_days_couldn_t_start_over_and_are_another_zone_s()
     {
         var reading = Sample(reading =>
         {
@@ -212,7 +212,11 @@ public sealed class WslSettingsTests
         var distro = Distro(reading: reading);
         distro["keptZone"] = "America/Los_Angeles";
 
-        CollectionAssert.AreEqual(new[] { "ClaudeBar couldn't start Ubuntu-26.04's kept days over for Asia/Seoul (/home/me/.claudebar/usage-history/claude.json: Permission denied), so its days aren't on the Leaderboard; once ClaudeBar can change that file, its next run counts them" }, Row(Wsl(distro)).Notes.ToList());
+        CollectionAssert.AreEqual(new[]
+        {
+            "ClaudeBar couldn't start Ubuntu-26.04's kept days over for Asia/Seoul (/home/me/.claudebar/usage-history/claude.json: Permission denied), so it adds no new days to the Leaderboard; once ClaudeBar can change that file, its next run counts them",
+            "Ubuntu-26.04's kept days were counted in America/Los_Angeles, not Windows' zone Asia/Seoul, so they aren't on the Leaderboard until a run counts its days in Asia/Seoul",
+        }, Row(Wsl(distro)).Notes.ToList());
     }
 
     [TestMethod]

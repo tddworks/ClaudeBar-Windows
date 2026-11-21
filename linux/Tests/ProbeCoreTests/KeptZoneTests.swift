@@ -155,6 +155,22 @@ struct KeptZoneTests {
         #expect(recorded == "Asia/Seoul")
     }
 
+    /// `readdir` returns nil at the end and on an error alike; only `errno` tells them apart.
+    @Test
+    func `should say it couldn't read the ledger to its end`() throws {
+        defer { try? FileManager.default.removeItem(at: home) }
+        try makeLedger()
+
+        #expect(throws: KeptZone.Failure(path: ledger.path, reason: String(cString: strerror(EIO)))) {
+            try KeptZone.names(in: ledger.path) { _ in
+                errno = EIO
+                return nil
+            }
+        }
+        #expect(try KeptZone.names(in: ledger.path).sorted() == ["claude.json", "codex.json", "scans"])
+        #expect(try KeptZone.names(in: home.appendingPathComponent("none").path).isEmpty)
+    }
+
     @Test
     func `should name the distro's own zone from its localtime link`() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("localtime-\(UUID().uuidString)")
