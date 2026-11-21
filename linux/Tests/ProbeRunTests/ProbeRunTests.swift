@@ -83,7 +83,7 @@ extension ProbeRuns {
             #expect(reading.timedOut)
             #expect(user.exists("claude-ran"))
             #expect(reading.hud?.problems.contains { $0.id == "claude" && $0.kind == "reading" } == true)
-            #expect(reading.days.filter { $0.provider == "claude" }.map(\.day) == [Records.label(1), Records.label(0)])
+            #expect((reading.days ?? []).filter { $0.provider == "claude" }.map(\.day) == [Records.label(1), Records.label(0)])
             #expect(reading.tools.contains { $0.id == "claude" && $0.cli == user.home.path + "/.local/bin/claude" && $0.logs })
             #expect(EndRun.processes(carrying: .run(id)).isEmpty)
             if let pid = user.read("claude-\(id).pid").flatMap({ pid_t($0) }) { #expect(ProbeUser.isGone(pid)) }
@@ -105,7 +105,7 @@ extension ProbeRuns {
             #expect(reading.hud == nil)
             #expect(!reading.timedOut)
             #expect(reading.days == (try full.reading()).days)
-            #expect(!reading.days.isEmpty)
+            #expect(reading.days?.isEmpty == false)
             #expect(!user.exists("claude-ran"))
         }
 
