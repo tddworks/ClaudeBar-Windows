@@ -136,6 +136,20 @@ public sealed class WslSettingsTests
     }
 
     [TestMethod]
+    public void Should_name_no_file_when_the_kept_days_diagnostic_has_no_detail()
+    {
+        var reading = Sample(reading =>
+        {
+            reading.Remove("days");
+            reading["diagnostics"] = new JsonArray("couldn't start the kept days over for Asia/Seoul");
+        });
+
+        var row = Row(Wsl(Distro(reading: reading)));
+
+        CollectionAssert.AreEqual(new[] { "ClaudeBar couldn't start Ubuntu-26.04's kept days over for Asia/Seoul, so its days aren't on the Leaderboard; once ClaudeBar can change its kept days, its next run counts them" }, row.Notes.ToList());
+    }
+
+    [TestMethod]
     public void Should_say_when_Windows_zone_has_no_name_Linux_knows()
     {
         var row = Row(Wsl((string?)null, Distro()));
