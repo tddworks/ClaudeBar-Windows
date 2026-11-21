@@ -14,7 +14,7 @@ Many people on Windows run Claude Code, Codex and the rest inside WSL. Their sig
 ## Phases
 
 1. **The HUD, Limits and Settings for WSL, and the probe.** Builds on ClaudeBar as pinned today. The uploader sends this PC's days only, as now.
-2. **WSL days on the Leaderboard.** Builds on ClaudeBar v0.5.29 (`e999eb90`), which has the one change it waited for (*Late days*, below, merged as #703). The probe counts a distro's days in Windows' zone (*The time zone*), so ClaudeBar labels them as it labels this PC's, with no other change. No WSL day was sent before then, so none can shrink when it comes. Plan: [2026-11-12-wsl-phase2.md](2026-11-12-wsl-phase2.md).
+2. **WSL days on the Leaderboard.** Builds on ClaudeBar v0.5.29 (`aa88b0f4`), which has the one change it waited for (*Late days*, below, merged as #703). The probe counts a distro's days in Windows' zone (*The time zone*), so ClaudeBar labels them as it labels this PC's, with no other change. No WSL day was sent before then, so none can shrink when it comes. Plan: [2026-11-12-wsl-phase2.md](2026-11-12-wsl-phase2.md).
 
 Two changes go to ClaudeBar first, as problem-first issues:
 
