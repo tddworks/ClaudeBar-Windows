@@ -236,7 +236,7 @@ private struct Commands: CLIExecutor {
 }
 
 /// A clock whose sleep lasts until the monitor stops: one background tick per test.
-private struct Parked: Monitoring.Clock {
+private struct Parked: Clock {
     func sleep(for duration: Duration) async throws { try await Task.sleep(for: .seconds(86_400)) }
     func sleep(nanoseconds: UInt64) async throws { try await Task.sleep(for: .seconds(86_400)) }
 }

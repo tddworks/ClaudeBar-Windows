@@ -35,6 +35,18 @@ struct HudReadingTests {
         #expect(lines.map(\.resetsAt) == [now.addingTimeInterval(2 * hour + 14 * 60), now.addingTimeInterval(3 * day + 6 * hour)])
     }
 
+    @Test func `should name a session or a week by the window it states, and by its name when it states none`() {
+        // As the Mac's tight places name it (QuotaLabel.short): a stated window's length, else the name.
+        let reading = HudReading(snapshots: [snapshot("claude", [
+            quota(.session, left: 62, resetsIn: 2 * hour, window: 5 * hour),
+            quota(.session, left: 70, resetsIn: 0.5 * hour, window: 1 * hour),
+            quota(.session, left: 80, resetsIn: 2 * hour, window: nil),
+            quota(.weekly, left: 71, resetsIn: 3 * day, window: nil),
+        ])], policy: .absolute)
+
+        #expect(reading.tools[0].lines.map(\.window) == ["5h", "1h", "Session", "Weekly"])
+    }
+
     @Test func `should say a limit is running hot when it is ahead of an even pace, with the tick where an even pace would end`() {
         // 59% used with 53.6% of the week gone.
         let reading = HudReading(snapshots: [snapshot("claude", [
@@ -63,6 +75,18 @@ struct HudReadingTests {
 
         #expect(HudReading(snapshots: [snapshot("claude", quotas)], policy: .absolute).tools[0].lines[0].status == "warning")
         #expect(HudReading(snapshots: [snapshot("claude", quotas)], policy: .paceAware).tools[0].lines[0].status == "healthy")
+    }
+
+    @Test func `should read a low limit that lasts until its reset as healthy under pace-aware, and one that runs out soon as critical`() {
+        let quotas = [
+            // 15% left with 12 minutes of the 5 hours to go: it lasts, however little is left.
+            quota(.session, left: 15, resetsIn: 0.2 * hour, window: 5 * hour),
+            // 60% used in 5% of the week: its 40% runs out in under 6 hours, within a tenth of the week.
+            quota(.weekly, left: 40, resetsIn: 0.95 * 7 * day, window: 7 * day),
+        ]
+
+        #expect(HudReading(snapshots: [snapshot("claude", quotas)], policy: .absolute).tools[0].lines.map(\.status) == ["critical", "warning"])
+        #expect(HudReading(snapshots: [snapshot("claude", quotas)], policy: .paceAware).tools[0].lines.map(\.status) == ["healthy", "critical"])
     }
 
     @Test func `should put each tool's shortest limit on the strip, and another only while it needs you`() {
@@ -193,10 +217,10 @@ struct HudReadingTests {
 
     /// A quota of an aggregating provider, in its upstream section, titled as omp's mapping titles it.
     private func grouped(_ label: String, _ group: String, left: Double, resetsIn: TimeInterval? = nil,
-                         window: TimeInterval? = nil, compactTitle: String? = nil) -> UsageQuota {
+                         window: TimeInterval? = nil) -> UsageQuota {
         UsageQuota(percentRemaining: left, quotaType: .timeLimit(label), providerId: "omp",
                    resetsAt: resetsIn.map { now.addingTimeInterval($0) }, windowDuration: window,
-                   group: group, compactTitle: compactTitle)
+                   group: group)
     }
 
     @Test func `should split a tool whose limits carry groups into one tool per group, in the order the groups first appear`() {
@@ -224,10 +248,10 @@ struct HudReadingTests {
             grouped("Codex 7d", "Codex", left: 12, window: 7 * day),
             grouped("Codex Spark 7d", "Codex", left: 80, window: 7 * day),
             grouped("Claude 5h · jkjk98765", "Claude · jkjk98765", left: 40, window: 5 * hour),
-            grouped("Kimi Total quota", "Kimi", left: 60, compactTitle: "Total"),
+            grouped("Kimi Total quota", "Kimi", left: 60),
         ])], policy: .absolute)
 
-        #expect(reading.tools.map { $0.lines.map(\.window) } == [["7d", "Spark 7d"], ["5h"], ["Total"]])
+        #expect(reading.tools.map { $0.lines.map(\.window) } == [["7d", "Spark 7d"], ["5h"], ["Total quota"]])
     }
 
     @Test func `should headline each group by itself, with its own others and out-until`() {
@@ -253,8 +277,8 @@ struct HudReadingTests {
         let reading = HudReading(snapshots: [
             snapshot("claude", [quota(.session, left: 62, resetsIn: 2 * hour, window: 5 * hour)]),
             snapshot("omp", [
-                grouped("Claude 5h · alice", "Claude · alice", left: 40, window: 5 * hour, compactTitle: "5h"),
-                grouped("Claude 5h · bob", "Claude · bob", left: 70, window: 5 * hour, compactTitle: "5h"),
+                grouped("Claude 5h · alice", "Claude · alice", left: 40, window: 5 * hour),
+                grouped("Claude 5h · bob", "Claude · bob", left: 70, window: 5 * hour),
             ]),
         ], policy: .absolute)
 
