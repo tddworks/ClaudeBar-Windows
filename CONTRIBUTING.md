@@ -57,14 +57,15 @@ of its own, `ProviderTokenLogs(home: folder)`, which reads the logs under `folde
 session log a test writes there, or none) and keeps what it read in `folder\.claudebar`.
 `ProviderTokenLogs()` without a home, and `Client()`, are the app's and the uploader's.
 
-CI checks it: before `swift test` it writes a Claude Code session log into the runner's
-home, as a person's PC has one, and after `dotnet test` it fails if anything under the
-runner's `.claudebar` or `%LOCALAPPDATA%\ClaudeBar` changed. The same on a PC, where they
-are your own:
+CI checks it: before the build it writes a Claude Code session log into the runner's
+home, as a person's PC has one, and after the tests, failed or not, it fails if anything
+under the runner's `.claudebar` or `%LOCALAPPDATA%\ClaudeBar` was added, removed or
+changed. The same on a PC, where they are your own:
 
 ```powershell
 .\scripts\person-files.ps1 -Save $env:TEMP\person-files.txt
-swift test --package-path native   # and dotnet test tests/ClaudeBar.Tests
+swift test --package-path native -Xcc -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH -Xcxx -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+dotnet test tests/ClaudeBar.Tests
 .\scripts\person-files.ps1 -Compare $env:TEMP\person-files.txt
 ```
 

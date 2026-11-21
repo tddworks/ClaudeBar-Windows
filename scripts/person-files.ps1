@@ -12,11 +12,25 @@
 # minute, unchanged. What it changes meanwhile, a line in its log, is named
 # too; CI runs no ClaudeBar.
 param([string]$Save, [string]$Compare)
+$ErrorActionPreference = 'Stop'
 
 if ([bool]$Save -eq [bool]$Compare) { throw 'give -Save <file> or -Compare <file>' }
 # Full paths: .NET resolves a relative one against the process's folder, not this session's.
 if ($Save) { $Save = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Save) }
 if ($Compare) { $Compare = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Compare) }
+
+# A file's SHA-256, read beside a ClaudeBar that has it open (its log); $null
+# when it went between the listing and the read. Anything else stops the
+# check: a file it can't read can't be shown unchanged.
+function Get-Sha256([string]$path) {
+    try { $stream = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite, Delete') }
+    catch [IO.FileNotFoundException] { return $null }
+    catch [IO.DirectoryNotFoundException] { return $null }
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '')
+    } finally { $stream.Dispose() }
+}
 
 function Get-PersonFiles {
     # Where ClaudeBar's package finds them: the account's profile folder
@@ -29,8 +43,8 @@ function Get-PersonFiles {
         if (-not (Test-Path -LiteralPath $root)) { continue }
         foreach ($item in Get-ChildItem -LiteralPath $root -Recurse -Force) {
             if ($item.PSIsContainer) { $files[$item.FullName] = 'folder'; continue }
-            $hash = try { (Get-FileHash -Algorithm SHA256 -LiteralPath $item.FullName -ErrorAction Stop).Hash } catch { 'unreadable' }
-            $files[$item.FullName] = '{0} bytes, {1}' -f $item.Length, $hash
+            $hash = Get-Sha256 $item.FullName
+            if ($hash) { $files[$item.FullName] = '{0} bytes, {1}' -f $item.Length, $hash }
         }
     }
     $files
