@@ -58,8 +58,10 @@ extension ProbeRuns {
             try user.write(".local/bin/claude", "#!/bin/sh\n/usr/bin/env > \(user.home.path)/claude-env\nexit 0\n", executable: true)
         }
 
-        private func logsOnly(_ user: ProbeUser, tz: String?) throws -> ProbeReading {
-            let result = try user.run(["--logs-only", "--windows-roots", try user.rootsFile()], marker: ProbeUser.runId(),
+        /// A `--logs-only` run; `roots` an existing roots file, else a new one
+        /// (whose write gives the whole home back to the user).
+        private func logsOnly(_ user: ProbeUser, tz: String?, roots: String? = nil) throws -> ProbeReading {
+            let result = try user.run(["--logs-only", "--windows-roots", try roots ?? user.rootsFile()], marker: ProbeUser.runId(),
                                       environment: tz.map { ["TZ=\($0)"] } ?? [])
             #expect(result.status == 0, "\(result.stderr)")
             return try result.reading()
@@ -187,13 +189,14 @@ extension ProbeRuns {
         func `should answer no days when it can't start the kept days over`() throws {
             let user = try ProbeUser()
             try writeRecords(user)
-            _ = try logsOnly(user, tz: "Asia/Seoul")
+            let roots = try user.rootsFile()
+            _ = try logsOnly(user, tz: "Asia/Seoul", roots: roots)
             // The ledger's folder, root's and read-only to the user: its pages can't be removed.
             let ledger = user.home.appendingPathComponent(".claudebar/usage-history").path
             try ProbeUser.command(["chown", "root:root", ledger])
             try ProbeUser.command(["chmod", "0755", ledger])
 
-            let reading = try logsOnly(user, tz: "America/Los_Angeles")
+            let reading = try logsOnly(user, tz: "America/Los_Angeles", roots: roots)
 
             #expect(reading.days == nil)
             let page = ledger + "/claude.json"
