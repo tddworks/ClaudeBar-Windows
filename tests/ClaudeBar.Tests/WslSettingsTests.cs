@@ -9,7 +9,11 @@ namespace ClaudeBar.Tests;
 [TestClass]
 public sealed class WslSettingsTests
 {
-    private static readonly TimeZoneInfo Utc = TimeZoneInfo.Utc;
+    /// `cbw_state`'s providers, id to name, as the window keeps them (`_providers`).
+    private static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
+    {
+        ["claude"] = "Claude", ["codex"] = "Codex", ["omp"] = "Oh My Pi",
+    };
 
     // MARK: - The group's line
 
@@ -78,20 +82,206 @@ public sealed class WslSettingsTests
     // MARK: - Notes
 
     [TestMethod]
-    public void Should_note_a_clock_that_isn_t_Windows()
+    public void Should_say_nothing_of_the_distro_s_own_clock()
     {
-        var row = Row(Wsl(Distro()));
-
-        CollectionAssert.AreEqual(new[] { "Its clock is Asia/Seoul; Windows' is UTC, so its days may differ from this PC's" }, row.Notes.ToList());
+        Assert.IsEmpty(Row(Wsl(Distro(reading: Sample(reading => reading["timeZone"] = "America/Los_Angeles")))).Notes);
     }
 
     [TestMethod]
-    public void Should_say_nothing_of_a_clock_that_is_Windows()
+    public void Should_say_when_a_distro_has_no_data_for_Windows_zone()
     {
-        var seoul = TimeZoneInfo.FindSystemTimeZoneById("Asia/Seoul");
+        foreach (var days in new Action<JsonObject>[] { reading => reading["days"] = null, reading => reading.Remove("days") })
+        {
+            var refused = Sample(reading =>
+            {
+                days(reading);
+                reading["diagnostics"] = new JsonArray("no time zone data for Asia/Kolkata (/usr/share/zoneinfo/Asia/Kolkata)");
+            });
 
-        Assert.IsEmpty(WslSettings.Rows(Wsl(Distro()), new JsonObject(), seoul).Single().Notes);
+            var row = Row(Wsl("Asia/Kolkata", Distro(reading: refused)));
+
+            CollectionAssert.AreEqual(new[] { "No time zone data for Asia/Kolkata in Ubuntu-26.04, so its days aren't on the Leaderboard; installing tzdata in it fixes this" }, row.Notes.ToList());
+        }
     }
+
+    [TestMethod]
+    public void Should_say_when_the_distro_s_reader_doesn_t_know_Windows_zone()
+    {
+        foreach (var diagnostic in new[] { "no time zone named Asia/Kolkata", "TZ Asia/Kolkata isn't a zone name", "something else" })
+        {
+            var refused = Sample(reading =>
+            {
+                reading.Remove("days");
+                reading["diagnostics"] = new JsonArray(diagnostic);
+            });
+
+            var row = Row(Wsl("Asia/Kolkata", Distro(reading: refused)));
+
+            CollectionAssert.AreEqual(new[] { "ClaudeBar in Ubuntu-26.04 doesn't know the time zone Asia/Kolkata, so its days aren't on the Leaderboard; an update of ClaudeBar may fix this" }, row.Notes.ToList());
+        }
+    }
+
+    [TestMethod]
+    public void Should_say_when_a_distro_s_kept_days_couldn_t_start_over()
+    {
+        var reading = Sample(reading =>
+        {
+            reading.Remove("days");
+            reading["diagnostics"] = new JsonArray("couldn't start the kept days over for Asia/Seoul: /home/me/.claudebar/usage-history/claude.json: Permission denied");
+        });
+
+        var row = Row(Wsl(Distro(reading: reading)));
+
+        CollectionAssert.AreEqual(new[] { "ClaudeBar couldn't start Ubuntu-26.04's kept days over for Asia/Seoul (/home/me/.claudebar/usage-history/claude.json: Permission denied), so its days aren't on the Leaderboard; once ClaudeBar can change that file, its next run counts them" }, row.Notes.ToList());
+    }
+
+    [TestMethod]
+    public void Should_say_when_Windows_zone_has_no_name_Linux_knows()
+    {
+        var row = Row(Wsl((string?)null, Distro()));
+
+        CollectionAssert.AreEqual(new[] { "Windows' time zone has no name Linux knows, so WSL days aren't on the Leaderboard" }, row.Notes.ToList());
+    }
+
+    [TestMethod]
+    public void Should_say_only_that_Windows_zone_has_no_name_when_a_distro_s_days_were_refused_too()
+    {
+        var refused = Sample(reading =>
+        {
+            reading.Remove("days");
+            reading["diagnostics"] = new JsonArray("no time zone data for Asia/Kolkata (/usr/share/zoneinfo/Asia/Kolkata)");
+        });
+
+        var row = Row(Wsl((string?)null, Distro(reading: refused)));
+
+        CollectionAssert.AreEqual(new[] { WslSettings.NoZoneName }, row.Notes.ToList());
+    }
+
+    [TestMethod]
+    public void Should_say_which_distros_read_a_log_folder_too_with_or_without_a_reading()
+    {
+        var rows = WslSettings.Rows(Reply(), new JsonObject(), Names);
+
+        CollectionAssert.AreEqual(new[] { "Alpine", "Debian", "Ubuntu-26.04" }, rows.Select(row => row.Name).ToList());
+        Assert.IsEmpty(rows[0].Notes);
+        CollectionAssert.AreEqual(new[] { @"Claude's logs in D:\shared\.claude\projects are Ubuntu-26.04's too, so each day counts once on the Leaderboard" }, rows[1].Notes.ToList());
+        CollectionAssert.AreEqual(new[] { @"Claude's logs in D:\shared\.claude are Debian's too, so each day counts once on the Leaderboard" }, rows[2].Notes.ToList());
+    }
+
+    [TestMethod]
+    public void Should_name_every_distro_of_a_group_and_a_provider_by_its_id_when_it_has_no_name()
+    {
+        var distro = Distro();
+        distro["sharedLogs"] = new JsonArray(
+            new JsonObject { ["provider"] = "claude", ["windowsPath"] = @"D:\shared\.claude", ["with"] = new JsonArray("Alpine", "Debian") },
+            new JsonObject { ["provider"] = "kimi", ["windowsPath"] = @"D:\shared\.kimi", ["with"] = new JsonArray("Debian") });
+
+        var row = Row(Wsl(distro));
+
+        CollectionAssert.AreEqual(new[]
+        {
+            @"Claude's logs in D:\shared\.claude are Alpine's and Debian's too, so each day counts once on the Leaderboard",
+            @"kimi's logs in D:\shared\.kimi are Debian's too, so each day counts once on the Leaderboard",
+        }, row.Notes.ToList());
+    }
+
+    [TestMethod]
+    public void Should_list_the_zone_note_then_the_shared_logs_then_the_shell()
+    {
+        var reading = Sample(reading =>
+        {
+            reading.Remove("days");
+            reading["diagnostics"] = new JsonArray("no time zone named Asia/Seoul");
+            reading["environmentImport"] = new JsonObject { ["state"] = "failed", ["names"] = new JsonArray(), ["reason"] = "timed out after 3 s" };
+        });
+        var distro = Distro(reading: reading);
+        distro["sharedLogs"] = new JsonArray(new JsonObject { ["provider"] = "omp", ["windowsPath"] = @"D:\shared\.omp", ["with"] = new JsonArray("Debian") });
+
+        CollectionAssert.AreEqual(new[]
+        {
+            WslSettings.UnknownZone("Asia/Seoul", "Ubuntu-26.04"),
+            WslSettings.SharedLogs("Oh My Pi", @"D:\shared\.omp", new[] { "Debian" }),
+            WslSettings.ShellUnread,
+        }, Row(Wsl(distro)).Notes.ToList());
+    }
+
+    [TestMethod]
+    public void Should_join_names_as_a_sentence_does()
+    {
+        Assert.AreEqual("", WslSettings.Join(Array.Empty<string>()));
+        Assert.AreEqual("A", WslSettings.Join(new[] { "A" }));
+        Assert.AreEqual("A and B", WslSettings.Join(new[] { "A", "B" }));
+        Assert.AreEqual("A, B and C", WslSettings.Join(new[] { "A", "B", "C" }));
+    }
+
+    // MARK: - The Leaderboard notice
+
+    [TestMethod]
+    public void Should_tell_which_shared_providers_in_which_distros_add_their_days()
+    {
+        var notice = WslSettings.Board(Reply(), State());
+
+        Assert.AreEqual(new WslSettings.BoardNotice("WSL days now count on the Leaderboard",
+            "Claude and Oh My Pi in Ubuntu-26.04 add their days to this PC's, as you share them. To stop adding a distro's new days, turn it off in Settings → Tools in WSL."), notice);
+        Assert.AreEqual(WslSettings.BoardTitle, notice!.Title);
+    }
+
+    [TestMethod]
+    public void Should_tell_of_one_provider_as_one()
+    {
+        var notice = WslSettings.Board(Reply(), State(omp: false));
+
+        Assert.AreEqual("Claude in Ubuntu-26.04 adds its days to this PC's, as you share it. To stop adding a distro's new days, turn it off in Settings → Tools in WSL.", notice!.Message);
+    }
+
+    [TestMethod]
+    public void Should_name_the_providers_in_Settings_order_and_the_distros_in_ordinal_order()
+    {
+        var notice = WslSettings.Board(Reply(), State(codex: true));
+
+        Assert.AreEqual("Claude, Codex and Oh My Pi in Debian and Ubuntu-26.04 add their days to this PC's, as you share them. To stop adding a distro's new days, turn it off in Settings → Tools in WSL.", notice!.Message);
+    }
+
+    [TestMethod]
+    public void Should_tell_nothing_unless_joined_with_a_shared_provider_the_Leaderboard_counts_from_WSL()
+    {
+        var empty = Reply();
+        empty["leaderboard"] = new JsonArray();
+        var missing = Reply();
+        missing.Remove("leaderboard");
+        var notJoined = State();
+        notJoined["joined"] = false;
+
+        Assert.IsNull(WslSettings.Board(Reply(), notJoined));
+        Assert.IsNull(WslSettings.Board(Reply(), State(claude: false, omp: false)));
+        Assert.IsNull(WslSettings.Board(empty, State()));
+        Assert.IsNull(WslSettings.Board(missing, State()));
+        Assert.IsNull(WslSettings.Board(null, State()));
+        Assert.IsNull(WslSettings.Board(Reply(), null));
+    }
+
+    [TestMethod]
+    public void Should_open_the_bar_only_until_it_has_been_shown()
+    {
+        var notice = WslSettings.Board(Reply(), State());
+
+        Assert.IsTrue(WslSettings.BoardBarOpens(notice, null));
+        Assert.IsFalse(WslSettings.BoardBarOpens(notice, "shown"));
+        Assert.IsFalse(WslSettings.BoardBarOpens(notice, "seen"));
+        Assert.IsFalse(WslSettings.BoardBarOpens(null, null));
+    }
+
+    [TestMethod]
+    public void Should_show_the_Settings_note_until_it_has_been_seen()
+    {
+        var notice = WslSettings.Board(Reply(), State());
+
+        Assert.IsTrue(WslSettings.BoardNoteShows(notice, null));
+        Assert.IsTrue(WslSettings.BoardNoteShows(notice, "shown"));
+        Assert.IsFalse(WslSettings.BoardNoteShows(notice, "seen"));
+        Assert.IsFalse(WslSettings.BoardNoteShows(null, null));
+    }
+
 
     [TestMethod]
     public void Should_note_a_shell_whose_settings_couldn_t_be_read()
@@ -179,7 +369,7 @@ public sealed class WslSettingsTests
     private static string Look(string id) =>
         (Sample()["hud"]!["looks"] as JsonArray)!.OfType<JsonObject>().FirstOrDefault(look => look["id"]!.GetValue<string>() == id)?["name"]!.GetValue<string>() ?? id;
 
-    private static WslSettings.Row Row(JsonObject wsl, JsonObject? kept = null) => WslSettings.Rows(wsl, kept ?? new JsonObject(), Utc).Single();
+    private static WslSettings.Row Row(JsonObject wsl, JsonObject? kept = null) => WslSettings.Rows(wsl, kept ?? new JsonObject(), Names).Single();
 
     /// app.json's "wsl" with one entry for Ubuntu-26.04.
     private static JsonObject Kept(JsonObject entry) => Parsed(new JsonObject { ["Ubuntu-26.04"] = entry });
@@ -199,10 +389,27 @@ public sealed class WslSettingsTests
         ["answeredAt"] = read ? answeredAt : null, ["reading"] = read ? reading ?? Sample() : null, ["error"] = error,
     };
 
-    /// The reply's "wsl", as the C interface sends it: JSON text, parsed.
-    private static JsonObject Wsl(params JsonObject[] distros) => Parsed(new JsonObject
+    /// The reply's "wsl", as the C interface sends it: JSON text, parsed. Windows' zone is Asia/Seoul.
+    private static JsonObject Wsl(params JsonObject[] distros) => Wsl("Asia/Seoul", distros);
+
+    /// The reply's "wsl" with Windows' zone as the app sends it: null when it has no name.
+    private static JsonObject Wsl(string? timeZone, params JsonObject[] distros) => Parsed(new JsonObject
     {
         ["installed"] = true, ["distros"] = new JsonArray(distros.Select(distro => (JsonNode?)distro).ToArray()),
+        ["leaderboard"] = new JsonArray(), ["timeZone"] = timeZone,
+    });
+
+    /// `tests/wsl-reply.json`: three distros, two log folders shared, and what the Leaderboard counts from them.
+    private static JsonObject Reply() => (JsonObject)JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "wsl-reply.json")))!;
+
+    /// `cbw_state`'s reply, joined, with its providers in Settings' order and each one's sharing.
+    private static JsonObject State(bool claude = true, bool codex = false, bool omp = true) => Parsed(new JsonObject
+    {
+        ["joined"] = true,
+        ["providers"] = new JsonArray(
+            new JsonObject { ["id"] = "claude", ["name"] = "Claude", ["shared"] = claude },
+            new JsonObject { ["id"] = "codex", ["name"] = "Codex", ["shared"] = codex },
+            new JsonObject { ["id"] = "omp", ["name"] = "Oh My Pi", ["shared"] = omp }),
     });
 
     private static JsonObject Parsed(JsonObject value) => (JsonObject)JsonNode.Parse(value.ToJsonString())!;

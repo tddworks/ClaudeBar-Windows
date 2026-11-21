@@ -31,5 +31,7 @@
     <Content Include="..\hud-check-fine.json" Link="hud-check-fine.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The probe's answer, as the Swift side reads it too (ProbeReadingTests). -->
     <Content Include="..\wsl-probe.json" Link="wsl-probe.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The HUD reply's "wsl", as the Swift side writes it (WslHudTests). -->
+    <Content Include="..\wsl-reply.json" Link="wsl-reply.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
