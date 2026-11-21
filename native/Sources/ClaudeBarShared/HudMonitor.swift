@@ -183,8 +183,8 @@ public final class HudMonitor {
     /// The lineup's looks, each login's groups after it: a group in the
     /// colours of the product whose name it starts with (`Codex`, `Claude ·
     /// work`), or the login's own when ClaudeBar knows no such product, and
-    /// named as its section with a long account shortened as the Mac's menu
-    /// bar shortens it (omp's `menuBarTitle`: past 8 characters, 7 and "…").
+    /// named as its section with a long account shortened: past 8 characters,
+    /// 7 and "…".
     static func looks(_ lineup: [Look], for reading: HudReading, definitions: [ProviderDefinition]) -> [Look] {
         lineup.flatMap { login in
             [login] + reading.tools.filter { $0.via == login.id }.compactMap { tool -> Look? in

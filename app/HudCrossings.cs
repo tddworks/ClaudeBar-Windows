@@ -1,12 +1,14 @@
 namespace ClaudeBar;
 
 /// A crossing that notifies (design, Taskbar and notifications): a limit
-/// into critical (under 20%), into depleted (0%), or out of depleted.
+/// into critical (under 20%, or under pace-aware when it runs out within a
+/// tenth of its window), into depleted (0%), or out of depleted.
 internal enum Crossing { Low, Out, Back }
 
 /// Where a limit was at the last reading, kept in app.json: its status, the
-/// reset its window ends at, the crossings already notified in that window,
-/// and until when the person asked for quiet.
+/// reset its window ends at (one still ahead when it was read, or none), the
+/// crossings already notified in that window, and until when the person asked
+/// for quiet.
 internal sealed record KeptLine(string Status, DateTimeOffset? ResetsAt, IReadOnlyList<Crossing> Notified, DateTimeOffset? QuietUntil = null);
 
 /// A limit in this reading: its key (`claude/session`, HudData.Key), status and reset.
@@ -15,7 +17,13 @@ internal sealed record LineNow(string Key, string Status, DateTimeOffset? Resets
 /// When the HUD notifies (Task 11): on a crossing into critical, into
 /// depleted, or out of depleted, compared with the last reading kept. Never
 /// twice for the same limit and crossing in one window, and never for a limit
-/// seen for the first time, which crossed nothing.
+/// seen for the first time, which crossed nothing. Under pace-aware, critical
+/// follows the time left until it runs out, so a pause and a resume flip a
+/// limit between warning and critical; as the Mac's status alerts (ClaudeBar
+/// #710, #711), a window ends at its reset, or when the reset moves later;
+/// a limit kept with no reset takes the first one ahead it reports, and one
+/// with none ends its window once it reads healthy. A reset already past says
+/// nothing about the window.
 internal static class HudCrossings
 {
     /// A reset that moves later by more than this starts a new window; less is the same reset, read again.
@@ -33,12 +41,16 @@ internal static class HudCrossings
         var next = kept.Where(pair => !answered.Contains(Login(pair.Key))).ToDictionary(pair => pair.Key, pair => pair.Value);
         foreach (var line in reading)
         {
+            // A reset already past says nothing about the window.
+            var ahead = line.ResetsAt is { } reported && reported > now ? line.ResetsAt : null;
             if (!kept.TryGetValue(line.Key, out var before))
             {
-                next[line.Key] = new KeptLine(line.Status, line.ResetsAt, Array.Empty<Crossing>());
+                next[line.Key] = new KeptLine(line.Status, ahead, Array.Empty<Crossing>());
                 continue;
             }
-            var newWindow = line.ResetsAt is { } reset && (before.ResetsAt is not { } was || reset - was > NewWindow);
+            var newWindow = before.ResetsAt is { } was
+                ? now >= was || (ahead is { } reset && reset - was > NewWindow)
+                : ahead is null && line.Status == "healthy";
             var notified = newWindow ? Array.Empty<Crossing>() : before.Notified;
             var quiet = before.QuietUntil is { } until && now < until ? before.QuietUntil : null;
             if (Of(before.Status, line.Status) is { } crossing && !notified.Contains(crossing))
@@ -46,7 +58,7 @@ internal static class HudCrossings
                 if (quiet is null) notify.Add((line.Key, crossing));
                 notified = notified.Append(crossing).ToList();
             }
-            next[line.Key] = new KeptLine(line.Status, line.ResetsAt, notified, quiet);
+            next[line.Key] = new KeptLine(line.Status, ahead ?? (newWindow ? null : before.ResetsAt), notified, quiet);
         }
         return (notify, next);
     }
