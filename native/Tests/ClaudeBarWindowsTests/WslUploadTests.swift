@@ -157,9 +157,12 @@ struct WslUploadTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         try await join(at: Self.at(10, 0))
         #expect(await upload(at: Self.at(10, 9)) == [])
-        let record = try #require(settings.leaderboardRecord())
-        settings.saveLeaderboardRecord(LeaderboardRecord(username: record.username, sharing: record.sharing, visible: record.visible,
-                                                         lastUpload: Self.at(10, 9), machine: record.machine))
+        // Written afresh, as v0.1.16 left it: a save over a record keeps what the server took.
+        let file = settings
+        let record = try #require(file.leaderboardRecord())
+        file.saveLeaderboardRecord(nil)
+        file.saveLeaderboardRecord(LeaderboardRecord(username: record.username, sharing: record.sharing, visible: record.visible,
+                                                     lastUpload: Self.at(10, 9), machine: record.machine))
         #expect(settings.leaderboardRecord()?.sent == nil)
 
         answer("Ubuntu", at: Self.at(11, 9), [8: 40, 10: 60])
