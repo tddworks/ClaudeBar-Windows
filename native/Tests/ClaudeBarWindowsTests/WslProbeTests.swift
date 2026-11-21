@@ -1,5 +1,6 @@
 import ClaudeBarShared
 import Foundation
+import Leaderboard
 import Testing
 @testable import ClaudeBarWindows
 
