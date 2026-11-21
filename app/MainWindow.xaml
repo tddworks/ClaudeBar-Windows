@@ -78,6 +78,13 @@
                     <Button x:Name="UpdateBarButton" Content="Update" Click="OnUpdate" />
                 </InfoBar.ActionButton>
             </InfoBar>
+            <!-- WSL days now count (docs/plans/2026-11-03-wsl-design.md, The person is told once): opens once (MainWindow.Wsl.cs). -->
+            <InfoBar x:Name="WslBoardBar" Margin="20,4,20,8" IsOpen="False" IsClosable="True" Severity="Informational"
+                     Closed="OnWslBoardBarClosed">
+                <InfoBar.ActionButton>
+                    <Button Content="Tools in WSL" Click="OnWslBoardOpen" />
+                </InfoBar.ActionButton>
+            </InfoBar>
             <InfoBar x:Name="Notice" Margin="20,4,20,8" IsOpen="False" IsClosable="True" />
         </StackPanel>
 

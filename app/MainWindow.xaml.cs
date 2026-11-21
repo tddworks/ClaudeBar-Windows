@@ -140,6 +140,7 @@ public sealed partial class MainWindow : Window
         };
         ShowHudSettings();
         ShowWsl();
+        AppWindow.Changed += OnWslWindowChanged;
         Navigate("limits");
     }
 
@@ -301,6 +302,7 @@ public sealed partial class MainWindow : Window
         LeaderboardSettings.Visibility = joined ? Visibility.Visible : Visibility.Collapsed;
         NotJoinedSettings.Visibility = joined ? Visibility.Collapsed : Visibility.Visible;
         UpdatePages();
+        ShowWsl();
         if (!joined)
         {
             _ = Uploads.UnscheduleAsync();
