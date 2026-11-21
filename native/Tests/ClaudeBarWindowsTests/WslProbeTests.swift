@@ -13,6 +13,9 @@ struct WslProbeTests {
     private let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cbw-wsl-\(UUID().uuidString)", isDirectory: true)
     private var probeFile: URL { folder.appendingPathComponent("linux/x64/claudebar-probe") }
     private var rootsFolder: URL { folder.appendingPathComponent("roots", isDirectory: true) }
+    /// The kept days of the test's own, never this PC's.
+    private var kept: WslKeptDays { WslKeptDays(folder: folder.appendingPathComponent("days", isDirectory: true)) }
+    private static let answeredAt = Date(timeIntervalSince1970: 1_794_470_400)
 
     /// The checked-in sample both sides read, of this client's version.
     static func sample() throws -> Data {
@@ -29,7 +32,14 @@ struct WslProbeTests {
     private func probe(_ wsl: FakeWsl, deadline: Int = 60, answerWindow: Duration = .seconds(90),
                        zone: TimeZone = TimeZone(identifier: "Asia/Seoul")!) -> WslProbe {
         WslProbe(probe: probeFile, folder: rootsFolder, deadline: deadline, wsl: URL(fileURLWithPath: #"C:\fake\wsl.exe"#),
-                 processes: wsl, answerWindow: answerWindow, zone: { zone })
+                 processes: wsl, answerWindow: answerWindow, zone: { zone }, now: { Self.answeredAt }, kept: kept)
+    }
+
+    /// The sample, changed as `edit` says.
+    private static func answer(_ edit: (inout [String: Any]) -> Void = { _ in }) throws -> WslOutput {
+        var json = try #require(try JSONSerialization.jsonObject(with: sample()) as? [String: Any])
+        edit(&json)
+        return WslOutput(stdout: try JSONSerialization.data(withJSONObject: json), stderr: "", exit: 0)
     }
 
     @Test func `should read a good answer, asking wslpath once, the run marked and its roots file gone afterwards`() async throws {
@@ -80,6 +90,62 @@ struct WslProbeTests {
         }
     }
 
+    /// Design, *No day shrinks*: every run whose days were counted in the zone
+    /// it was sent keeps them, with the roots they came from and when.
+    @Test func `should keep the days of a run counted in the zone it was sent, with their roots and when they were read`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try makeProbeFile()
+        let wsl = FakeWsl(rootsFolder: rootsFolder, answer: .output(try Self.answer()))
+
+        let result = await probe(wsl).run(distro: distro, logsOnly: false)
+
+        let reading = try ProbeReading.decoder().decode(ProbeReading.self, from: Self.sample())
+        #expect(result == .success(reading))
+        #expect(kept.all() == [WslKeptDays.Entry(distro: distro, timeZone: "Asia/Seoul", answeredAt: Self.answeredAt,
+                                                 readAt: ["claude": Self.answeredAt, "omp": Self.answeredAt],
+                                                 logRoots: reading.logRoots, days: try #require(reading.days))])
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("days/\(distro).json").path))
+    }
+
+    @Test func `should keep nothing from a run counted in another zone, or with no days, or with no zone sent`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try makeProbeFile()
+        let utc = FakeWsl(rootsFolder: rootsFolder, answer: .output(try Self.answer { $0["timeZone"] = "UTC" }))
+        let refused = FakeWsl(rootsFolder: rootsFolder, answer: .output(try Self.answer { $0["days"] = nil }))
+        let unnamed = FakeWsl(rootsFolder: rootsFolder, answer: .output(try Self.answer()))
+
+        let results = [await probe(utc).run(distro: distro, logsOnly: false),
+                       await probe(refused).run(distro: distro, logsOnly: true),
+                       await probe(unnamed, zone: TimeZone(secondsFromGMT: 19_800)!).run(distro: distro, logsOnly: false)]
+
+        #expect(results.allSatisfy { if case .success = $0 { true } else { false } })
+        #expect(kept.all().isEmpty)
+    }
+
+    /// The run may have missed a folder its shell sets (`CODEX_HOME` in `.bashrc`).
+    @Test func `should leave the kept days as they were when the shell's settings couldn't be read, or the run failed`() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try makeProbeFile()
+        let earlier = WslKeptDays.Entry(distro: distro, timeZone: "Asia/Seoul", answeredAt: Date(timeIntervalSince1970: 1_794_400_000),
+                                        readAt: [:], logRoots: [], days: [DailyTokens(provider: "codex", day: "2026-11-10", input: 9,
+                                                                                      output: 0, cacheWrite: 0, cacheRead: 0, unsplit: 0)])
+        try kept.save(earlier)
+        let file = folder.appendingPathComponent("days/\(distro).json")
+        let before = try Data(contentsOf: file)
+        let failedImport = FakeWsl(rootsFolder: rootsFolder, answer: .output(try Self.answer {
+            $0["environmentImport"] = ["state": "failed", "names": [String](), "reason": "timed out after 3 s"]
+        }))
+        let failed = FakeWsl(rootsFolder: rootsFolder, answer: .output(WslOutput(stdout: Data(), stderr: "claudebar-probe: no run marker\n", exit: 3)))
+
+        let imported = await probe(failedImport).run(distro: distro, logsOnly: false)
+        let ended = await probe(failed).run(distro: distro, logsOnly: false)
+
+        #expect((try? imported.get()) != nil)
+        #expect((try? ended.get()) == nil)
+        #expect(try Data(contentsOf: file) == before)
+        #expect(kept.all() == [earlier])
+    }
+
     /// A CLI that never answers is stopped at its timeout plus the start
     /// allowance, and the data source it falls back to starts only then
     /// (Codex's JSON-RPC, 15 s, then its terminal, 20 s). The refresh grows
@@ -89,7 +155,8 @@ struct WslProbeTests {
         try makeProbeFile()
         let wsl = FakeWsl(rootsFolder: rootsFolder, answer: .output(WslOutput(stdout: try Self.sample(), stderr: "", exit: 0)))
 
-        _ = await WslProbe(probe: probeFile, folder: rootsFolder, wsl: URL(fileURLWithPath: #"C:\fake\wsl.exe"#), processes: wsl)
+        _ = await WslProbe(probe: probeFile, folder: rootsFolder, wsl: URL(fileURLWithPath: #"C:\fake\wsl.exe"#), processes: wsl,
+                           zone: { TimeZone(identifier: "Asia/Seoul")! }, kept: kept)
             .run(distro: distro, logsOnly: false)
 
         let line = try #require(wsl.calls.first { $0.hasPrefix("start ") })
