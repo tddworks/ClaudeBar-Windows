@@ -100,7 +100,7 @@ public sealed class WslSettingsTests
 
             var row = Row(Wsl("Asia/Kolkata", Distro(reading: refused)));
 
-            CollectionAssert.AreEqual(new[] { "No time zone data for Asia/Kolkata in Ubuntu-26.04, so its days aren't on the Leaderboard; installing tzdata in it fixes this" }, row.Notes.ToList());
+            CollectionAssert.AreEqual(new[] { "No time zone data for Asia/Kolkata in Ubuntu-26.04, so it adds no new days to the Leaderboard; installing tzdata in it fixes this" }, row.Notes.ToList());
         }
     }
 
@@ -117,7 +117,7 @@ public sealed class WslSettingsTests
 
             var row = Row(Wsl("Asia/Kolkata", Distro(reading: refused)));
 
-            CollectionAssert.AreEqual(new[] { "ClaudeBar in Ubuntu-26.04 doesn't know the time zone Asia/Kolkata, so its days aren't on the Leaderboard; an update of ClaudeBar may fix this" }, row.Notes.ToList());
+            CollectionAssert.AreEqual(new[] { "ClaudeBar in Ubuntu-26.04 doesn't know the time zone Asia/Kolkata, so it adds no new days to the Leaderboard; an update of ClaudeBar may fix this" }, row.Notes.ToList());
         }
     }
 
@@ -169,6 +169,50 @@ public sealed class WslSettingsTests
         var row = Row(Wsl((string?)null, Distro(reading: refused)));
 
         CollectionAssert.AreEqual(new[] { WslSettings.NoZoneName }, row.Notes.ToList());
+    }
+
+    [TestMethod]
+    public void Should_say_when_a_distro_s_kept_days_are_another_zone_s()
+    {
+        var distro = Distro(running: false);
+        distro["keptZone"] = "Asia/Seoul";
+
+        var row = Row(Wsl("America/Los_Angeles", distro));
+
+        CollectionAssert.AreEqual(new[] { "Ubuntu-26.04's kept days were counted in Asia/Seoul, not Windows' zone America/Los_Angeles, so they aren't on the Leaderboard until it runs again" }, row.Notes.ToList());
+    }
+
+    [TestMethod]
+    public void Should_say_both_when_a_distro_s_kept_days_are_another_zone_s_and_it_can_t_count_in_Windows()
+    {
+        var refused = Sample(reading =>
+        {
+            reading.Remove("days");
+            reading["diagnostics"] = new JsonArray("no time zone data for Asia/Kolkata (/usr/share/zoneinfo/Asia/Kolkata)");
+        });
+        var distro = Distro(reading: refused);
+        distro["keptZone"] = "Asia/Seoul";
+
+        CollectionAssert.AreEqual(new[]
+        {
+            "No time zone data for Asia/Kolkata in Ubuntu-26.04, so it adds no new days to the Leaderboard; installing tzdata in it fixes this",
+            "Ubuntu-26.04's kept days were counted in Asia/Seoul, not Windows' zone Asia/Kolkata, so they aren't on the Leaderboard until it runs again",
+        }, Row(Wsl("Asia/Kolkata", (JsonObject)distro.DeepClone())).Notes.ToList());
+        CollectionAssert.AreEqual(new[] { WslSettings.NoZoneName }, Row(Wsl((string?)null, (JsonObject)distro.DeepClone())).Notes.ToList());
+    }
+
+    [TestMethod]
+    public void Should_say_only_that_kept_days_couldn_t_start_over_when_they_are_another_zone_s_too()
+    {
+        var reading = Sample(reading =>
+        {
+            reading.Remove("days");
+            reading["diagnostics"] = new JsonArray("couldn't start the kept days over for Asia/Seoul: /home/me/.claudebar/usage-history/claude.json: Permission denied");
+        });
+        var distro = Distro(reading: reading);
+        distro["keptZone"] = "America/Los_Angeles";
+
+        CollectionAssert.AreEqual(new[] { "ClaudeBar couldn't start Ubuntu-26.04's kept days over for Asia/Seoul (/home/me/.claudebar/usage-history/claude.json: Permission denied), so its days aren't on the Leaderboard; once ClaudeBar can change that file, its next run counts them" }, Row(Wsl(distro)).Notes.ToList());
     }
 
     [TestMethod]

@@ -314,6 +314,31 @@ struct WslHudTests {
         #expect(try Self.board(wsl.json()["leaderboard"]) == [Counting(distro: "Debian", providers: ["omp"])])
     }
 
+    /// A distro's kept days counted in another zone than Windows' now are left
+    /// out; its row says which zone they were counted in, for Settings to say so.
+    @Test func `should say in a distro's row the zone its kept days were counted in, when they're left out for it`() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cbw-hudkept-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let kept = WslKeptDays(folder: folder)
+        try kept.save(WslKeptDaysTests.entry("Debian", zone: "Asia/Seoul", days: [WslKeptDaysTests.day("claude", "2026-11-11", 5)]))
+        try kept.save(WslKeptDaysTests.entry("Ubuntu-26.04", zone: "America/Los_Angeles", days: [WslKeptDaysTests.day("claude", "2026-11-11", 5)]))
+        func keptZones(_ zone: TimeZone) async throws -> [String: String] {
+            let wsl = WslHud(probe: FakeProbing([:], reading: reading), list: { $0 ? [] : ["Alpine", "Debian", "Ubuntu-26.04"] },
+                             interval: .seconds(3600), zone: { zone }, kept: kept, windows: { [] })
+            _ = wsl.answer(merging: windows)
+            await wsl.settled()
+            let rows = try #require(try wsl.json()["distros"] as? [[String: Any]])
+            #expect(rows.allSatisfy { $0.keys.contains("keptZone") })
+            return rows.reduce(into: [:]) { zones, row in
+                if let zone = row["keptZone"] as? String { zones[row["name"] as! String] = zone }
+            }
+        }
+
+        #expect(try await keptZones(TimeZone(identifier: "America/Los_Angeles")!) == ["Debian": "Asia/Seoul"])
+        #expect(try await keptZones(TimeZone(identifier: "Asia/Seoul")!) == ["Ubuntu-26.04": "America/Los_Angeles"])
+        #expect(try await keptZones(TimeZone(secondsFromGMT: 19_800)!) == [:])
+    }
+
     private static var replySample: URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../tests/wsl-reply.json").standardized
     }

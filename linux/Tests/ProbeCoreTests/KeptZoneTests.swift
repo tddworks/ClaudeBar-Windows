@@ -123,6 +123,38 @@ struct KeptZoneTests {
         #expect(recorded == "Asia/Seoul")
     }
 
+    /// A marker that's there but doesn't read as a zone says nothing of the
+    /// pages' zone, so they go; only a missing one means a phase 1 probe's.
+    @Test(arguments: [Data([0xFF, 0xFE, 0x00, 0xC3]), Data("\n".utf8)])
+    func `should start over when the recorded zone doesn't read`(marker: Data) throws {
+        defer { try? FileManager.default.removeItem(at: home) }
+        try makeLedger()
+        try FileManager.default.createDirectory(at: zoneFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try marker.write(to: zoneFile)
+
+        #expect(try KeptZone(home: home).prepare(counting: "Asia/Seoul", own: "Asia/Seoul") == true)
+
+        #expect(!exists("claude.json") && !exists("codex.json"))
+        #expect(recorded == "Asia/Seoul")
+    }
+
+    /// A ledger it can't list may hold pages: it says so, and records nothing.
+    @Test(.enabled(if: getuid() != 0, "root lists a folder it has no read permission on"))
+    func `should say it couldn't list the ledger, and record nothing`() throws {
+        defer {
+            chmod(ledger.path, 0o755)
+            try? FileManager.default.removeItem(at: home)
+        }
+        try makeLedger()
+        try recordZone("Asia/Seoul")
+        chmod(ledger.path, 0o311)
+
+        #expect(throws: KeptZone.Failure(path: ledger.path, reason: "Permission denied")) {
+            try KeptZone(home: home).prepare(counting: "America/Los_Angeles", own: "Asia/Seoul")
+        }
+        #expect(recorded == "Asia/Seoul")
+    }
+
     @Test
     func `should name the distro's own zone from its localtime link`() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("localtime-\(UUID().uuidString)")

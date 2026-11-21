@@ -46,7 +46,7 @@ extension ProbeRuns {
             let skipped = try shared.reading().skipped.filter { $0.provider == "codex" }
             #expect(skipped.contains { $0.kind == .credentials && $0.reason == .shared && $0.windowsPath == credentials })
             #expect(skipped.contains { $0.kind == .logs && $0.reason == .shared })
-            #expect(try shared.reading().days?.contains { $0.provider == "codex" } != true)
+            #expect(try shared.reading().days?.contains { $0.provider == "codex" } == false)
         }
 
         @Test
@@ -61,7 +61,7 @@ extension ProbeRuns {
             #expect(result.status == 0, "\(result.stderr)")
             let reading = try result.reading()
             #expect(reading.environmentImport.state == .imported)
-            #expect(reading.days?.contains { $0.provider == "codex" } != true)
+            #expect(reading.days?.contains { $0.provider == "codex" } == false)
             #expect(!reading.skipped.contains { $0.provider == "codex" })
         }
 
