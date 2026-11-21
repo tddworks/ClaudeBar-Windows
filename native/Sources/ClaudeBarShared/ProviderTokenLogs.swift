@@ -1,3 +1,4 @@
+import DataSources
 import Foundation
 import Leaderboard
 import Providers
@@ -27,18 +28,44 @@ public final class ProviderTokenLogs: TokenLogs {
     /// `except`: providers left out, in WSL those whose usage records Windows
     /// reads too, so their days aren't counted twice
     /// (docs/plans/2026-11-03-wsl-design.md, Folders shared with Windows).
-    public init(settings: any MultiAccountSettingsRepository = DefaultProviderSettings(), except: Set<String> = []) {
+    ///
+    /// `home`: the folder read as the person's home. Without one, the logs are
+    /// the person's, read exactly as the Mac reads them, with the closed days
+    /// and what each scan read kept in their `~\.claudebar\usage-history`.
+    /// With one, as a test gives a folder of its own: the logs under it, with
+    /// no environment variable to point elsewhere, and what reading them keeps
+    /// in its `.claudebar\usage-history`, so nothing of the person's is read
+    /// or written.
+    public init(settings: any MultiAccountSettingsRepository = DefaultProviderSettings(), except: Set<String> = [],
+                home: URL? = nil) {
         logins = ProviderFactory.builtInDefinitions.values
             .filter { $0.usageHistory != nil && !except.contains($0.id) }
             .sorted { $0.id < $1.id }
             .compactMap { definition in
-                ProviderFactory.make(definition, settings: settings).usageHistory.map {
+                let history = if let home { Self.history(definition, home: home) }
+                              else { ProviderFactory.make(definition, settings: settings).usageHistory }
+                return history.map {
                     let color = definition.profile.look.color
                     return Login(provider: Provider(id: definition.id, name: definition.profile.name,
                                                     light: Self.hex(color?.light), dark: Self.hex(color?.dark)),
                                  history: $0)
                 }
             }
+    }
+
+    /// A definition's default login read under `home`, as `ProviderFactory`
+    /// reads it under the person's.
+    private static func history(_ definition: ProviderDefinition, home: URL) -> UsageHistory? {
+        let kept = home.appendingPathComponent(".claudebar", isDirectory: true)
+            .appendingPathComponent("usage-history", isDirectory: true)
+        let scans = kept.appendingPathComponent("scans", isDirectory: true)
+        let environment: @Sendable (String) -> String? = { _ in nil }
+        return definition.usageHistory(forDefaultAccount: definition.defaultAccountValues).map {
+            UsageHistory($0, login: definition.id,
+                         log: { DataSources.makeUsageLog($0, scripts: ProviderFactory.builtInScripts, environment: environment,
+                                                         homeDirectory: home, scans: scans) },
+                         ledger: { DayLedger(store: FolderLedgerStore(directory: kept), key: $0) })
+        }
     }
 
     public var providersWithLogs: Set<String> { Set(logins.map(\.provider.id)) }
@@ -68,6 +95,28 @@ extension LoginDays {
     /// from a longer read, instead of reading every log again.
     public func within(_ range: DateRange) -> LoginDays {
         LoginDays(providerId: providerId, days: days.filter { $0.date >= range.first && $0.date <= range.last })
+    }
+}
+
+/// Kept days in a folder, a file a login, named and written as ClaudeBar's own
+/// store writes them in `~/.claudebar/usage-history`: for a home a test gives,
+/// which that store can't be pointed at.
+private struct FolderLedgerStore: LedgerStore {
+    let directory: URL
+
+    func load(_ key: String) -> LedgerPage? {
+        FileManager.default.contents(atPath: file(key).path).flatMap { try? JSONDecoder().decode(LedgerPage.self, from: $0) }
+    }
+
+    func save(_ page: LedgerPage, for key: String) {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        guard let data = try? JSONEncoder().encode(page) else { return }
+        try? AtomicFile.write(data, to: file(key))
+    }
+
+    private func file(_ key: String) -> URL {
+        let safe = key.map { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" ? $0 : "_" }
+        return directory.appendingPathComponent(String(safe) + ".json")
     }
 }
 
