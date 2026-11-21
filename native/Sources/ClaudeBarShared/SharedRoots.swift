@@ -71,6 +71,18 @@ public enum SharedRoots {
         return skips
     }
 
+    /// The log roots a provider's days are read from: none when any of its
+    /// log roots was skipped (the probe then leaves the provider's logs out),
+    /// else every log root, each with its Windows path. A skipped login
+    /// leaves the logs in.
+    public static func counted(provider: String, roots: [WslRoot], skips: [ProbeReading.Skip]) -> [ProbeReading.LogRoot] {
+        guard !skips.contains(where: { $0.provider == provider && $0.kind == .logs }) else { return [] }
+        return roots.compactMap { root in
+            guard root.kind == .logs, let path = root.windowsPath else { return nil }
+            return ProbeReading.LogRoot(provider: provider, windowsPath: path)
+        }
+    }
+
     /// A path's names, normalized; a UNC path's server and share are names too.
     private static func names(_ path: String) -> [String] {
         normalized(path).split(separator: "\\").map(String.init)

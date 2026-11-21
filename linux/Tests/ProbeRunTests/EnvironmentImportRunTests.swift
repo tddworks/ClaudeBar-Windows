@@ -37,7 +37,7 @@ extension ProbeRuns {
             let reading = try plain.reading()
             #expect(reading.environmentImport.state == .imported)
             #expect(reading.environmentImport.names.contains("CODEX_HOME"))
-            #expect(reading.days.contains { $0.provider == "codex" && $0.day == Records.label(0) })
+            #expect(reading.days?.contains { $0.provider == "codex" && $0.day == Records.label(0) } == true)
 
             let credentials = user.windowsPath("alt-codex"), logs = user.windowsPath("alt-codex/sessions")
             let roots = try user.rootsFile([ProviderRoots(provider: "codex", credentials: [credentials], logs: [logs])])
@@ -46,7 +46,7 @@ extension ProbeRuns {
             let skipped = try shared.reading().skipped.filter { $0.provider == "codex" }
             #expect(skipped.contains { $0.kind == .credentials && $0.reason == .shared && $0.windowsPath == credentials })
             #expect(skipped.contains { $0.kind == .logs && $0.reason == .shared })
-            #expect(try shared.reading().days.contains { $0.provider == "codex" } == false)
+            #expect(try shared.reading().days?.contains { $0.provider == "codex" } != true)
         }
 
         @Test
@@ -61,7 +61,7 @@ extension ProbeRuns {
             #expect(result.status == 0, "\(result.stderr)")
             let reading = try result.reading()
             #expect(reading.environmentImport.state == .imported)
-            #expect(!reading.days.contains { $0.provider == "codex" })
+            #expect(reading.days?.contains { $0.provider == "codex" } != true)
             #expect(!reading.skipped.contains { $0.provider == "codex" })
         }
 
@@ -82,7 +82,7 @@ extension ProbeRuns {
             let reading = try result.reading()
             #expect(reading.environmentImport.state == .imported, "\(reading.environmentImport)")
             #expect(reading.environmentImport.names.contains("CODEX_HOME"))
-            #expect(reading.days.contains { $0.provider == "codex" && $0.day == Records.label(0) })
+            #expect(reading.days?.contains { $0.provider == "codex" && $0.day == Records.label(0) } == true)
         }
 
         @Test
@@ -120,7 +120,7 @@ extension ProbeRuns {
             #expect(result.status == 0, "\(result.stderr)")
             let reading = try result.reading()
             #expect(reading.environmentImport.state == .imported, "\(reading.environmentImport)")
-            #expect(reading.days.contains { $0.provider == "codex" && $0.day == Records.label(0) })
+            #expect(reading.days?.contains { $0.provider == "codex" && $0.day == Records.label(0) } == true)
             #expect(EndRun.processes(carrying: .run(id)).isEmpty)
         }
 
