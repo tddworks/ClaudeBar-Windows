@@ -39,8 +39,10 @@ internal static class WslSettings
     internal static string UnknownZone(string zone, string distro) =>
         $"ClaudeBar in {distro} doesn't know the time zone {zone}, so its days aren't on the Leaderboard; an update of ClaudeBar may fix this";
 
-    internal static string NotStartedOver(string distro, string zone, string detail) =>
-        $"ClaudeBar couldn't start {distro}'s kept days over for {zone} ({detail}), so its days aren't on the Leaderboard; once ClaudeBar can change that file, its next run counts them";
+    /// `detail` is the probe's `<path>: <strerror>`; without one, no file is named.
+    internal static string NotStartedOver(string distro, string zone, string detail) => detail.Length == 0
+        ? $"ClaudeBar couldn't start {distro}'s kept days over for {zone}, so its days aren't on the Leaderboard; once ClaudeBar can change its kept days, its next run counts them"
+        : $"ClaudeBar couldn't start {distro}'s kept days over for {zone} ({detail}), so its days aren't on the Leaderboard; once ClaudeBar can change that file, its next run counts them";
 
     /// A log root of the distro's that other distros read too; `with` by name.
     internal static string SharedLogs(string provider, string path, IReadOnlyList<string> with) =>
