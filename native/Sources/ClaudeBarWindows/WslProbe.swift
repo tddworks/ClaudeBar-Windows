@@ -1,5 +1,6 @@
 import ClaudeBarShared
 import DataSources
+import Diagnostics
 import Foundation
 import Providers
 import WinSDK
@@ -85,6 +86,7 @@ public final class WslProbe: WslProbing, @unchecked Sendable {
     private let answerWindow: Duration
     private let zone: @Sendable () -> TimeZone
     private let now: @Sendable () -> Date
+    private let kept: WslKeptDays
     private let lock = NSLock()
     /// Each distro's Linux paths of the probe and the roots folder, asked once per start.
     private var linuxPaths: [String: (probe: String, folder: String)] = [:]
@@ -98,12 +100,14 @@ public final class WslProbe: WslProbing, @unchecked Sendable {
     static let stepTimeout: Duration = .seconds(15)
 
     /// `zone`: Windows' zone, handed to the probe by its tzdata name
-    /// (`WslZone`), read once per run. `now`: when a run answers.
+    /// (`WslZone`), read once per run. `now`: when a run answers. `kept`:
+    /// where each run counted in that zone keeps the distro's days.
     public init(probe: URL = WslProbe.bundled, folder: URL = WslProbe.folder, deadline: Int = ProbeTiming.deadline,
                 wsl: URL = WslProbe.systemWsl,
                 processes: any WslProcesses = SystemWslProcesses(), answerWindow: Duration = .seconds(90),
                 zone: @escaping @Sendable () -> TimeZone = DataSources.timeZone,
-                now: @escaping @Sendable () -> Date = Date.init) {
+                now: @escaping @Sendable () -> Date = Date.init,
+                kept: WslKeptDays = WslKeptDays()) {
         self.probe = probe
         self.folder = folder
         self.deadline = deadline
@@ -112,6 +116,7 @@ public final class WslProbe: WslProbing, @unchecked Sendable {
         self.answerWindow = answerWindow
         self.zone = zone
         self.now = now
+        self.kept = kept
     }
 
     public func run(distro: String, logsOnly: Bool) async -> Result<ProbeReading, WslFailure> {
@@ -186,7 +191,27 @@ public final class WslProbe: WslProbing, @unchecked Sendable {
               reading.version == ClientVersion.version else {
             return .failure(WslFailure("ClaudeBar's WSL reader is from another version"))
         }
+        keep(reading, of: distro, sent: name)
         return .success(reading)
+    }
+
+    /// Keeps the run's days (design, *No day shrinks*), still inside the
+    /// distro's mutex, so a slower run can't put older days over newer ones:
+    /// only when they were counted in the zone the run sent (`sent`), with the
+    /// person's shell settings read. A run that couldn't read them may have
+    /// missed a folder they set, so the days kept before stay.
+    private func keep(_ reading: ProbeReading, of distro: String, sent name: String?) {
+        guard let name, let days = reading.days, reading.timeZone == name else { return }
+        guard reading.environmentImport.state == .imported else {
+            AppLog.network.info("WSL \(distro): kept days not replaced: its shell's settings couldn't be read (\(reading.environmentImport.reason ?? "no reason given"))")
+            return
+        }
+        do {
+            try kept.save(WslKeptDays.entry(distro: distro, reading: reading, days: days, answeredAt: now(),
+                                            earlier: kept.entry(for: distro)))
+        } catch {
+            AppLog.network.error("WSL \(distro): its days couldn't be kept: \(error.localizedDescription)")
+        }
     }
 
     /// The probe's and the roots folder's Linux paths in `distro`, asked once per start.
