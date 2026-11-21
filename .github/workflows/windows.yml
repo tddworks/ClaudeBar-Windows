@@ -128,11 +128,14 @@ jobs:
       # build.ps1 loads MSVC into this process's environment. Keep the tests
       # in the same step, so SwiftPM uses that environment too. -Probe puts the
       # WSL probe in out/win-x64/linux/x64, so the zip and the packages carry it.
+      # The runner's Visual Studio 18 headers (MSVC 14.52) ask for Clang 22,
+      # newer than Swift 6.3's; Microsoft's switch lets an older Clang use them
+      # (build.ps1 passes it too).
       - name: Build app and test Swift client
         run: |
           & .\build.ps1 -Probe linux-out\x64
           if (-not $?) { exit 1 }
-          swift test --package-path native
+          swift test --package-path native -Xcc -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH -Xcxx -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # The app's own tests: its pure C# (where the HUD sits, what it says),

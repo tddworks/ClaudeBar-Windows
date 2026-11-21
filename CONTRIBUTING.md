@@ -33,9 +33,13 @@ For the same check locally, from the repository root on Windows:
 ```powershell
 & .\build.ps1
 if (-not $?) { exit 1 }
-swift test --package-path native
+swift test --package-path native -Xcc -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH -Xcxx -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 ```
+
+The `-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH` switch, which `build.ps1` passes too, lets
+Swift 6.3's Clang use Visual Studio 18's headers (MSVC 14.52), which ask for Clang 22.
+Without Visual Studio 18 it changes nothing.
 
 `swift test` logs to a file of its own, `%TEMP%\ClaudeBar-test-log-<run>\ClaudeBar.log`,
 never to the app's `%LOCALAPPDATA%\ClaudeBar\Logs\ClaudeBar.log`: a test that makes a save
