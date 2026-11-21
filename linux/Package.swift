@@ -19,7 +19,11 @@ let package = Package(
             .product(name: "ClaudeBarShared", package: "native"), .product(name: "ClaudeBarKit", package: "ClaudeBar"),
         ]),
         .executableTarget(name: "ClaudeBarProbe", dependencies: ["ProbeCore"]),
-        .testTarget(name: "ProbeCoreTests", dependencies: ["ProbeCore"], resources: [.copy("Fixtures")]),
+        // ClaudeBarKit too, for `@testable import DataSources`: ZoneCheckTests
+        // checks every name the app can send, from ClaudeBar's own zone table.
+        .testTarget(name: "ProbeCoreTests", dependencies: [
+            "ProbeCore", .product(name: "ClaudeBarKit", package: "ClaudeBar"),
+        ], resources: [.copy("Fixtures")]),
         // Depends on the executable so `swift test` builds it: the runner tests
         // find it beside the test binary and run it as fixture users.
         .testTarget(name: "ProbeRunTests", dependencies: ["ClaudeBarProbe", "ProbeCore"]),

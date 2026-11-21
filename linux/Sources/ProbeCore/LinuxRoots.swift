@@ -12,6 +12,9 @@ import Providers
 public enum LinuxRoots {
     public struct Result: Equatable, Sendable {
         public let skipped: [ProbeReading.Skip]
+        /// Each log root the days are read from, in Windows form: a provider's
+        /// none when any of its log roots was skipped (`SharedRoots.counted`).
+        public let counted: [ProbeReading.LogRoot]
         public let diagnostics: [String]
     }
 
@@ -19,6 +22,7 @@ public enum LinuxRoots {
                              environment: @escaping @Sendable (String) -> String?, rule: DriveRule,
                              wslpath: (String) -> String?) -> Result {
         var skipped: [ProbeReading.Skip] = []
+        var counted: [ProbeReading.LogRoot] = []
         var diagnostics: [String] = []
         for definition in definitions {
             let roots = ProviderRoots.of(definition, homeDirectory: homeDirectory, environment: environment)
@@ -39,9 +43,11 @@ public enum LinuxRoots {
                 }
             }
             let theirs = windows.providers.first { $0.provider == definition.id }
-            skipped += SharedRoots.skips(provider: definition.id, roots: wslRoots, windows: theirs)
+            let skips = SharedRoots.skips(provider: definition.id, roots: wslRoots, windows: theirs)
+            skipped += skips
+            counted += SharedRoots.counted(provider: definition.id, roots: wslRoots, skips: skips)
         }
-        return Result(skipped: skipped, diagnostics: diagnostics)
+        return Result(skipped: skipped, counted: counted, diagnostics: diagnostics)
     }
 
     /// The path with every symlink followed, or nil when it doesn't exist.

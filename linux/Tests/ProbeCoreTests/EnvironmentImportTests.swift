@@ -29,6 +29,18 @@ struct EnvironmentImportTests {
         #expect(EnvironmentImport.names(usedBy: [custom]) == ["MY_TOOL_HOME"])
     }
 
+    /// The probe's `TZ` is the zone the app sent (design, *The time zone*); a
+    /// shell file's own would count the days in another.
+    @Test
+    func `should never import TZ, even when a definition names it`() throws {
+        let text = try fixture("path-provider.json")
+            .replacingOccurrences(of: "${PATH}", with: "${TZ}")
+            .replacingOccurrences(of: "MY_TOOL_HOME", with: "CODEX_HOME")
+        let custom = try ProviderDefinition.parse(Data(text.utf8), origin: .custom)
+
+        #expect(EnvironmentImport.names(usedBy: [custom]) == ["CODEX_HOME"])
+    }
+
     @Test
     func `should read only the names asked for, values with a space or a newline whole`() {
         let file = Data("PATH=/usr/bin\0CODEX_HOME=/home/me/alt codex\0MULTI=a\nb\0EMPTY=\0@@CLAUDEBAR_ENV_END@@".utf8)

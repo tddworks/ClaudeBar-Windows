@@ -123,6 +123,7 @@ extension ProbeRuns {
             #expect(reading.skipped.contains(ProbeReading.Skip(provider: "claude", kind: .credentials, windowsPath: shared, reason: .shared)))
             #expect(reading.hud?.looks.contains { $0.id == "claude" } == false)
             #expect(reading.hud?.problems.contains { $0.id == "claude" } == false)
+            #expect(!reading.logRoots.contains { $0.provider == "claude" }, "\(reading.logRoots)")
         }
 
         @Test

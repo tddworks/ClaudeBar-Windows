@@ -8,8 +8,9 @@ import Providers
 import Quotas
 
 /// One run of `--json` or `--logs-only` (design, *The probe*), in the plan's
-/// order: the drives, `PATH`, the environment import, the roots, the HUD
-/// raced against the deadline, the days whole, then the answer.
+/// order: the zone `main` checked first, the drives, `PATH`, the environment
+/// import, the roots, the kept days' zone, the HUD raced against the
+/// deadline, the days whole, then the answer.
 @MainActor
 public enum Probe {
     /// Why a run stops without an answer: `claudebar-probe: <reason>`, and its exit code.
@@ -18,9 +19,11 @@ public enum Probe {
         public let reason: String
     }
 
-    public static func run(_ arguments: ProbeArguments, marker id: String) async throws(Stop) -> ProbeReading {
+    /// `zone` is `ZoneCheck.apply()`'s verdict, taken before anything read a zone.
+    public static func run(_ arguments: ProbeArguments, marker id: String, zone: ZoneCheck.Verdict) async throws(Stop) -> ProbeReading {
         guard let rootsFile = arguments.windowsRoots else { throw Stop(code: 1, reason: "no --windows-roots") }
         var diagnostics: [String] = []
+        if case .refused(let why) = zone { diagnostics.append(why) }
 
         // The drives, from the mount table, or guessed from wslpath's C drive.
         let rule: DriveRule
@@ -64,6 +67,21 @@ public enum Probe {
         let off = Set(roots.skipped.filter { $0.kind == .credentials }.map(\.provider))
         let except = Set(roots.skipped.filter { $0.kind == .logs }.map(\.provider))
 
+        // The kept days, started over when they were counted in another zone
+        // (design, *Kept days carry no zone*), before the HUD or the days read
+        // any. A refused TZ counts in the distro's own, and the kept days follow it.
+        let counting = DataSources.timeZone().identifier
+        var keptInZone = true
+        do {
+            if try KeptZone(home: FileManager.default.homeDirectoryForCurrentUser)
+                .prepare(counting: counting, own: KeptZone.distroZone()) {
+                diagnostics.append("kept days started over: counting in \(counting) now")
+            }
+        } catch {
+            diagnostics.append("couldn't start the kept days over for \(counting): \(error)")
+            keptInZone = false
+        }
+
         // The HUD, at most until the deadline. WSL takes an idle distro's page
         // cache back, so at the HUD's cadence each CLI starts from the disk,
         // past its timeout: the CLIs get `ProbeTiming.startAllowance` more to
@@ -76,15 +94,21 @@ public enum Probe {
             }
         }
 
-        // The days, whole, after the refresh or the deadline.
+        // The days, whole, after the refresh or the deadline; none when the
+        // kept days couldn't be started over, which they would answer as theirs.
         let calendar = DataSources.calendar()
-        let logs = ProviderTokenLogs(except: except)
-        let read = await logs.days(in: DateRange.last(arguments.days, endingOn: Date(), calendar: calendar))
-        let days = DailyTokens.summed(read, providers: logs.providersWithLogs, calendar: calendar)
+        var days: [DailyTokens] = []
+        if keptInZone {
+            let logs = ProviderTokenLogs(except: except)
+            let read = await logs.days(in: DateRange.last(arguments.days, endingOn: Date(), calendar: calendar))
+            days = DailyTokens.summed(read, providers: logs.providersWithLogs, calendar: calendar)
+        }
+        // Days counted in the zone the app sent, or in the distro's own when it sent none.
+        let counted: Bool = if case .refused = zone { false } else { keptInZone }
 
-        return ProbeReading(version: ClientVersion.version, hud: hud, days: days,
+        return ProbeReading(version: ClientVersion.version, hud: hud, days: counted ? days : nil,
                             tools: tools(hud: hud, days: days, definitions: definitions),
-                            skipped: roots.skipped, timeZone: calendar.timeZone.identifier, timedOut: timedOut,
+                            skipped: roots.skipped, logRoots: roots.counted, timeZone: counting, timedOut: timedOut,
                             environmentImport: environmentImport, diagnostics: diagnostics)
     }
 

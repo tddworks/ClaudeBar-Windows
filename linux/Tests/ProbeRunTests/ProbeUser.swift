@@ -126,11 +126,13 @@ final class ProbeUser {
     /// `terminal`, it runs under `script`, in a session whose controlling
     /// terminal is a pty, as `wsl.exe` starts every Linux process, even with
     /// no console and every handle redirected; its stdout and stderr are still
-    /// files. Its PID is then `script`'s.
-    func start(_ arguments: [String], marker: String?, terminal: Bool = false) throws -> Run {
+    /// files. Its PID is then `script`'s. `environment` goes in `env -i`'s list
+    /// after the rest, as `TZ=<zone>` goes in the app's launch.
+    func start(_ arguments: [String], marker: String?, terminal: Bool = false, environment extra: [String] = []) throws -> Run {
         var environment = ["HOME=\(home.path)", "USER=\(name)", "LOGNAME=\(name)", "SHELL=/bin/bash",
                            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C.UTF-8"]
         if let marker { environment.append("\(RunMarker.name)=\(marker)") }
+        environment += extra
         let argv = ["/usr/bin/setpriv", "--reuid=\(uid)", "--regid=\(gid)", "--init-groups", "--",
                     "/usr/bin/env", "-i"] + environment + [Self.probe] + arguments
         let folder = FileManager.default.temporaryDirectory
@@ -157,8 +159,8 @@ final class ProbeUser {
         return Run(process: process, stdout: stdout, stderr: stderr)
     }
 
-    func run(_ arguments: [String], marker: String?, terminal: Bool = false) throws -> Result {
-        try start(arguments, marker: marker, terminal: terminal).finish()
+    func run(_ arguments: [String], marker: String?, terminal: Bool = false, environment: [String] = []) throws -> Result {
+        try start(arguments, marker: marker, terminal: terminal, environment: environment).finish()
     }
 
     /// One word for `sh -c`, in single quotes.
@@ -224,10 +226,20 @@ enum Records {
         return calendar.date(byAdding: .day, value: -daysAgo, to: calendar.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!)!
     }
 
-    static func timestamp(_ daysAgo: Int) -> String {
+    static func timestamp(_ daysAgo: Int) -> String { timestamp(at: day(daysAgo)) }
+
+    static func timestamp(at instant: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: day(daysAgo))
+        return formatter.string(from: instant)
+    }
+
+    /// `instant`'s day, `yyyy-MM-dd`, in `zone`.
+    static func label(of instant: Date, in zone: TimeZone) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let parts = calendar.dateComponents([.year, .month, .day], from: instant)
+        return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
     }
 
     static func label(_ daysAgo: Int) -> String {
@@ -236,9 +248,12 @@ enum Records {
     }
 
     /// A Claude Code assistant record of `tokens` input tokens.
-    static func claude(_ daysAgo: Int, tokens: Int, id: String) -> String {
+    static func claude(_ daysAgo: Int, tokens: Int, id: String) -> String { claude(at: day(daysAgo), tokens: tokens, id: id) }
+
+    /// A Claude Code assistant record of `tokens` input tokens (and 5 output), at `instant`.
+    static func claude(at instant: Date, tokens: Int, id: String) -> String {
         """
-        {"type":"assistant","timestamp":"\(timestamp(daysAgo))","requestId":"req-\(id)","cwd":"/tmp","message":{"id":"msg-\(id)","model":"claude-sonnet-4-5","usage":{"input_tokens":\(tokens),"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
+        {"type":"assistant","timestamp":"\(timestamp(at: instant))","requestId":"req-\(id)","cwd":"/tmp","message":{"id":"msg-\(id)","model":"claude-sonnet-4-5","usage":{"input_tokens":\(tokens),"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
         """
     }
 

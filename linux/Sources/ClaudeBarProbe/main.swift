@@ -8,6 +8,10 @@ import ProbeCore
 // nothing; exit 1 is bad arguments or an I/O error, 2 no answer 60 s after
 // the deadline, 3 no run marker.
 
+// TZ first, before anything reads a zone (Foundation keeps the first it
+// reads): refused, it's unset, and the run counts in the distro's own.
+let zone = ZoneCheck.apply()
+
 func stop(_ code: Int32, _ reason: String) -> Never {
     FileHandle.standardError.write(Data("claudebar-probe: \(reason)\n".utf8))
     exit(code)
@@ -41,7 +45,7 @@ Thread.detachNewThread {
 
 let reading: ProbeReading
 do {
-    reading = try await Probe.run(arguments, marker: id)
+    reading = try await Probe.run(arguments, marker: id, zone: zone)
 } catch {
     EndRun.end(.run(id), sparing: getpid())
     stop(error.code, error.reason)
