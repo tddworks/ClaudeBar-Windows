@@ -3,6 +3,7 @@
     {
       "answeredAt" : null,
       "error" : null,
+      "keptZone" : null,
       "name" : "Alpine",
       "on" : null,
       "probing" : false,
@@ -13,6 +14,7 @@
     {
       "answeredAt" : null,
       "error" : null,
+      "keptZone" : null,
       "name" : "Debian",
       "on" : null,
       "probing" : false,
@@ -31,6 +33,7 @@
     {
       "answeredAt" : null,
       "error" : null,
+      "keptZone" : null,
       "name" : "Ubuntu-26.04",
       "on" : null,
       "probing" : false,

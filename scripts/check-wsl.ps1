@@ -295,7 +295,9 @@ if ($Tests -contains 'marker') {
 # those with a day of tokens in the last 30 days in Windows' zone (what
 # wsl.leaderboard lists for the distro when no other distro reads its folders).
 function KeptSummary($entry) {
-  $first = (Get-Date).Date.AddDays(-29).ToString('yyyy-MM-dd'); $last = (Get-Date).Date.ToString('yyyy-MM-dd')
+  # Gregorian labels whatever the person's calendar, as the kept days write them.
+  $iso = [Globalization.CultureInfo]::InvariantCulture
+  $first = (Get-Date).Date.AddDays(-29).ToString('yyyy-MM-dd', $iso); $last = (Get-Date).Date.ToString('yyyy-MM-dd', $iso)
   $days = @($entry.days)
   $inWindow = @($days | Where-Object { $_.day -ge $first -and $_.day -le $last -and ($_.input + $_.output + $_.cacheWrite + $_.cacheRead + $_.unsplit) -gt 0 })
   [pscustomobject]@{
@@ -365,14 +367,25 @@ if ($Tests -contains 'upload') {
     $wslLines = @($added | Where-Object { $_ -like '*Leaderboard: WSL *' })
     "  claudebar-upload.exe exit $($u.ExitCode) in {0:N1} s; running before [$($runningBefore -join ', ')], after [$($runningAfter -join ', ')]" -f $seconds
     foreach ($line in $wslLines) { "  log: " + (Redact $line) }
-    # Each distro whose kept days have a day in the window and that wasn't read says its kept days went.
+    # Each distro whose kept days have a day in the window and that wasn't read
+    # says so: that its kept days went, or, counted in another zone than
+    # Windows' now, that they were left out (WslKeptDays.current); a distro
+    # whose every provider is read by Windows or another distro now only says
+    # what was left out.
     $unread = @()
     foreach ($file in @(Get-ChildItem (Join-Path $env:LOCALAPPDATA 'ClaudeBar\wsl\days') -Filter *.json -ErrorAction SilentlyContinue)) {
       $name = $file.BaseName
       $entry = ReadKept $name
-      if ($entry -and (KeptSummary $entry).WindowDays -gt 0 -and $runningAfter -notcontains $name) { $unread += $name }
+      if ($entry -and (KeptSummary $entry).WindowDays -gt 0 -and $runningAfter -notcontains $name) {
+        $unread += [pscustomobject]@{ Name = $name; Zone = [string]$entry.timeZone }
+      }
     }
-    $missing = @($unread | Where-Object { $n = $_; -not ($wslLines | Where-Object { $_ -like "*WSL ${n}: *its kept days go*" }) })
+    $missing = @($unread | Where-Object {
+      $n = $_.Name; $z = $_.Zone
+      $said = if ($z -ne $zone.Name) { @($wslLines | Where-Object { $_ -like "*WSL ${n}: kept days left out: counted in ${z},*" }) }
+              else { @($wslLines | Where-Object { $_ -like "*WSL ${n}: *its kept days go*" -or $_ -like "*WSL ${n}: kept * days left out: *" }) }
+      -not $said
+    } | ForEach-Object { $_.Name })
     if ($u.ExitCode -ne 0) { Fail 'upload' "exit $($u.ExitCode)" }
     elseif (-not $done) { Fail 'upload' 'no *Leaderboard uploaded by the scheduled task* in the lines it added' }
     elseif (($runningBefore -join ',') -ne ($runningAfter -join ',')) { Fail 'upload' "running before [$($runningBefore -join ', ')], after [$($runningAfter -join ', ')]" }

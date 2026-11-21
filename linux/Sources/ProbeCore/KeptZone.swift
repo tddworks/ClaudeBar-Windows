@@ -37,27 +37,32 @@ public struct KeptZone {
     }
 
     /// Before reading days in `zone`: when the kept days were counted in
-    /// another (`wsl-zone`, or `own` when no run recorded one), removes every
-    /// `*.json` page directly in the ledger's folder, then records `zone`.
-    /// True when pages were removed. Throws `Failure` when one couldn't be, and records nothing.
+    /// another (`wsl-zone`; `own` when no run recorded one; none known when
+    /// the marker is there but doesn't read as a zone), removes every `*.json`
+    /// page directly in the ledger's folder, then records `zone`. True when
+    /// pages were removed. Throws `Failure` when one couldn't be, or the
+    /// folder couldn't be listed, and records nothing.
     public func prepare(counting zone: String, own: String?) throws(Failure) -> Bool {
-        let kept = recorded ?? own
+        let marker = self.marker
+        let kept: String? = switch marker {
+        case .absent: own
+        case .zone(let recorded): recorded
+        case .unreadable: nil
+        }
         var removed = false
         if kept != zone {
-            for page in pages() {
-                guard unlink(page) == 0 else {
-                    let reason = String(cString: strerror(errno))
-                    throw Failure(path: page, reason: reason)
-                }
+            for page in try pages() {
+                guard unlink(page) == 0 else { throw Failure(path: page, reason: Self.reason(errno)) }
                 removed = true
             }
         }
-        if recorded != zone { try record(zone) }
+        if marker != .zone(zone) { try record(zone) }
         return removed
     }
 
-    /// A page `prepare` couldn't remove, or `wsl-zone` it couldn't write:
-    /// `<path>: <strerror>`, the probe's diagnostic's detail.
+    /// A page `prepare` couldn't remove, the ledger's folder it couldn't
+    /// list, or `wsl-zone` it couldn't write: `<path>: <strerror>`, the
+    /// probe's diagnostic's detail.
     public struct Failure: Error, Equatable, CustomStringConvertible {
         public let path: String
         public let reason: String
@@ -68,23 +73,51 @@ public struct KeptZone {
         public var description: String { "\(path): \(reason)" }
     }
 
-    /// The zone the last run that read days recorded, trimmed; nil without one.
-    var recorded: String? {
-        guard let text = try? String(contentsOf: zoneFile, encoding: .utf8) else { return nil }
-        let zone = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return zone.isEmpty ? nil : zone
+    /// What `wsl-zone` says: nothing, as before any phase 2 run; the zone the
+    /// last run that read days recorded, trimmed; or a file there that
+    /// doesn't read as one (unreadable, not UTF-8, or empty).
+    enum Marker: Equatable {
+        case absent
+        case zone(String)
+        case unreadable
     }
 
-    /// Each `*.json` file directly in the ledger's folder, by name.
-    private func pages() -> [String] {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: ledger.path)) ?? []
-        return names.filter { $0.hasSuffix(".json") }.sorted().compactMap { name in
+    var marker: Marker {
+        var info = stat()
+        guard lstat(zoneFile.path, &info) == 0 else { return errno == ENOENT ? .absent : .unreadable }
+        guard let text = try? String(contentsOf: zoneFile, encoding: .utf8) else { return .unreadable }
+        let zone = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return zone.isEmpty ? .unreadable : .zone(zone)
+    }
+
+    /// Each `*.json` file directly in the ledger's folder, by name; none when
+    /// there's no folder. A folder it can't list, or a page it can't look at,
+    /// may hide a page, so it throws.
+    private func pages() throws(Failure) -> [String] {
+        guard let folder = opendir(ledger.path) else {
+            if errno == ENOENT { return [] }
+            throw Failure(path: ledger.path, reason: Self.reason(errno))
+        }
+        var names: [String] = []
+        while let entry = readdir(folder) {
+            let name = withUnsafeBytes(of: entry.pointee.d_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            if name.hasSuffix(".json") { names.append(name) }
+        }
+        closedir(folder)
+        var pages: [String] = []
+        for name in names.sorted() {
             let path = ledger.appendingPathComponent(name).path
             var info = stat()
-            guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) != S_IFDIR else { return nil }
-            return path
+            guard lstat(path, &info) == 0 else {
+                if errno == ENOENT { continue }
+                throw Failure(path: path, reason: Self.reason(errno))
+            }
+            if (info.st_mode & S_IFMT) != S_IFDIR { pages.append(path) }
         }
+        return pages
     }
+
+    private static func reason(_ code: Int32) -> String { String(cString: strerror(code)) }
 
     private func record(_ zone: String) throws(Failure) {
         do {

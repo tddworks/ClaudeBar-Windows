@@ -126,20 +126,24 @@ public final class WslHud {
     }
 
     /// The reply's `wsl`: `{installed, timeZone, leaderboard, distros: [{name,
-    /// running, on, probing, answeredAt, reading, error, sharedLogs}]}`.
+    /// running, on, probing, answeredAt, reading, error, sharedLogs, keptZone}]}`.
     /// `timeZone` is the name Windows' zone goes to a distro by, or null;
     /// `leaderboard` what the Leaderboard counts from WSL now, each distro
     /// with the providers that have a day with tokens in the last 30 days;
-    /// `sharedLogs` a distro's log roots another distro's kept days read too.
+    /// `sharedLogs` a distro's log roots another distro's kept days read too;
+    /// `keptZone` the zone a distro's kept days were counted in when it isn't
+    /// `timeZone`, so they're left out, else null (always null with no `timeZone`).
     public func json() throws -> [String: Any] {
         let encoder = ProbeReading.encoder()
         let date = now(), timeZone = zone()
         let zoneName = WslZone.name(for: timeZone, at: date)
-        let counted = WslKeptDays.current(keptDays.all(), zone: zoneName, windows: windowsRoots())
+        let entries = keptDays.all()
+        let counted = WslKeptDays.current(entries, zone: zoneName, windows: windowsRoots())
         let rows = try (distros ?? []).map { name -> [String: Any] in
             let last = read[name]
             let reading = last?.reading ?? kept[name]?.reading
             let answeredAt = last?.answeredAt ?? kept[name]?.answeredAt
+            let keptZone = zoneName.flatMap { zone in entries.first { $0.distro == name }.map(\.timeZone).flatMap { $0 == zone ? nil : $0 } }
             return [
                 "name": name,
                 "running": running.contains(name),
@@ -149,6 +153,7 @@ public final class WslHud {
                 "reading": try reading.map { try JSONSerialization.jsonObject(with: encoder.encode($0)) } ?? NSNull(),
                 "error": last?.failure ?? NSNull(),
                 "sharedLogs": try JSONSerialization.jsonObject(with: encoder.encode(counted.shared[name] ?? [])),
+                "keptZone": keptZone.map { $0 as Any } ?? NSNull(),
             ]
         }
         return ["installed": distros != nil, "timeZone": zoneName.map { $0 as Any } ?? NSNull(),

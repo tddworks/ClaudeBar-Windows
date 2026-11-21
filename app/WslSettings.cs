@@ -31,13 +31,17 @@ internal static class WslSettings
     internal const string BoardTitle = "WSL days now count on the Leaderboard";
     internal const string NoZoneName = "Windows' time zone has no name Linux knows, so WSL days aren't on the Leaderboard";
 
-    /// `TZ` names no file in the distro: tzdata would add it.
+    /// `TZ` names no file in the distro: tzdata would add it. Days it kept before still count while they're Windows' zone's.
     internal static string NoZoneData(string zone, string distro) =>
-        $"No time zone data for {zone} in {distro}, so its days aren't on the Leaderboard; installing tzdata in it fixes this";
+        $"No time zone data for {zone} in {distro}, so it adds no new days to the Leaderboard; installing tzdata in it fixes this";
 
     /// The file is there but the probe's Foundation doesn't know it, or `TZ` isn't a plain name: tzdata wouldn't fix it.
     internal static string UnknownZone(string zone, string distro) =>
-        $"ClaudeBar in {distro} doesn't know the time zone {zone}, so its days aren't on the Leaderboard; an update of ClaudeBar may fix this";
+        $"ClaudeBar in {distro} doesn't know the time zone {zone}, so it adds no new days to the Leaderboard; an update of ClaudeBar may fix this";
+
+    /// The distro's kept days on Windows were counted in `kept`, so they're left out while Windows' zone is `zone`.
+    internal static string KeptElsewhere(string distro, string kept, string zone) =>
+        $"{distro}'s kept days were counted in {kept}, not Windows' zone {zone}, so they aren't on the Leaderboard until it runs again";
 
     /// `detail` is the probe's `<path>: <strerror>`; without one, no file is named.
     internal static string NotStartedOver(string distro, string zone, string detail) => detail.Length == 0
@@ -164,7 +168,10 @@ internal static class WslSettings
     private static IReadOnlyList<string> Notes(JsonObject? reading, string name, JsonObject wsl, JsonObject distro, IReadOnlyDictionary<string, string> names)
     {
         var notes = new List<string>();
-        if (wsl["timeZone"]?.GetValue<string>() is not { } windows) notes.Add(NoZoneName);
+        var windows = wsl["timeZone"]?.GetValue<string>();
+        // The start-over note already says the kept days aren't on the Leaderboard.
+        var startedOver = true;
+        if (windows is null) notes.Add(NoZoneName);
         else if (reading is not null && reading["days"] is null)
         {
             var diagnostics = (reading["diagnostics"] as JsonArray ?? new JsonArray()).Select(line => line?.GetValue<string>()).OfType<string>().ToList();
@@ -174,10 +181,13 @@ internal static class WslSettings
                 var rest = failed[NotStartedOverPrefix.Length..];
                 var colon = rest.IndexOf(": ", StringComparison.Ordinal);
                 notes.Add(colon < 0 ? NotStartedOver(name, rest, "") : NotStartedOver(name, rest[..colon], rest[(colon + 2)..]));
+                startedOver = false;
             }
             else if (diagnostics.Any(line => line.StartsWith("no time zone data for ", StringComparison.Ordinal))) notes.Add(NoZoneData(windows, name));
             else notes.Add(UnknownZone(windows, name));
         }
+        if (windows is not null && startedOver && distro["keptZone"]?.GetValue<string>() is { } keptZone)
+            notes.Add(KeptElsewhere(name, keptZone, windows));
         foreach (var shared in (distro["sharedLogs"] as JsonArray ?? new JsonArray()).OfType<JsonObject>())
         {
             var provider = shared["provider"]?.GetValue<string>() ?? "";
